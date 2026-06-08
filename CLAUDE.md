@@ -2,8 +2,8 @@
 
 Mémoire institutionnelle du projet Vermeer Chat, à destination de tout nouveau lecteur (humain ou IA). Ce fichier est **stratégique** : contexte, stack, conventions, décisions, garde-fous, état d'avancement. Il ne contient pas l'historique détaillé des décisions et conversations — celui-ci est tracké sur Notion.
 
-Dernière mise à jour : 2026-06-04
-Dernière passe : réécriture procédure de release (ECR + OIDC, fin du flux GHCR/tag-only), 4 environnements avec auth distincte (alpha/dev/staging/prod), POC code interpreter / agents L2 prouvé en local, précision couverture i18n FR (~76 %).
+Dernière mise à jour : 2026-06-08
+Dernière passe : mémoire par assistant (POC backend `agentId` + section UI « Mémoire » du builder) mergée sur `main` via PR #5 ; bascule des fichiers mémoire dans la watchlist active §11.
 
 La Partie 1 ci-dessous couvre le projet Vermeer. La [Partie 2](#partie-2--conventions-techniques-librechat) reprend les conventions techniques LibreChat (workspaces, code style, tests) — à lire après le contexte projet.
 
@@ -219,7 +219,7 @@ Features livrées (commits clés) :
 - **Pricing en dur dans `api/models/tx.js`** : les rates input/completion par modèle vivent dans ce fichier, pas dans le yaml. Avant d'activer la balance en V1, vérifier que les modèles utilisés (gpt-5.x, claude-opus-4-6, claude-sonnet-4-5, claude-haiku-4-5) ont un rate défini, sinon la consommation n'est pas trackée.
 - **Synchro balance au login** : le solde se réaligne sur la config globale (`startBalance`) à chaque connexion. Attention à la migration des users existants — un `startBalance` global mal réglé peut écraser les soldes attendus.
 - **`CREDS_KEY` / `CREDS_IV`** : présents dans le `.env`, à ne JAMAIS perdre ni régénérer lors d'une migration MongoDB. Ces clés chiffrent les credentials user en base ; sans elles, les données existantes deviennent illisibles.
-- **Code natif LibreChat modifié — watchlist merge upstream**. À chaque merge depuis upstream LibreChat, contrôler ces 7 fichiers en priorité, car nous y avons ajouté du code Vermeer susceptible de conflit :
+- **Code natif LibreChat modifié — watchlist merge upstream**. À chaque merge depuis upstream LibreChat, contrôler ces 22 fichiers en priorité, car nous y avons ajouté du code Vermeer susceptible de conflit. Les 7 premiers sont les fichiers historiques (budgets / web search) ; les 15 suivants relèvent de la mémoire par assistant mergée le 2026-06-08 (POC backend + section UI builder, détail plus bas) :
   - `api/server/controllers/Balance.js` (enrichi avec currentMonthSpend dans la réponse /api/balance)
   - `client/src/hooks/SSE/useSSE.ts` (retrait du gate balance.enabled sur le refetch balanceQuery)
   - `client/src/components/Chat/ChatView.tsx` (BudgetCard inséré dans le layout, gestion footer)
@@ -228,14 +228,14 @@ Features livrées (commits clés) :
   - `packages/data-provider/src/schemas.ts` (`anthropicSettings.web_search.default = true` ; le champ `web_search` reste `.optional()` volontairement, le défaut est appliqué au runtime côté parsers)
   - `packages/data-provider/src/parameterSettings.ts` (`openai`/`google` `web_search.default = true`)
 
-- **POC mémoire par assistant (branche `feat/memoire-par-assistant-poc`, NON mergée)**. Approche A : champ `agentId` nullable sur `MemoryEntry` (`null` = mémoire globale/transverse, sinon scopée à l'assistant). Scope déterministe (pas de décision LLM) : écritures en conversation avec un assistant réel taguées avec son id ; chat par défaut (éphémère) → `null` ; lecture = global ∪ assistant courant. Si cette branche est un jour reprise/mergée, ces 5 fichiers natifs sont à surveiller en plus lors des merges upstream :
+- **Mémoire par assistant — POC backend (commit `91a9bf6`, mergé sur `main` le 2026-06-08 via PR #5)**. Approche A : champ `agentId` nullable sur `MemoryEntry` (`null` = mémoire globale/transverse, sinon scopée à l'assistant). Scope déterministe (pas de décision LLM) : écritures en conversation avec un assistant réel taguées avec son id ; chat par défaut (éphémère) → `null` ; lecture = global ∪ assistant courant. Ces 5 fichiers natifs sont à surveiller activement lors des merges upstream :
   - `packages/data-schemas/src/schema/memory.ts` (champ `agentId: { type: String, index: true, default: null }`)
   - `packages/data-schemas/src/types/memory.ts` (`agentId?: string | null` sur `IMemoryEntry`/`IMemoryEntryLean`/`SetMemoryParams`/`DeleteMemoryParams`/`GetFormattedMemoriesParams`)
   - `packages/data-schemas/src/methods/memory.ts` (helper `buildReadFilter` ; `agentId` dans les filtres `createMemory`/`setMemory`/`deleteMemory` et la lecture union `getAllUserMemories`/`getFormattedMemories` ; court-circuit `key === 'nothing'` préservé)
   - `packages/api/src/agents/memory.ts` (`agentId` threadé dans `createMemoryProcessor` → vue scopée du memory agent + `processMemory` → tools `set_memory`/`delete_memory`)
   - `api/server/controllers/agents/client.js` (`effectiveAgentId` via `isEphemeralAgentId(this.options.agent.id)`, passé à `getFormattedMemories` et `createMemoryProcessor`)
 
-- **Section « Mémoire » du builder d'assistant (branche `feat/memoire-par-assistant-ui`, stackée sur le POC, NON mergée)**. UI + plomberie routes/client exposant `agentId` (optionnel partout, `undefined` = comportement global legacy). Décision produit : dans la section assistant, les entrées globales sont en lecture seule (badge « Global ») ; seules les entrées de l'assistant sont éditables/supprimables (badge « Cet assistant »). Fichiers natifs touchés à surveiller en plus lors des merges upstream :
+- **Mémoire par assistant — section « Mémoire » du builder (commit `72a9f49`, mergé sur `main` le 2026-06-08 via PR #5)**. UI + plomberie routes/client exposant `agentId` (optionnel partout, `undefined` = comportement global legacy). Décision produit : dans la section assistant, les entrées globales sont en lecture seule (badge « Global ») ; seules les entrées de l'assistant sont éditables/supprimables (badge « Cet assistant »). Fichiers natifs à surveiller activement lors des merges upstream :
   - `api/server/routes/memories.js` (helpers `readScope`/`writeScope`/`sameScope` ; `agentId` lu en query pour GET/DELETE, en body pour POST/PATCH ; lookups post-écriture scopés par `sameScope`)
   - `packages/data-provider/src/api-endpoints.ts` (`memories(agentId?)`/`memory(key, agentId?)` via `buildQuery`)
   - `packages/data-provider/src/data-service.ts` (`agentId` sur `getMemories`/`deleteMemory`/`updateMemory`/`createMemory`)
