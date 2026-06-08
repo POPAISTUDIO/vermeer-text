@@ -92,12 +92,14 @@ export const createMemoryTool = ({
   validKeys,
   tokenLimit,
   totalTokens = 0,
+  agentId = null,
 }: {
   userId: string | ObjectId;
   setMemory: MemoryMethods['setMemory'];
   validKeys?: string[];
   tokenLimit?: number;
   totalTokens?: number;
+  agentId?: string | null;
 }): DynamicStructuredTool => {
   const remainingTokens = tokenLimit ? tokenLimit - totalTokens : Infinity;
   const isOverflowing = tokenLimit ? remainingTokens <= 0 : false;
@@ -164,7 +166,7 @@ export const createMemoryTool = ({
           },
         };
 
-        const result = await setMemory({ userId, key, value, tokenCount });
+        const result = await setMemory({ userId, key, value, tokenCount, agentId });
         if (result.ok) {
           logger.debug(`Memory set for key "${key}" (${tokenCount} tokens) for user "${userId}"`);
           return [`Memory set for key "${key}" (${tokenCount} tokens)`, artifact];
@@ -205,10 +207,12 @@ const createDeleteMemoryTool = ({
   userId,
   deleteMemory,
   validKeys,
+  agentId = null,
 }: {
   userId: string | ObjectId;
   deleteMemory: MemoryMethods['deleteMemory'];
   validKeys?: string[];
+  agentId?: string | null;
 }) => {
   return tool(
     async ({ key }) => {
@@ -229,7 +233,7 @@ const createDeleteMemoryTool = ({
           },
         };
 
-        const result = await deleteMemory({ userId, key });
+        const result = await deleteMemory({ userId, key, agentId });
         if (result.ok) {
           logger.debug(`Memory deleted for key "${key}" for user "${userId}"`);
           return [`Memory deleted for key "${key}"`, artifact];
@@ -298,6 +302,7 @@ export async function processMemory({
   totalTokens = 0,
   streamId = null,
   user,
+  agentId = null,
 }: {
   res: ServerResponse;
   setMemory: MemoryMethods['setMemory'];
@@ -314,6 +319,7 @@ export async function processMemory({
   llmConfig?: Partial<LLMConfig>;
   streamId?: string | null;
   user?: IUser;
+  agentId?: string | null;
 }): Promise<(TAttachment | null)[] | undefined> {
   try {
     const memoryTool = createMemoryTool({
@@ -322,11 +328,13 @@ export async function processMemory({
       setMemory,
       validKeys,
       totalTokens,
+      agentId,
     });
     const deleteMemoryTool = createDeleteMemoryTool({
       userId,
       validKeys,
       deleteMemory,
+      agentId,
     });
 
     const currentMemoryTokens = totalTokens;
@@ -513,6 +521,7 @@ export async function createMemoryProcessor({
   config = {},
   streamId = null,
   user,
+  agentId = null,
 }: {
   res: ServerResponse;
   messageId: string;
@@ -522,12 +531,14 @@ export async function createMemoryProcessor({
   config?: MemoryConfig;
   streamId?: string | null;
   user?: IUser;
+  agentId?: string | null;
 }): Promise<[string, (messages: BaseMessage[]) => Promise<(TAttachment | null)[] | undefined>]> {
   const { validKeys, instructions, llmConfig, tokenLimit } = config;
   const finalInstructions = instructions || getDefaultInstructions(validKeys, tokenLimit);
 
   const { withKeys, withoutKeys, totalTokens } = await memoryMethods.getFormattedMemories({
     userId,
+    agentId,
   });
 
   return [
@@ -544,6 +555,7 @@ export async function createMemoryProcessor({
           tokenLimit,
           streamId,
           conversationId,
+          agentId,
           memory: withKeys,
           totalTokens: totalTokens || 0,
           instructions: finalInstructions,

@@ -228,6 +228,13 @@ Features livrées (commits clés) :
   - `packages/data-provider/src/schemas.ts` (`anthropicSettings.web_search.default = true` ; le champ `web_search` reste `.optional()` volontairement, le défaut est appliqué au runtime côté parsers)
   - `packages/data-provider/src/parameterSettings.ts` (`openai`/`google` `web_search.default = true`)
 
+- **POC mémoire par assistant (branche `feat/memoire-par-assistant-poc`, NON mergée)**. Approche A : champ `agentId` nullable sur `MemoryEntry` (`null` = mémoire globale/transverse, sinon scopée à l'assistant). Scope déterministe (pas de décision LLM) : écritures en conversation avec un assistant réel taguées avec son id ; chat par défaut (éphémère) → `null` ; lecture = global ∪ assistant courant. Si cette branche est un jour reprise/mergée, ces 5 fichiers natifs sont à surveiller en plus lors des merges upstream :
+  - `packages/data-schemas/src/schema/memory.ts` (champ `agentId: { type: String, index: true, default: null }`)
+  - `packages/data-schemas/src/types/memory.ts` (`agentId?: string | null` sur `IMemoryEntry`/`IMemoryEntryLean`/`SetMemoryParams`/`DeleteMemoryParams`/`GetFormattedMemoriesParams`)
+  - `packages/data-schemas/src/methods/memory.ts` (helper `buildReadFilter` ; `agentId` dans les filtres `createMemory`/`setMemory`/`deleteMemory` et la lecture union `getAllUserMemories`/`getFormattedMemories` ; court-circuit `key === 'nothing'` préservé)
+  - `packages/api/src/agents/memory.ts` (`agentId` threadé dans `createMemoryProcessor` → vue scopée du memory agent + `processMemory` → tools `set_memory`/`delete_memory`)
+  - `api/server/controllers/agents/client.js` (`effectiveAgentId` via `isEphemeralAgentId(this.options.agent.id)`, passé à `getFormattedMemories` et `createMemoryProcessor`)
+
 ---
 
 ## 12. Déploiement et CI/CD

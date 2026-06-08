@@ -32,6 +32,11 @@ const MemoryEntrySchema: Schema<IMemoryEntry> = new Schema({
     type: String,
     index: true,
   },
+  agentId: {
+    type: String,
+    index: true,
+    default: null,
+  },
 });
 
 export default MemoryEntrySchema;
