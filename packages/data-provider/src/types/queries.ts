@@ -136,6 +136,7 @@ export type TUserMemory = {
   value: string;
   updated_at: string;
   tokenCount?: number;
+  agentId?: string | null;
 };
 
 export type MemoriesResponse = {

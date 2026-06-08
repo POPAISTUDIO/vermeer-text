@@ -235,6 +235,15 @@ Features livrées (commits clés) :
   - `packages/api/src/agents/memory.ts` (`agentId` threadé dans `createMemoryProcessor` → vue scopée du memory agent + `processMemory` → tools `set_memory`/`delete_memory`)
   - `api/server/controllers/agents/client.js` (`effectiveAgentId` via `isEphemeralAgentId(this.options.agent.id)`, passé à `getFormattedMemories` et `createMemoryProcessor`)
 
+- **Section « Mémoire » du builder d'assistant (branche `feat/memoire-par-assistant-ui`, stackée sur le POC, NON mergée)**. UI + plomberie routes/client exposant `agentId` (optionnel partout, `undefined` = comportement global legacy). Décision produit : dans la section assistant, les entrées globales sont en lecture seule (badge « Global ») ; seules les entrées de l'assistant sont éditables/supprimables (badge « Cet assistant »). Fichiers natifs touchés à surveiller en plus lors des merges upstream :
+  - `api/server/routes/memories.js` (helpers `readScope`/`writeScope`/`sameScope` ; `agentId` lu en query pour GET/DELETE, en body pour POST/PATCH ; lookups post-écriture scopés par `sameScope`)
+  - `packages/data-provider/src/api-endpoints.ts` (`memories(agentId?)`/`memory(key, agentId?)` via `buildQuery`)
+  - `packages/data-provider/src/data-service.ts` (`agentId` sur `getMemories`/`deleteMemory`/`updateMemory`/`createMemory`)
+  - `packages/data-provider/src/types/queries.ts` (`TUserMemory.agentId?: string | null`)
+  - `client/src/data-provider/Memories/queries.ts` (clé de cache scopée `[QueryKeys.memories, agentId ?? 'global']` ; invalidation par préfixe `[QueryKeys.memories]` ; optimistic create sur la clé scopée)
+  - `client/src/components/SidePanel/Memories/{MemoryCardActions,MemoryEditDialog,MemoryCreateDialog}.tsx` (delete/edit lisent `memory.agentId` ; create reçoit `agentId` optionnel — backward-compat sidebar)
+  - nouveau `client/src/components/SidePanel/Agents/AgentMemory.tsx` + ancrage dans `AgentConfig.tsx` après FileSearch ; clés i18n `com_assistants_memory_*` (FR+EN)
+
 ---
 
 ## 12. Déploiement et CI/CD

@@ -17,6 +17,8 @@ interface MemoryCreateDialogProps {
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
   triggerRef?: React.MutableRefObject<HTMLButtonElement | null>;
+  /** POC mémoire par assistant : si défini, la mémoire créée est scopée à cet assistant. */
+  agentId?: string;
 }
 
 export default function MemoryCreateDialog({
@@ -24,6 +26,7 @@ export default function MemoryCreateDialog({
   onOpenChange,
   children,
   triggerRef,
+  agentId,
 }: MemoryCreateDialogProps) {
   const localize = useLocalize();
   const { showToast } = useToastContext();
@@ -93,6 +96,7 @@ export default function MemoryCreateDialog({
     createMemory({
       key: key.trim(),
       value: value.trim(),
+      agentId,
     });
   };
 
