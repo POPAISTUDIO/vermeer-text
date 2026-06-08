@@ -51,6 +51,7 @@ import { componentMapping } from '~/components/SidePanel/Parameters/components';
 import { icons } from '~/hooks/Endpoint/Icons';
 import Instructions from './Instructions';
 import AdminSettings from './AdminSettings';
+import AgentMemory from './AgentMemory';
 import FileSearch from './FileSearch';
 import Artifacts from './Artifacts';
 import AgentTool from './AgentTool';
@@ -596,6 +597,8 @@ export default function AgentConfig() {
             <FileSearch agent_id={agent_id} files={knowledge_files} />
           </div>
         )}
+        {/* Mémoire de l'assistant (POC mémoire par assistant) */}
+        <AgentMemory />
         {/* === SECTION 4 : Outils avancés (Accordion replié par défaut) === */}
         <Accordion type="single" collapsible className="mb-4 w-full">
           <AccordionItem value="advanced-tools" className="border-b-0">

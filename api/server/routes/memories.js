@@ -15,6 +15,16 @@ const router = express.Router();
 
 const memoryPayloadLimit = express.json({ limit: '100kb' });
 
+/**
+ * POC mémoire par assistant — coercition du scope agentId.
+ * - readScope : `undefined` quand le param est absent -> lecture de TOUTES les entrées
+ *   (préserve le panneau Mémoires global de la sidebar). Une string -> union global ∪ assistant.
+ * - writeScope : `null` quand le param est absent -> bucket global. Une string -> bucket assistant.
+ */
+const readScope = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined);
+const writeScope = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
+const sameScope = (memory, agentId) => (memory.agentId ?? null) === (agentId ?? null);
+
 const checkMemoryRead = generateCheckAccess({
   permissionType: PermissionTypes.MEMORIES,
   permissions: [Permissions.USE, Permissions.READ],
@@ -50,7 +60,7 @@ router.use(requireJwtAuth);
  */
 router.get('/', checkMemoryRead, configMiddleware, async (req, res) => {
   try {
-    const memories = await getAllUserMemories(req.user.id);
+    const memories = await getAllUserMemories(req.user.id, readScope(req.query.agentId));
 
     const sortedMemories = memories.sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
@@ -90,6 +100,7 @@ router.get('/', checkMemoryRead, configMiddleware, async (req, res) => {
  */
 router.post('/', memoryPayloadLimit, checkMemoryCreate, configMiddleware, async (req, res) => {
   const { key, value } = req.body;
+  const agentId = writeScope(req.body.agentId);
 
   if (typeof key !== 'string' || key.trim() === '') {
     return res.status(400).json({ error: 'Key is required and must be a non-empty string.' });
@@ -141,6 +152,7 @@ router.post('/', memoryPayloadLimit, checkMemoryCreate, configMiddleware, async 
       key: key.trim(),
       value: value.trim(),
       tokenCount,
+      agentId,
     });
 
     if (!result.ok) {
@@ -148,7 +160,7 @@ router.post('/', memoryPayloadLimit, checkMemoryCreate, configMiddleware, async 
     }
 
     const updatedMemories = await getAllUserMemories(req.user.id);
-    const newMemory = updatedMemories.find((m) => m.key === key.trim());
+    const newMemory = updatedMemories.find((m) => m.key === key.trim() && sameScope(m, agentId));
 
     res.status(201).json({ created: true, memory: newMemory });
   } catch (error) {
@@ -199,6 +211,7 @@ router.patch('/preferences', checkMemoryOptOut, async (req, res) => {
 router.patch('/:key', memoryPayloadLimit, checkMemoryUpdate, configMiddleware, async (req, res) => {
   const { key: urlKey } = req.params;
   const { key: bodyKey, value } = req.body || {};
+  const agentId = writeScope((req.body || {}).agentId);
 
   if (typeof value !== 'string' || value.trim() === '') {
     return res.status(400).json({ error: 'Value is required and must be a non-empty string.' });
@@ -225,14 +238,14 @@ router.patch('/:key', memoryPayloadLimit, checkMemoryUpdate, configMiddleware, a
     const tokenCount = Tokenizer.getTokenCount(value, 'o200k_base');
 
     const memories = await getAllUserMemories(req.user.id);
-    const existingMemory = memories.find((m) => m.key === urlKey);
+    const existingMemory = memories.find((m) => m.key === urlKey && sameScope(m, agentId));
 
     if (!existingMemory) {
       return res.status(404).json({ error: 'Memory not found.' });
     }
 
     if (newKey !== urlKey) {
-      const keyExists = memories.find((m) => m.key === newKey);
+      const keyExists = memories.find((m) => m.key === newKey && sameScope(m, agentId));
       if (keyExists) {
         return res.status(409).json({ error: 'Memory with this key already exists.' });
       }
@@ -242,13 +255,14 @@ router.patch('/:key', memoryPayloadLimit, checkMemoryUpdate, configMiddleware, a
         key: newKey,
         value,
         tokenCount,
+        agentId,
       });
 
       if (!createResult.ok) {
         return res.status(500).json({ error: 'Failed to create new memory.' });
       }
 
-      const deleteResult = await deleteMemory({ userId: req.user.id, key: urlKey });
+      const deleteResult = await deleteMemory({ userId: req.user.id, key: urlKey, agentId });
       if (!deleteResult.ok) {
         return res.status(500).json({ error: 'Failed to delete old memory.' });
       }
@@ -258,6 +272,7 @@ router.patch('/:key', memoryPayloadLimit, checkMemoryUpdate, configMiddleware, a
         key: newKey,
         value,
         tokenCount,
+        agentId,
       });
 
       if (!result.ok) {
@@ -266,7 +281,7 @@ router.patch('/:key', memoryPayloadLimit, checkMemoryUpdate, configMiddleware, a
     }
 
     const updatedMemories = await getAllUserMemories(req.user.id);
-    const updatedMemory = updatedMemories.find((m) => m.key === newKey);
+    const updatedMemory = updatedMemories.find((m) => m.key === newKey && sameScope(m, agentId));
 
     res.json({ updated: true, memory: updatedMemory });
   } catch (error) {
@@ -281,9 +296,10 @@ router.patch('/:key', memoryPayloadLimit, checkMemoryUpdate, configMiddleware, a
  */
 router.delete('/:key', checkMemoryDelete, async (req, res) => {
   const { key } = req.params;
+  const agentId = writeScope(req.query.agentId);
 
   try {
-    const result = await deleteMemory({ userId: req.user.id, key });
+    const result = await deleteMemory({ userId: req.user.id, key, agentId });
 
     if (!result.ok) {
       return res.status(404).json({ error: 'Memory not found.' });

@@ -510,9 +510,14 @@ class AgentClient extends BaseClient {
     const userId = this.options.req.user.id + '';
     this.processMemory = undefined;
 
+    /** POC mémoire par assistant : scope déterministe.
+     *  Assistant réel -> agentId = son id ; chat par défaut (éphémère) -> null (global). */
+    const activeAgentId = this.options.agent?.id;
+    const effectiveAgentId = isEphemeralAgentId(activeAgentId) ? null : activeAgentId;
+
     if (!isMemoryAgentEnabled(memoryConfig)) {
       try {
-        const { withoutKeys } = await db.getFormattedMemories({ userId });
+        const { withoutKeys } = await db.getFormattedMemories({ userId, agentId: effectiveAgentId });
         return withoutKeys;
       } catch (error) {
         logger.error(
@@ -620,6 +625,7 @@ class AgentClient extends BaseClient {
       messageId,
       streamId,
       conversationId,
+      agentId: effectiveAgentId,
       memoryMethods: {
         setMemory: db.setMemory,
         deleteMemory: db.deleteMemory,

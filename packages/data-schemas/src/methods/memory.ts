@@ -9,6 +9,31 @@ const formatDate = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
 
+/**
+ * POC mémoire par assistant (Approche A).
+ *
+ * Convention de scope `agentId` :
+ *  - `undefined` -> aucun filtre de scope (toutes les entrées du user) : préserve le comportement
+ *    des routes UI legacy `getAllUserMemories(userId)` qui n'envoient pas d'agentId.
+ *  - `null`      -> bucket global uniquement (`{ agentId: null }`, qui matche aussi les entrées
+ *    legacy sans le champ).
+ *  - `<string>`  -> union global ∪ assistant courant.
+ *
+ * En écriture, le bucket cible est toujours `agentId ?? null` (jamais d'union).
+ */
+const buildReadFilter = (
+  userId: string | Types.ObjectId,
+  agentId?: string | null,
+): Record<string, unknown> => {
+  if (agentId === undefined) {
+    return { userId };
+  }
+  if (agentId === null) {
+    return { userId, agentId: null };
+  }
+  return { userId, $or: [{ agentId: null }, { agentId }] };
+};
+
 // Factory function that takes mongoose instance and returns the methods
 export function createMemoryMethods(mongoose: typeof import('mongoose')) {
   /**
@@ -20,14 +45,16 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')) {
     key,
     value,
     tokenCount = 0,
+    agentId = null,
   }: t.SetMemoryParams): Promise<t.MemoryResult> {
     try {
       if (key?.toLowerCase() === 'nothing') {
         return { ok: false };
       }
 
+      const scopedAgentId = agentId ?? null;
       const MemoryEntry = mongoose.models.MemoryEntry;
-      const existingMemory = await MemoryEntry.findOne({ userId, key });
+      const existingMemory = await MemoryEntry.findOne({ userId, key, agentId: scopedAgentId });
       if (existingMemory) {
         throw new Error('Memory with this key already exists');
       }
@@ -38,6 +65,7 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')) {
         value,
         tokenCount,
         updated_at: new Date(),
+        agentId: scopedAgentId,
       });
 
       return { ok: true };
@@ -56,15 +84,17 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')) {
     key,
     value,
     tokenCount = 0,
+    agentId = null,
   }: t.SetMemoryParams): Promise<t.MemoryResult> {
     try {
       if (key?.toLowerCase() === 'nothing') {
         return { ok: false };
       }
 
+      const scopedAgentId = agentId ?? null;
       const MemoryEntry = mongoose.models.MemoryEntry;
       await MemoryEntry.findOneAndUpdate(
-        { userId, key },
+        { userId, key, agentId: scopedAgentId },
         {
           value,
           tokenCount,
@@ -87,10 +117,18 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')) {
   /**
    * Deletes a specific memory entry for a user
    */
-  async function deleteMemory({ userId, key }: t.DeleteMemoryParams): Promise<t.MemoryResult> {
+  async function deleteMemory({
+    userId,
+    key,
+    agentId = null,
+  }: t.DeleteMemoryParams): Promise<t.MemoryResult> {
     try {
       const MemoryEntry = mongoose.models.MemoryEntry;
-      const result = await MemoryEntry.findOneAndDelete({ userId, key });
+      const result = await MemoryEntry.findOneAndDelete({
+        userId,
+        key,
+        agentId: agentId ?? null,
+      });
       return { ok: !!result };
     } catch (error) {
       throw new Error(
@@ -100,14 +138,15 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')) {
   }
 
   /**
-   * Gets all memory entries for a user
+   * Gets all memory entries for a user, optionally scoped by assistant (see buildReadFilter).
    */
   async function getAllUserMemories(
     userId: string | Types.ObjectId,
+    agentId?: string | null,
   ): Promise<t.IMemoryEntryLean[]> {
     try {
       const MemoryEntry = mongoose.models.MemoryEntry;
-      return (await MemoryEntry.find({ userId }).lean()) as t.IMemoryEntryLean[];
+      return (await MemoryEntry.find(buildReadFilter(userId, agentId)).lean()) as t.IMemoryEntryLean[];
     } catch (error) {
       throw new Error(
         `Failed to get all memories: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -120,9 +159,10 @@ export function createMemoryMethods(mongoose: typeof import('mongoose')) {
    */
   async function getFormattedMemories({
     userId,
+    agentId,
   }: t.GetFormattedMemoriesParams): Promise<t.FormattedMemoriesResult> {
     try {
-      const memories = await getAllUserMemories(userId);
+      const memories = await getAllUserMemories(userId, agentId);
 
       if (!memories || memories.length === 0) {
         return { withKeys: '', withoutKeys: '', totalTokens: 0 };

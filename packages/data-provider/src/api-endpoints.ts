@@ -473,9 +473,11 @@ export const regenerateBackupCodes = () => `${BASE_URL}/api/auth/2fa/backup/rege
 export const verifyTwoFactorTemp = () => `${BASE_URL}/api/auth/2fa/verify-temp`;
 
 /* Memories */
-export const memories = () => `${BASE_URL}/api/memories`;
-export const memory = (key: string) => `${memories()}/${encodeURIComponent(key)}`;
-export const memoryPreferences = () => `${memories()}/preferences`;
+export const memories = (agentId?: string) =>
+  `${BASE_URL}/api/memories${buildQuery({ agentId })}`;
+export const memory = (key: string, agentId?: string) =>
+  `${BASE_URL}/api/memories/${encodeURIComponent(key)}${buildQuery({ agentId })}`;
+export const memoryPreferences = () => `${BASE_URL}/api/memories/preferences`;
 
 export const searchPrincipals = (params: q.PrincipalSearchParams) => {
   const { q: query, limit, types } = params;

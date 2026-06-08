@@ -228,6 +228,22 @@ Features livrées (commits clés) :
   - `packages/data-provider/src/schemas.ts` (`anthropicSettings.web_search.default = true` ; le champ `web_search` reste `.optional()` volontairement, le défaut est appliqué au runtime côté parsers)
   - `packages/data-provider/src/parameterSettings.ts` (`openai`/`google` `web_search.default = true`)
 
+- **POC mémoire par assistant (branche `feat/memoire-par-assistant-poc`, NON mergée)**. Approche A : champ `agentId` nullable sur `MemoryEntry` (`null` = mémoire globale/transverse, sinon scopée à l'assistant). Scope déterministe (pas de décision LLM) : écritures en conversation avec un assistant réel taguées avec son id ; chat par défaut (éphémère) → `null` ; lecture = global ∪ assistant courant. Si cette branche est un jour reprise/mergée, ces 5 fichiers natifs sont à surveiller en plus lors des merges upstream :
+  - `packages/data-schemas/src/schema/memory.ts` (champ `agentId: { type: String, index: true, default: null }`)
+  - `packages/data-schemas/src/types/memory.ts` (`agentId?: string | null` sur `IMemoryEntry`/`IMemoryEntryLean`/`SetMemoryParams`/`DeleteMemoryParams`/`GetFormattedMemoriesParams`)
+  - `packages/data-schemas/src/methods/memory.ts` (helper `buildReadFilter` ; `agentId` dans les filtres `createMemory`/`setMemory`/`deleteMemory` et la lecture union `getAllUserMemories`/`getFormattedMemories` ; court-circuit `key === 'nothing'` préservé)
+  - `packages/api/src/agents/memory.ts` (`agentId` threadé dans `createMemoryProcessor` → vue scopée du memory agent + `processMemory` → tools `set_memory`/`delete_memory`)
+  - `api/server/controllers/agents/client.js` (`effectiveAgentId` via `isEphemeralAgentId(this.options.agent.id)`, passé à `getFormattedMemories` et `createMemoryProcessor`)
+
+- **Section « Mémoire » du builder d'assistant (branche `feat/memoire-par-assistant-ui`, stackée sur le POC, NON mergée)**. UI + plomberie routes/client exposant `agentId` (optionnel partout, `undefined` = comportement global legacy). Décision produit : dans la section assistant, les entrées globales sont en lecture seule (badge « Global ») ; seules les entrées de l'assistant sont éditables/supprimables (badge « Cet assistant »). Fichiers natifs touchés à surveiller en plus lors des merges upstream :
+  - `api/server/routes/memories.js` (helpers `readScope`/`writeScope`/`sameScope` ; `agentId` lu en query pour GET/DELETE, en body pour POST/PATCH ; lookups post-écriture scopés par `sameScope`)
+  - `packages/data-provider/src/api-endpoints.ts` (`memories(agentId?)`/`memory(key, agentId?)` via `buildQuery`)
+  - `packages/data-provider/src/data-service.ts` (`agentId` sur `getMemories`/`deleteMemory`/`updateMemory`/`createMemory`)
+  - `packages/data-provider/src/types/queries.ts` (`TUserMemory.agentId?: string | null`)
+  - `client/src/data-provider/Memories/queries.ts` (clé de cache scopée `[QueryKeys.memories, agentId ?? 'global']` ; invalidation par préfixe `[QueryKeys.memories]` ; optimistic create sur la clé scopée)
+  - `client/src/components/SidePanel/Memories/{MemoryCardActions,MemoryEditDialog,MemoryCreateDialog}.tsx` (delete/edit lisent `memory.agentId` ; create reçoit `agentId` optionnel — backward-compat sidebar)
+  - nouveau `client/src/components/SidePanel/Agents/AgentMemory.tsx` + ancrage dans `AgentConfig.tsx` après FileSearch ; clés i18n `com_assistants_memory_*` (FR+EN)
+
 ---
 
 ## 12. Déploiement et CI/CD

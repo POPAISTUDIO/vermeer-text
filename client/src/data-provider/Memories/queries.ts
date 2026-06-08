@@ -8,38 +8,67 @@ import type {
 } from '@tanstack/react-query';
 import type { TUserMemory, MemoriesResponse } from 'librechat-data-provider';
 
+/**
+ * POC mémoire par assistant — clé de cache scopée.
+ * `agentId` undefined -> 'global' (panneau Mémoires de la sidebar, vue de TOUTES les entrées).
+ * `agentId` défini -> vue union (global ∪ assistant) de la section builder de cet assistant.
+ */
+const memoriesKey = (agentId?: string) => [QueryKeys.memories, agentId ?? 'global'] as const;
+
+/**
+ * Une écriture sur un bucket (global OU assistant) impacte plusieurs vues (la sidebar « toutes »
+ * + la vue union de l'assistant concerné). L'invalidation par PRÉFIXE [QueryKeys.memories]
+ * couvre toutes les clés scopées d'un coup, sans corrompre un cache particulier.
+ */
+const invalidateAllMemories = (queryClient: ReturnType<typeof useQueryClient>) =>
+  queryClient.invalidateQueries([QueryKeys.memories]);
+
 export const useMemoriesQuery = (
+  agentId?: string,
   config?: UseQueryOptions<MemoriesResponse>,
 ): QueryObserverResult<MemoriesResponse> => {
-  return useQuery<MemoriesResponse>([QueryKeys.memories], () => dataService.getMemories(), {
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    refetchOnMount: false,
-    ...config,
-  });
+  return useQuery<MemoriesResponse>(
+    memoriesKey(agentId),
+    () => dataService.getMemories(agentId),
+    {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      ...config,
+    },
+  );
 };
 
+export type DeleteMemoryParams = { key: string; agentId?: string };
 export const useDeleteMemoryMutation = () => {
   const queryClient = useQueryClient();
-  return useMutation((key: string) => dataService.deleteMemory(key), {
-    onSuccess: () => {
-      queryClient.invalidateQueries([QueryKeys.memories]);
+  return useMutation(
+    ({ key, agentId }: DeleteMemoryParams) => dataService.deleteMemory(key, agentId),
+    {
+      onSuccess: () => {
+        invalidateAllMemories(queryClient);
+      },
     },
-  });
+  );
 };
 
-export type UpdateMemoryParams = { key: string; value: string; originalKey?: string };
+export type UpdateMemoryParams = {
+  key: string;
+  value: string;
+  originalKey?: string;
+  agentId?: string;
+};
 export const useUpdateMemoryMutation = (
   options?: UseMutationOptions<TUserMemory, Error, UpdateMemoryParams>,
 ) => {
   const queryClient = useQueryClient();
   return useMutation(
-    ({ key, value, originalKey }: UpdateMemoryParams) =>
-      dataService.updateMemory(key, value, originalKey),
+    ({ key, value, originalKey, agentId }: UpdateMemoryParams) =>
+      dataService.updateMemory(key, value, originalKey, agentId),
     {
       ...options,
       onSuccess: (...params) => {
-        queryClient.invalidateQueries([QueryKeys.memories]);
+        invalidateAllMemories(queryClient);
         options?.onSuccess?.(...params);
       },
     },
@@ -74,7 +103,7 @@ export const useUpdateMemoryPreferencesMutation = (
   );
 };
 
-export type CreateMemoryParams = { key: string; value: string };
+export type CreateMemoryParams = { key: string; value: string; agentId?: string };
 export type CreateMemoryResponse = { created: boolean; memory: TUserMemory };
 
 export const useCreateMemoryMutation = (
@@ -82,33 +111,38 @@ export const useCreateMemoryMutation = (
 ) => {
   const queryClient = useQueryClient();
   return useMutation<CreateMemoryResponse, Error, CreateMemoryParams>(
-    ({ key, value }: CreateMemoryParams) => dataService.createMemory({ key, value }),
+    ({ key, value, agentId }: CreateMemoryParams) =>
+      dataService.createMemory({ key, value, agentId }),
     {
       ...options,
       onSuccess: (data, variables, context) => {
-        queryClient.setQueryData<MemoriesResponse>([QueryKeys.memories], (oldData) => {
-          if (!oldData) return oldData;
+        queryClient.setQueryData<MemoriesResponse>(
+          memoriesKey(variables.agentId),
+          (oldData) => {
+            if (!oldData) return oldData;
 
-          const newMemories = [...oldData.memories, data.memory];
-          const totalTokens = newMemories.reduce(
-            (sum, memory) => sum + (memory.tokenCount || 0),
-            0,
-          );
-          const tokenLimit = oldData.tokenLimit;
-          let usagePercentage = oldData.usagePercentage;
+            const newMemories = [...oldData.memories, data.memory];
+            const totalTokens = newMemories.reduce(
+              (sum, memory) => sum + (memory.tokenCount || 0),
+              0,
+            );
+            const tokenLimit = oldData.tokenLimit;
+            let usagePercentage = oldData.usagePercentage;
 
-          if (tokenLimit && tokenLimit > 0) {
-            usagePercentage = Math.min(100, Math.round((totalTokens / tokenLimit) * 100));
-          }
+            if (tokenLimit && tokenLimit > 0) {
+              usagePercentage = Math.min(100, Math.round((totalTokens / tokenLimit) * 100));
+            }
 
-          return {
-            ...oldData,
-            memories: newMemories,
-            totalTokens,
-            usagePercentage,
-          };
-        });
+            return {
+              ...oldData,
+              memories: newMemories,
+              totalTokens,
+              usagePercentage,
+            };
+          },
+        );
 
+        invalidateAllMemories(queryClient);
         options?.onSuccess?.(data, variables, context);
       },
     },
