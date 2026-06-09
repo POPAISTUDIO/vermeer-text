@@ -16,6 +16,7 @@ import type { TUserMemory } from 'librechat-data-provider';
 import type { AgentForm } from '~/common';
 import MemoryCreateDialog from '~/components/SidePanel/Memories/MemoryCreateDialog';
 import MemoryCardActions from '~/components/SidePanel/Memories/MemoryCardActions';
+import AgentSharedMemory from '~/components/SidePanel/Agents/AgentSharedMemory';
 import { useMemoriesQuery } from '~/data-provider';
 import { useLocalize, useHasAccess } from '~/hooks';
 import { cn } from '~/utils';
@@ -28,11 +29,13 @@ const formatDate = (dateString: string): string =>
   });
 
 /**
- * POC mémoire par assistant — section « Mémoire » du builder.
- * Affiche la vue union (global ∪ assistant courant) scopée par l'agentId de l'assistant édité.
- * Décision produit : les entrées GLOBALES sont en lecture seule ici (badge « Global ») ;
- * seules les entrées de l'assistant (badge « Cet assistant ») sont éditables/supprimables.
- * La gestion du global reste dans le panneau Mémoires de la sidebar.
+ * Section « Mémoire » du builder — 3 catégories en 2 groupes.
+ *  - Groupe « partagée » : champ `shared_memory` du formulaire d'agent (Approche B), badge
+ *    « Assistant (partagée) », persisté au Save de l'assistant (cf. {@link AgentSharedMemory}).
+ *    Distinct des mémoires perso.
+ *  - Groupe « perso » : vue union (global ∪ assistant courant) scopée par l'agentId, via
+ *    /api/memories. Badges « Cet assistant » (éditable) / « Global » (lecture seule ici, géré
+ *    dans le panneau Mémoires de la sidebar).
  */
 export default function AgentMemory() {
   const localize = useLocalize();
@@ -82,98 +85,107 @@ export default function AgentMemory() {
               <Spinner />
             </div>
           ) : (
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-text-secondary">
-                  {localize('com_assistants_memory_description')}
+            <div className="space-y-4 pt-1">
+              <AgentSharedMemory canEdit={hasUpdateAccess} />
+
+              <div className="h-px bg-border-light" />
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">
+                  {localize('com_assistants_memory_personal_section')}
                 </p>
-                {hasCreateAccess && (
-                  <MemoryCreateDialog
-                    open={createOpen}
-                    onOpenChange={setCreateOpen}
-                    agentId={agentId}
-                    triggerRef={createTriggerRef}
-                  >
-                    <OGDialogTrigger asChild>
-                      <TooltipAnchor
-                        description={localize('com_ui_create_memory')}
-                        side="bottom"
-                        render={
-                          <Button
-                            ref={createTriggerRef}
-                            variant="outline"
-                            size="icon"
-                            className="size-8 shrink-0 bg-transparent"
-                            aria-label={localize('com_ui_create_memory')}
-                            onClick={() => setCreateOpen(true)}
-                          >
-                            <Plus className="size-4" aria-hidden="true" />
-                          </Button>
-                        }
-                      />
-                    </OGDialogTrigger>
-                  </MemoryCreateDialog>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-text-secondary">
+                    {localize('com_assistants_memory_description')}
+                  </p>
+                  {hasCreateAccess && (
+                    <MemoryCreateDialog
+                      open={createOpen}
+                      onOpenChange={setCreateOpen}
+                      agentId={agentId}
+                      triggerRef={createTriggerRef}
+                    >
+                      <OGDialogTrigger asChild>
+                        <TooltipAnchor
+                          description={localize('com_ui_create_memory')}
+                          side="bottom"
+                          render={
+                            <Button
+                              ref={createTriggerRef}
+                              variant="outline"
+                              size="icon"
+                              className="size-8 shrink-0 bg-transparent"
+                              aria-label={localize('com_ui_create_memory')}
+                              onClick={() => setCreateOpen(true)}
+                            >
+                              <Plus className="size-4" aria-hidden="true" />
+                            </Button>
+                          }
+                        />
+                      </OGDialogTrigger>
+                    </MemoryCreateDialog>
+                  )}
+                </div>
+
+                {memories.length === 0 ? (
+                  <p className="px-1 py-2 text-sm text-text-secondary">
+                    {localize('com_assistants_memory_empty')}
+                  </p>
+                ) : (
+                  <div role="list" className="space-y-2">
+                    {memories.map((memory) => {
+                      const isOwn = (memory.agentId ?? null) === agentId;
+                      return (
+                        <div
+                          key={`${memory.agentId ?? 'global'}:${memory.key}`}
+                          role="listitem"
+                          className={cn(
+                            'rounded-lg px-3 py-2.5',
+                            'border border-border-light bg-transparent',
+                            'hover:bg-surface-secondary',
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-semibold text-text-primary">
+                              {memory.key}
+                            </span>
+                            <span
+                              className={cn(
+                                'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+                                isOwn
+                                  ? 'bg-surface-tertiary text-text-primary'
+                                  : 'bg-transparent text-text-secondary ring-1 ring-border-light',
+                              )}
+                            >
+                              {localize(
+                                isOwn
+                                  ? 'com_assistants_memory_badge_self'
+                                  : 'com_assistants_memory_badge_global',
+                              )}
+                            </span>
+                            {isOwn && hasUpdateAccess && (
+                              <div className="ml-auto shrink-0">
+                                <MemoryCardActions memory={memory} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-1 flex items-baseline gap-2">
+                            <p
+                              className="min-w-0 flex-1 truncate text-sm text-text-primary"
+                              title={memory.value}
+                            >
+                              {memory.value}
+                            </p>
+                            <span className="shrink-0 text-xs text-text-secondary">
+                              {formatDate(memory.updated_at)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
-
-              {memories.length === 0 ? (
-                <p className="px-1 py-2 text-sm text-text-secondary">
-                  {localize('com_assistants_memory_empty')}
-                </p>
-              ) : (
-                <div role="list" className="space-y-2">
-                  {memories.map((memory) => {
-                    const isOwn = (memory.agentId ?? null) === agentId;
-                    return (
-                      <div
-                        key={`${memory.agentId ?? 'global'}:${memory.key}`}
-                        role="listitem"
-                        className={cn(
-                          'rounded-lg px-3 py-2.5',
-                          'border border-border-light bg-transparent',
-                          'hover:bg-surface-secondary',
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-semibold text-text-primary">
-                            {memory.key}
-                          </span>
-                          <span
-                            className={cn(
-                              'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
-                              isOwn
-                                ? 'bg-surface-tertiary text-text-primary'
-                                : 'bg-transparent text-text-secondary ring-1 ring-border-light',
-                            )}
-                          >
-                            {localize(
-                              isOwn
-                                ? 'com_assistants_memory_badge_self'
-                                : 'com_assistants_memory_badge_global',
-                            )}
-                          </span>
-                          {isOwn && hasUpdateAccess && (
-                            <div className="ml-auto shrink-0">
-                              <MemoryCardActions memory={memory} />
-                            </div>
-                          )}
-                        </div>
-                        <div className="mt-1 flex items-baseline gap-2">
-                          <p
-                            className="min-w-0 flex-1 truncate text-sm text-text-primary"
-                            title={memory.value}
-                          >
-                            {memory.value}
-                          </p>
-                          <span className="shrink-0 text-xs text-text-secondary">
-                            {formatDate(memory.updated_at)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           )}
         </AccordionContent>

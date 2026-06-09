@@ -303,6 +303,8 @@ export const defaultAgentFormValues = {
   subagents: undefined as
     | { enabled?: boolean; allowSelf?: boolean; agent_ids?: string[] }
     | undefined,
+  /** Mémoire-assistant partagée (Approche B) — éditée dans le builder, persistée au Save. */
+  shared_memory: [] as Array<{ key: string; value: string; updated_at?: string | Date }>,
 };
 
 export const ImageVisionTool: FunctionTool = {

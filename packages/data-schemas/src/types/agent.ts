@@ -11,6 +11,13 @@ export interface ISupportContact {
   email?: string;
 }
 
+/** Mémoire-assistant partagée (Approche B) — entrée curatée portée par l'agent. */
+export interface IAgentSharedMemory {
+  key: string;
+  value: string;
+  updated_at?: Date;
+}
+
 export interface IAgent extends Omit<Document, 'model'> {
   id: string;
   name?: string;
@@ -51,4 +58,6 @@ export interface IAgent extends Omit<Document, 'model'> {
   /** Subagent spawning configuration — isolated-context child agents. */
   subagents?: AgentSubagentsConfig;
   tenantId?: string;
+  /** Mémoire-assistant partagée (Approche B) — curatée par owner/editor, lue par les destinataires VIEW. */
+  shared_memory?: IAgentSharedMemory[];
 }
