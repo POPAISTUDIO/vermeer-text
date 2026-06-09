@@ -1,5 +1,29 @@
 import { Schema } from 'mongoose';
-import type { IAgent } from '~/types';
+import type { IAgent, IAgentSharedMemory } from '~/types';
+
+/**
+ * Mémoire-assistant partagée (Approche B) : entrée curatée portée par la
+ * définition de l'agent. Voyage nativement au partage via l'ACL de l'agent,
+ * comme `instructions`/`tool_resources`. Distincte de `MemoryEntry` (mémoire
+ * perso par utilisateur), qui reste inchangée.
+ */
+const sharedMemorySchema = new Schema<IAgentSharedMemory>(
+  {
+    key: {
+      type: String,
+      required: true,
+    },
+    value: {
+      type: String,
+      required: true,
+    },
+    updated_at: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false },
+);
 
 const agentSchema = new Schema<IAgent>(
   {
@@ -128,6 +152,12 @@ const agentSchema = new Schema<IAgent>(
     tenantId: {
       type: String,
       index: true,
+    },
+    /** Mémoire-assistant partagée (Approche B) — curatée par owner/editor,
+     *  lue par tout destinataire VIEW, injectée au runtime à côté des mémoires perso. */
+    shared_memory: {
+      type: [sharedMemorySchema],
+      default: [],
     },
   },
   {

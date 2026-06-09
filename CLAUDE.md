@@ -244,6 +244,13 @@ Features livrées (commits clés) :
   - `client/src/components/SidePanel/Memories/{MemoryCardActions,MemoryEditDialog,MemoryCreateDialog}.tsx` (delete/edit lisent `memory.agentId` ; create reçoit `agentId` optionnel — backward-compat sidebar)
   - nouveau `client/src/components/SidePanel/Agents/AgentMemory.tsx` + ancrage dans `AgentConfig.tsx` après FileSearch ; clés i18n `com_assistants_memory_*` (FR+EN)
 
+- **Mémoire-assistant partagée — Approche B, lot backend + runtime (branche `feat/memoire-assistant-partagee`, non mergée)**. 3e dimension de mémoire, **distincte** de la mémoire perso par utilisateur (MemoryEntry/buildReadFilter, **inchangée**). Stockée dans la **définition de l'agent** (champ `shared_memory: [{ key, value, updated_at }]`), donc elle voyage nativement au partage via l'ACL de l'agent — comme `instructions`/`tool_resources`. Écriture = owner/editor uniquement (droit EDIT, via le flux d'édition d'agent existant) ; lecture = tout destinataire VIEW ; **jamais** d'auto-capture LLM (le memory-agent reste scopé `userId` sur MemoryEntry). Pas de bornage cross-BU (assumé, cf. 5.3). Fichiers natifs à surveiller activement lors des merges upstream :
+  - `packages/data-schemas/src/schema/agent.ts` (sous-schéma typé `sharedMemorySchema` `{ _id: false }` + champ `shared_memory` défaut `[]`)
+  - `packages/data-schemas/src/types/agent.ts` (interface `IAgentSharedMemory` + `shared_memory?: IAgentSharedMemory[]` sur `IAgent`)
+  - `packages/data-provider/src/types/assistants.ts` (type `AgentSharedMemory` + `shared_memory?` sur le type `Agent` ; `'shared_memory'` ajouté au `Pick<Agent, …>` de `AgentUpdateParams` = body PATCH typé)
+  - `packages/api/src/agents/validation.ts` (`agentSharedMemorySchema` ajouté à `agentBaseSchema` = whitelist d'édition PATCH/POST ; pas de nouvelle route)
+  - `api/server/controllers/agents/client.js` (déjà listé comme point de fusion runtime) — méthode `formatSharedMemory(agent)` + assemblage `memoryContext` en sections (`# Existing memory about the user:` ∥ `# Assistant's curated memory:`) ; vide/éphémère → pas de bloc partagé.
+
 ---
 
 ## 12. Déploiement et CI/CD

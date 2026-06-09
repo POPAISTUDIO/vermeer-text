@@ -90,6 +90,21 @@ export const agentSubagentsSchema = z
   })
   .optional();
 
+/**
+ * Mémoire-assistant partagée (Approche B). Entrée curatée portée par la
+ * définition de l'agent (whitelist d'édition). `updated_at` est optionnel —
+ * la valeur par défaut est posée par le sous-schéma Mongoose.
+ */
+export const agentSharedMemorySchema = z
+  .array(
+    z.object({
+      key: z.string(),
+      value: z.string(),
+      updated_at: z.union([z.string(), z.date()]).optional(),
+    }),
+  )
+  .optional();
+
 /** Base agent schema with all common fields */
 export const agentBaseSchema = z.object({
   name: z.string().nullable().optional(),
@@ -113,6 +128,7 @@ export const agentBaseSchema = z.object({
   subagents: agentSubagentsSchema,
   support_contact: agentSupportContactSchema,
   category: z.string().optional(),
+  shared_memory: agentSharedMemorySchema,
 });
 
 /** Create schema extends base with required fields for creation */

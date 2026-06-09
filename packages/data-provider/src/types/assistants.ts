@@ -295,6 +295,15 @@ export type Agent = {
   skills_enabled?: boolean;
   /** Subagent spawning configuration — isolated-context child agents. */
   subagents?: AgentSubagentsConfig;
+  /** Mémoire-assistant partagée (Approche B) — curatée par owner/editor, lue par les destinataires VIEW. */
+  shared_memory?: AgentSharedMemory[];
+};
+
+/** Mémoire-assistant partagée (Approche B) — entrée curatée portée par la définition de l'agent. */
+export type AgentSharedMemory = {
+  key: string;
+  value: string;
+  updated_at?: string | Date;
 };
 
 export type TAgentsMap = Record<string, Agent | undefined>;
@@ -350,6 +359,7 @@ export type AgentUpdateParams = {
   | 'skills'
   | 'skills_enabled'
   | 'subagents'
+  | 'shared_memory'
 >;
 
 export type AgentListParams = {

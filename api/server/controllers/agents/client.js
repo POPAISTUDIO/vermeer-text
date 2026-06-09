@@ -386,10 +386,18 @@ class AgentClient extends BaseClient {
       }
     }
 
-    /** Memory context (user preferences/memories) */
+    /** Memory context (user preferences/memories + agent's curated shared memory) */
     const withoutKeys = await this.useMemory();
-    const memoryContext = withoutKeys
-      ? `${memoryInstructions}\n\n# Existing memory about the user:\n${withoutKeys}`
+    const sharedMemory = this.formatSharedMemory(this.options.agent);
+    const memorySections = [];
+    if (withoutKeys) {
+      memorySections.push(`# Existing memory about the user:\n${withoutKeys}`);
+    }
+    if (sharedMemory) {
+      memorySections.push(`# Assistant's curated memory:\n${sharedMemory}`);
+    }
+    const memoryContext = memorySections.length
+      ? `${memoryInstructions}\n\n${memorySections.join('\n\n')}`
       : undefined;
 
     const sharedRunContext = sharedRunContextParts.join('\n\n');
@@ -478,6 +486,34 @@ class AgentClient extends BaseClient {
       }
       return;
     }
+  }
+
+  /**
+   * Formats an agent's curated shared memory (Approche B — mémoire-assistant partagée)
+   * into the same numbered, dated layout as personal memories (`withoutKeys`).
+   * Distincte de la mémoire perso : portée par la définition de l'agent, lue par tout
+   * destinataire VIEW, jamais alimentée par l'auto-capture du memory-agent.
+   * @param {Agent} [agent]
+   * @returns {string | undefined}
+   */
+  formatSharedMemory(agent) {
+    const entries = agent?.shared_memory;
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return undefined;
+    }
+    if (isEphemeralAgentId(agent?.id)) {
+      return undefined;
+    }
+    const sorted = [...entries].sort(
+      (a, b) => new Date(a.updated_at ?? 0).getTime() - new Date(b.updated_at ?? 0).getTime(),
+    );
+    const formatted = sorted
+      .map((entry, index) => {
+        const date = new Date(entry.updated_at ?? Date.now()).toISOString().split('T')[0];
+        return `${index + 1}. [${date}]. ${entry.value}`;
+      })
+      .join('\n\n');
+    return formatted || undefined;
   }
 
   /**
