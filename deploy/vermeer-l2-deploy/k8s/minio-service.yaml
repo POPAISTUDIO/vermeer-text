@@ -1,0 +1,46 @@
+# Service interne MinIO (S3). Joignable seulement par l'interpreteur et le Job
+# de creation de bucket. La console (9001) n'est PAS exposee dans le Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: vermeer-code-minio
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-minio
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: vermeer-code-minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+      protocol: TCP
+---
+# MinIO n'accepte du trafic S3 QUE depuis l'interpreteur et le Job make-bucket.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vermeer-code-minio
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-minio
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vermeer-code-minio
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vermeer-code-interpreter
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vermeer-code-minio-makebucket
+      ports:
+        - port: 9000
+          protocol: TCP

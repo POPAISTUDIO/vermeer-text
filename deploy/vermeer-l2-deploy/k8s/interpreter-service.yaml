@@ -1,0 +1,20 @@
+# Service interne (ClusterIP) de l'interpreteur. Consomme UNIQUEMENT par
+# LibreChat via DNS interne : vermeer-code-interpreter.llm.svc.cluster.local:8000
+# Pas d'Ingress, pas d'exposition externe.
+apiVersion: v1
+kind: Service
+metadata:
+  name: vermeer-code-interpreter
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-interpreter
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: vermeer-code-interpreter
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP

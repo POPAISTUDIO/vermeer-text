@@ -1,0 +1,104 @@
+# OPTION (a) — Stockage S3 in-cluster via MinIO (implemente par defaut).
+# Stocke les fichiers generes par l'interpreteur (servis ensuite via /download).
+# Durci : non-root, root FS en lecture seule, aucune capability.
+# Pour OPTION (b) AWS S3 : NE PAS deployer ce fichier ni minio-service.yaml /
+# minio-makebucket-job.yaml ; voir README.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vermeer-code-minio-data
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-minio
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: <A DEFINIR PAR OUSSAMA>   # ex: gp3 (EBS). Si omis -> classe par defaut du cluster.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vermeer-code-minio
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-minio
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vermeer-code-minio
+  strategy:
+    type: Recreate            # RWO + 1 replica
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vermeer-code-minio
+        app.kubernetes.io/part-of: vermeer-code-interpreter
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: minio
+          image: quay.io/minio/minio:latest    # a PINNER par digest (cf. README)
+          imagePullPolicy: IfNotPresent
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            # Creds root MinIO = memes valeurs que les creds S3 lus par l'interpreteur.
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: vermeer-code-interpreter-secrets
+                  key: S3_ACCESS_KEY
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vermeer-code-interpreter-secrets
+                  key: S3_SECRET_KEY
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: s3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: vermeer-code-minio-data

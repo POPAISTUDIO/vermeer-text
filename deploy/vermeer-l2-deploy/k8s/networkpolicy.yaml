@@ -1,0 +1,81 @@
+# POINT CRITIQUE DE SECURITE.
+# Le pod interpreteur execute du code potentiellement hostile. Cette policy :
+#  - n'autorise l'INGRESS que depuis LibreChat (port 8000) ;
+#  - n'autorise l'EGRESS que vers DNS + Redis + MinIO ;
+#  - REFUSE tout le reste par omission -> en particulier l'endpoint de metadonnees
+#    cloud 169.254.169.254 (vol de creds AWS) est INATTEIGNABLE.
+#
+# Defense en profondeur : ENABLE_SANDBOX_NETWORK=false retire deja tout reseau au
+# code utilisateur ; cette policy borne en plus le process API lui-meme.
+#
+# Prerequis : un CNI qui APPLIQUE les NetworkPolicy (Calico, Cilium...). Sinon la
+# policy est inerte -> a confirmer par Oussama.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vermeer-code-interpreter
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-interpreter
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vermeer-code-interpreter
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Seul LibreChat appelle /exec, /download, etc.
+    # NB : confirmer le label reel des pods LibreChat (chart helm "librechat").
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: librechat
+      ports:
+        - port: 8000
+          protocol: TCP
+  egress:
+    # 1) DNS (resolution des noms de Service internes)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # 2) Redis (sessions) - meme namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vermeer-code-redis
+      ports:
+        - port: 6379
+          protocol: TCP
+    # 3) Stockage S3 = MinIO in-cluster (OPTION a) - meme namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vermeer-code-minio
+      ports:
+        - port: 9000
+          protocol: TCP
+    # PAS de regle 0.0.0.0/0 : tout autre egress (Internet, services internes,
+    # 169.254.169.254) est refuse.
+    #
+    # OPTION (b) AWS S3 : il faudrait AJOUTER ici un egress vers S3, IDEALEMENT via
+    # un VPC endpoint S3 (prefixe IP du endpoint), JAMAIS un 0.0.0.0/0. Exemple a
+    # adapter (et conserver le blocage metadonnees) :
+    #   - to:
+    #       - ipBlock:
+    #           cidr: 0.0.0.0/0
+    #           except:
+    #             - 169.254.169.254/32   # metadonnees cloud
+    #             - 10.0.0.0/8           # rebloquer les plages internes
+    #     ports: [ { port: 443, protocol: TCP } ]
+    # -> moins etanche que MinIO in-cluster ; preferer un VPC endpoint dedie.

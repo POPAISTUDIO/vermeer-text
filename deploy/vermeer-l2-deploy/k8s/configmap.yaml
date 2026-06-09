@@ -1,0 +1,51 @@
+# Configuration NON sensible de l'interpreteur de code L2.
+# Les secrets (cles d'API, creds S3) sont injectes a part via externalsecret.yaml.
+# Reference : derive du POC local ~/vermeer-l2-poc/.env, durci pour le cluster.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vermeer-code-interpreter-config
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-interpreter
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+data:
+  # --- Serveur ---
+  PORT: "8000"
+  ENABLE_HTTPS: "false"           # TLS termine en amont (Service interne) ; HTTP intra-cluster
+  LOG_LEVEL: "INFO"
+
+  # --- Auth ---
+  # AUTH_ENABLED=true : /exec exige une cle. LibreChat l'envoie via userinfo du
+  # BASEURL (-> Authorization: Basic), cf. README section "Cablage LibreChat".
+  AUTH_ENABLED: "true"
+  RATE_LIMIT_ENABLED: "true"
+
+  # --- Redis (sessions) ---
+  REDIS_HOST: "vermeer-code-redis"
+  REDIS_PORT: "6379"
+
+  # --- Stockage S3 ---
+  # OPTION (a) MinIO in-cluster (defaut implemente). Pour OPTION (b) AWS S3,
+  # voir README : seules ces 4 lignes + les creds changent, pas le Deployment.
+  S3_ENDPOINT: "vermeer-code-minio:9000"
+  S3_BUCKET: "code-interpreter-files"
+  S3_REGION: "us-east-1"
+  S3_SECURE: "false"
+
+  # --- Isolation reseau du code execute (CONTROLE PRIMAIRE) ---
+  # false = le code utilisateur n'a AUCUN acces reseau (pas d'egress sandbox).
+  # C'est la 1re barriere ; la NetworkPolicy est la defense en profondeur.
+  # NE PAS passer a true sans revoir la NetworkPolicy ET l'allowlist egress.
+  ENABLE_SANDBOX_NETWORK: "false"
+
+  # --- Limites d'execution (plusieurs key users) ---
+  MAX_EXECUTION_TIME: "60"        # secondes par run (defaut image 120, max 300)
+  MAX_MEMORY_MB: "512"            # par execution
+  MAX_FILE_SIZE_MB: "50"          # taille max d'un fichier (defaut 100)
+  MAX_OUTPUT_FILES: "10"          # fichiers generes max par run
+  SESSION_TTL_HOURS: "24"         # duree de vie des fichiers/sessions
+
+  # --- Pool de sandboxes pre-chauffees (latence) ---
+  SANDBOX_POOL_ENABLED: "true"
+  SANDBOX_POOL_PY: "3"            # a ajuster selon la charge / les limites CPU

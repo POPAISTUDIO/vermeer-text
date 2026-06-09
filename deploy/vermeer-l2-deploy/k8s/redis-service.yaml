@@ -1,0 +1,44 @@
+# Service interne Redis. Joignable seulement par l'interpreteur (cf. NetworkPolicy
+# de Redis ci-dessous + egress de l'interpreteur).
+apiVersion: v1
+kind: Service
+metadata:
+  name: vermeer-code-redis
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-redis
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: vermeer-code-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+---
+# Redis n'accepte du trafic QUE depuis l'interpreteur (defense en profondeur,
+# en complement de l'absence de mot de passe).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vermeer-code-redis
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-redis
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vermeer-code-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vermeer-code-interpreter
+      ports:
+        - port: 6379
+          protocol: TCP

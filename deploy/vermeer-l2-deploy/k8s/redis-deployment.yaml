@@ -1,0 +1,80 @@
+# Redis : stockage des sessions de l'interpreteur (etat transitoire, TTL court).
+# Durci : non-root, root FS en lecture seule, aucune capability, seccomp par defaut.
+# Donnees en emptyDir : la perte des sessions au restart est acceptable pour un
+# petit groupe de key users (on perd l'etat de runs en cours, pas les livrables
+# deja produits qui vivent dans S3/MinIO). Voir README pour passer en PVC.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vermeer-code-redis
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-redis
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vermeer-code-redis
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vermeer-code-redis
+        app.kubernetes.io/part-of: vermeer-code-interpreter
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999            # utilisateur "redis" de l'image alpine
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          args:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - allkeys-lru
+          ports:
+            - name: redis
+              containerPort: 6379
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "320Mi"     # > maxmemory 256mb + overhead
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 512Mi
