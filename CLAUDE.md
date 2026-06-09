@@ -2,8 +2,8 @@
 
 Mémoire institutionnelle du projet Vermeer Chat, à destination de tout nouveau lecteur (humain ou IA). Ce fichier est **stratégique** : contexte, stack, conventions, décisions, garde-fous, état d'avancement. Il ne contient pas l'historique détaillé des décisions et conversations — celui-ci est tracké sur Notion.
 
-Dernière mise à jour : 2026-06-04
-Dernière passe : réécriture procédure de release (ECR + OIDC, fin du flux GHCR/tag-only), 4 environnements avec auth distincte (alpha/dev/staging/prod), POC code interpreter / agents L2 prouvé en local, précision couverture i18n FR (~76 %).
+Dernière mise à jour : 2026-06-09
+Dernière passe : mémoire-assistant partagée (approche B) mergée sur `main` + consolidation de la watchlist mémoire §11 (trois chantiers mémoire désormais mergés, fichiers natifs en watchlist active), décision étanchéité cross-BU de la mémoire partagée §5.3, transition de la propriété déploiement (départ progressif d'Oussama) §3.
 
 La Partie 1 ci-dessous couvre le projet Vermeer. La [Partie 2](#partie-2--conventions-techniques-librechat) reprend les conventions techniques LibreChat (workspaces, code style, tests) — à lire après le contexte projet.
 
@@ -66,7 +66,7 @@ Interlocuteurs directs côté technique :
 Contributions ponctuelles à venir :
 
 - **Adilet** — dev POP, viendra en renfort sur le Credit Management (V2).
-- **Oussama** (sous **Aurélie**) — dev POP, pilotera le branchement du déploiement staging/prod.
+- **Oussama** (sous **Aurélie**) — dev POP, a piloté le branchement du déploiement staging/prod ; se désengage progressivement. La propriété du déploiement (staging/prod, gitops) est en cours de passation. Un nouveau développeur est en onboarding pour reprendre ce périmètre — nom et rôle exacts à préciser une fois confirmés.
 
 Les autres intervenants (UX, chefferie de projet, business, PMO BETC, documentation) relèvent du pilotage humain de Loïse et ne concernent pas le travail technique.
 
@@ -113,6 +113,7 @@ Chaque décision est donnée au format **Décision → Pourquoi → Conséquence
 **5.3 Une instance unique avec 2 groupes BETC / POP + config overrides natifs**
 - Pourquoi : LibreChat v0.8.5 fait nativement de la séparation par Groups + config overrides DB-backed. Une seule infrastructure à maintenir, partage cross-BU possible, users multi-BU possibles, trajectoire alignée sur le natif v0.8.5. (Révise la décision initiale « 2 environnements distincts ».)
 - Conséquence pratique : ne pas déployer 2 environnements distincts ; utiliser les Groups et config overrides via l'Admin Panel ClickHouse en V2. L'étanchéité des données BETC vs POP est à valider rigoureusement avant déploiement.
+- **Décision actée — étanchéité BU vs mémoire-assistant partagée** : la **mémoire-assistant partagée** (approche B, §11) peut voyager **cross-BU** (BETC ↔ POP) **par design**. Elle hérite de la portée de l'assistant — comme les `instructions` et le knowledge (`tool_resources`) — et circule via l'ACL de l'agent au partage explicite. Ce n'est **pas** une fuite : c'est de la curation propriétaire portée par un partage volontaire de l'assistant. En revanche, la **mémoire perso** (par utilisateur, `MemoryEntry` scopée `userId`) reste strictement user-scoped et ne traverse **jamais** ni les utilisateurs ni les BU.
 
 **5.4 Recherche web native des providers (param `web_search` LLM), pas le pipeline tiers LibreChat**
 - Pourquoi : il s'agit de la web search **native** des providers (mécanisme natif Anthropic / OpenAI Responses API / Google Grounding), distincte du pipeline tiers LibreChat (Serper/Firecrawl/Jina). On évite la dépendance et le coût des services tiers côté utilisateur.
@@ -225,40 +226,42 @@ Features livrées (commits clés) :
   - `client/src/components/Chat/ChatView.tsx` (BudgetCard inséré dans le layout, gestion footer)
   - `client/src/locales/en/translation.json` (clés com_budget_* + com_usage_* ajoutées + subtitle com_usage_subtitle modifié)
   - `packages/data-provider/src/parsers.ts` (helper `applyWebSearchDefault` : web_search ON par défaut sur endpoints natifs + strip pour custom, appliqué dans `parseConvo`/`parseCompactConvo`)
-  - `packages/data-provider/src/schemas.ts` (`anthropicSettings.web_search.default = true` ; le champ `web_search` reste `.optional()` volontairement, le défaut est appliqué au runtime côté parsers)
+  - `packages/data-provider/src/schemas.ts` (`anthropicSettings.web_search.default = true` ; le champ `web_search` reste `.optional()` volontairement, le défaut est appliqué au runtime côté parsers ; **aussi** `shared_memory: []` ajouté à `defaultAgentFormValues` pour la mémoire-assistant partagée, cf. watchlist mémoire ci-dessous)
   - `packages/data-provider/src/parameterSettings.ts` (`openai`/`google` `web_search.default = true`)
 
-- **POC mémoire par assistant (branche `feat/memoire-par-assistant-poc`, NON mergée)**. Approche A : champ `agentId` nullable sur `MemoryEntry` (`null` = mémoire globale/transverse, sinon scopée à l'assistant). Scope déterministe (pas de décision LLM) : écritures en conversation avec un assistant réel taguées avec son id ; chat par défaut (éphémère) → `null` ; lecture = global ∪ assistant courant. Si cette branche est un jour reprise/mergée, ces 5 fichiers natifs sont à surveiller en plus lors des merges upstream :
+- **Mémoire (3 chantiers) — TOUS MERGÉS sur `main`, watchlist active.** Les trois chantiers mémoire sont désormais mergés et en production sur `main` ; leurs fichiers natifs passent en **watchlist active** (à contrôler à chaque merge upstream, en plus des 7 ci-dessus). Refs de merge :
+  - **Mémoire perso par assistant — approche A** (POC `agentId`, commit `91a9bf6fa` + UI builder, commit `72a9f49a1`) — mergée via **PR #5** (`69263aefe`) le **2026-06-08**.
+  - **Mémoire-assistant partagée — approche B** (backend+runtime `0ec14b209` + UI `373d626e3` + fix intégration form `bfab44dcc`) — mergée via **PR #6** (`6572c22b3`) le **2026-06-09**.
+
+  **Décisions produit rappelées.** Approche A — champ `agentId` nullable sur `MemoryEntry` (`null` = mémoire globale/transverse, sinon scopée à l'assistant) ; scope déterministe (pas de décision LLM) : écritures en conversation avec un assistant réel taguées avec son id, chat par défaut (éphémère) → `null`, lecture = global ∪ assistant courant ; côté builder, entrées globales en lecture seule (badge « Global »), seules les entrées de l'assistant éditables/supprimables (badge « Cet assistant »). Approche B — 3e dimension de mémoire, **distincte** de la mémoire perso (MemoryEntry/buildReadFilter **inchangée**), stockée dans la **définition de l'agent** (`shared_memory: [{ key, value, updated_at }]`) et voyageant nativement au partage via l'ACL de l'agent ; écriture = owner/editor (droit EDIT, via le flux d'édition d'agent), lecture = tout destinataire VIEW, **jamais** d'auto-capture LLM (le memory-agent reste scopé `userId`) ; section builder réorganisée en 2 groupes (partagée au-dessus, perso en dessous) et **intégrée au FORMULAIRE d'agent** (pas de PATCH immédiat : add/edit/delete écrivent `shared_memory` via `setValue(..., { shouldDirty: true })`, persisté au Save de l'assistant). Étanchéité cross-BU : la partagée voyage cross-BU par design, la perso jamais — cf. §5.3.
+
+  _Watchlist active — 20 fichiers natifs dédupliqués (en plus des 7 du bloc précédent). `packages/data-provider/src/schemas.ts` n'est PAS recompté ici : son concern `shared_memory` est noté dans le bloc précédent._
+
+  _Approche A — mémoire perso par assistant (11 fichiers) :_
   - `packages/data-schemas/src/schema/memory.ts` (champ `agentId: { type: String, index: true, default: null }`)
   - `packages/data-schemas/src/types/memory.ts` (`agentId?: string | null` sur `IMemoryEntry`/`IMemoryEntryLean`/`SetMemoryParams`/`DeleteMemoryParams`/`GetFormattedMemoriesParams`)
   - `packages/data-schemas/src/methods/memory.ts` (helper `buildReadFilter` ; `agentId` dans les filtres `createMemory`/`setMemory`/`deleteMemory` et la lecture union `getAllUserMemories`/`getFormattedMemories` ; court-circuit `key === 'nothing'` préservé)
   - `packages/api/src/agents/memory.ts` (`agentId` threadé dans `createMemoryProcessor` → vue scopée du memory agent + `processMemory` → tools `set_memory`/`delete_memory`)
-  - `api/server/controllers/agents/client.js` (`effectiveAgentId` via `isEphemeralAgentId(this.options.agent.id)`, passé à `getFormattedMemories` et `createMemoryProcessor`)
-
-- **Section « Mémoire » du builder d'assistant (branche `feat/memoire-par-assistant-ui`, stackée sur le POC, NON mergée)**. UI + plomberie routes/client exposant `agentId` (optionnel partout, `undefined` = comportement global legacy). Décision produit : dans la section assistant, les entrées globales sont en lecture seule (badge « Global ») ; seules les entrées de l'assistant sont éditables/supprimables (badge « Cet assistant »). Fichiers natifs touchés à surveiller en plus lors des merges upstream :
   - `api/server/routes/memories.js` (helpers `readScope`/`writeScope`/`sameScope` ; `agentId` lu en query pour GET/DELETE, en body pour POST/PATCH ; lookups post-écriture scopés par `sameScope`)
   - `packages/data-provider/src/api-endpoints.ts` (`memories(agentId?)`/`memory(key, agentId?)` via `buildQuery`)
   - `packages/data-provider/src/data-service.ts` (`agentId` sur `getMemories`/`deleteMemory`/`updateMemory`/`createMemory`)
   - `packages/data-provider/src/types/queries.ts` (`TUserMemory.agentId?: string | null`)
   - `client/src/data-provider/Memories/queries.ts` (clé de cache scopée `[QueryKeys.memories, agentId ?? 'global']` ; invalidation par préfixe `[QueryKeys.memories]` ; optimistic create sur la clé scopée)
   - `client/src/components/SidePanel/Memories/{MemoryCardActions,MemoryEditDialog,MemoryCreateDialog}.tsx` (delete/edit lisent `memory.agentId` ; create reçoit `agentId` optionnel — backward-compat sidebar)
-  - nouveau `client/src/components/SidePanel/Agents/AgentMemory.tsx` + ancrage dans `AgentConfig.tsx` après FileSearch ; clés i18n `com_assistants_memory_*` (FR+EN)
+  - `client/src/components/SidePanel/Agents/AgentMemory.tsx` (+ ancrage dans `AgentConfig.tsx` après FileSearch ; clés i18n `com_assistants_memory_*` FR+EN) — ultérieurement restructuré en 2 groupes par l'approche B (rend `<AgentSharedMemory canEdit>` puis la liste perso)
 
-- **Mémoire-assistant partagée — Approche B, lot backend + runtime (branche `feat/memoire-assistant-partagee`, non mergée)**. 3e dimension de mémoire, **distincte** de la mémoire perso par utilisateur (MemoryEntry/buildReadFilter, **inchangée**). Stockée dans la **définition de l'agent** (champ `shared_memory: [{ key, value, updated_at }]`), donc elle voyage nativement au partage via l'ACL de l'agent — comme `instructions`/`tool_resources`. Écriture = owner/editor uniquement (droit EDIT, via le flux d'édition d'agent existant) ; lecture = tout destinataire VIEW ; **jamais** d'auto-capture LLM (le memory-agent reste scopé `userId` sur MemoryEntry). Pas de bornage cross-BU (assumé, cf. 5.3). Fichiers natifs à surveiller activement lors des merges upstream :
+  _Approche B — mémoire-assistant partagée (8 fichiers) :_
   - `packages/data-schemas/src/schema/agent.ts` (sous-schéma typé `sharedMemorySchema` `{ _id: false }` + champ `shared_memory` défaut `[]`)
   - `packages/data-schemas/src/types/agent.ts` (interface `IAgentSharedMemory` + `shared_memory?: IAgentSharedMemory[]` sur `IAgent`)
   - `packages/data-provider/src/types/assistants.ts` (type `AgentSharedMemory` + `shared_memory?` sur le type `Agent` ; `'shared_memory'` ajouté au `Pick<Agent, …>` de `AgentUpdateParams` = body PATCH typé)
   - `packages/api/src/agents/validation.ts` (`agentSharedMemorySchema` ajouté à `agentBaseSchema` = whitelist d'édition PATCH/POST ; pas de nouvelle route)
-  - `api/server/controllers/agents/client.js` (déjà listé comme point de fusion runtime) — méthode `formatSharedMemory(agent)` + assemblage `memoryContext` en sections (`# Existing memory about the user:` ∥ `# Assistant's curated memory:`) ; vide/éphémère → pas de bloc partagé.
-
-- **Mémoire-assistant partagée — Approche B, lot UI (même branche `feat/memoire-assistant-partagee`)**. Section « Mémoire » du builder réorganisée en **2 groupes / 3 catégories** : groupe « partagée » (`shared_memory`, badge « Assistant (partagée) ») au-dessus du groupe « perso » (badges « Cet assistant » / « Global », comportement /api/memories inchangé). **Intégrée au FORMULAIRE d'agent** (décision actée après bug « aucune modification ») : pas de PATCH immédiat ; add/edit/delete écrivent le champ `shared_memory` du form via `setValue(..., { shouldDirty: true })`, persisté au **Save de l'assistant** (`composeAgentUpdatePayload` → PATCH /agents/:id) avec le toast de succès standard. Un seul flux de sauvegarde, plus de toast contradictoire. Édition gatée `hasUpdateAccess` ; `AgentConfig` n'étant monté que si `canEditAgent` (`AgentPanel.tsx`), les viewers n'atteignent pas le builder. Fichiers Vermeer à surveiller :
   - `client/src/common/agents-types.ts` (`shared_memory?: AgentSharedMemory[]` sur le type `AgentForm`)
-  - `packages/data-provider/src/schemas.ts` (`shared_memory: []` dans `defaultAgentFormValues`)
   - `client/src/components/SidePanel/Agents/AgentSelect.tsx` (copie explicite de `shared_memory` dans `resetAgentForm` — le fallthrough générique ignore les tableaux/objets)
-  - `client/src/components/SidePanel/Agents/AgentPanel.tsx` (`shared_memory` destructuré + inclus dans `composeAgentUpdatePayload`)
-  - `client/src/components/SidePanel/Agents/AgentMemory.tsx` (déjà en watchlist) — restructuré en 2 groupes ; rend `<AgentSharedMemory canEdit>` puis la liste perso
-  - nouveau `client/src/components/SidePanel/Agents/AgentSharedMemory.tsx` (form-based via `useWatch`/`setValue` ; dialogue create/edit + delete confirm ; read-only si `!canEdit` ; aucun mutation/PATCH/toast propre)
-  - clés i18n `com_assistants_memory_badge_shared`, `com_assistants_memory_personal_section`, `com_assistants_memory_shared_empty`, `com_assistants_memory_shared_hint`, `com_assistants_memory_shared_section` (FR+EN, parité OK)
+  - `client/src/components/SidePanel/Agents/AgentPanel.tsx` (`shared_memory` destructuré + inclus dans `composeAgentUpdatePayload` ; `AgentConfig` monté seulement si `canEditAgent` → viewers hors builder)
+  - nouveau `client/src/components/SidePanel/Agents/AgentSharedMemory.tsx` (form-based via `useWatch`/`setValue` ; dialogue create/edit + delete confirm ; read-only si `!canEdit` ; aucune mutation/PATCH/toast propre ; clés i18n `com_assistants_memory_badge_shared`, `com_assistants_memory_personal_section`, `com_assistants_memory_shared_empty`, `com_assistants_memory_shared_hint`, `com_assistants_memory_shared_section` FR+EN, parité OK)
+
+  _Fichier touché par les deux approches — listé une seule fois (1 fichier) :_
+  - `api/server/controllers/agents/client.js` (point de fusion runtime, modifié par les deux approches) — approche A : `effectiveAgentId` via `isEphemeralAgentId(this.options.agent.id)`, passé à `getFormattedMemories` et `createMemoryProcessor` ; approche B : méthode `formatSharedMemory(agent)` + assemblage `memoryContext` en sections (`# Existing memory about the user:` ∥ `# Assistant's curated memory:`), vide/éphémère → pas de bloc partagé.
 
 ---
 
