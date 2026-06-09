@@ -1,0 +1,19 @@
+# Regroupe les manifests BRUTS du RAG (ce qui ne passe PAS par le chart Helm).
+# L'activation du rag-api + pgvector se fait via values-rag.yaml fusionné dans la
+# HelmRelease librechat — ce n'est donc PAS une ressource kustomize ici.
+#
+# Déploiement (par Oussama, APRÈS la release) :
+#   1. Fusionner values-rag.yaml dans le bloc values: de la HelmRelease librechat.
+#   2. Créer les paramètres SSM référencés (cf. external-secrets.yaml).
+#   3. kubectl apply -k .   (ou via Flux)
+#
+# OPTION (b) RDS : retirer networkpolicy.yaml -> policy #2 (cf. README) et adapter
+# external-secrets.yaml (mot de passe du user RDS).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: llm
+
+resources:
+  - external-secrets.yaml
+  - networkpolicy.yaml

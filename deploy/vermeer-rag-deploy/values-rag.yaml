@@ -1,0 +1,144 @@
+# =============================================================================
+# ACTIVATION RAG — override de valeurs Helm pour le chart "librechat"
+# =============================================================================
+# DRAFT de préparation — à relire/déployer par Oussama après la release.
+#
+# Ce fichier ne déploie RIEN tout seul. C'est un OVERRIDE à fusionner dans le
+# bloc `values:` de la HelmRelease librechat du gitops (alpha/llm/helm-release).
+# On ne reconstruit pas le chart : librechat-rag-api existe déjà comme
+# sous-dépendance (helm/librechat/Chart.yaml) et le câblage RAG_API_URL est
+# AUTOMATIQUE dès que la sous-dépendance est activée
+# (cf. helm/librechat/templates/configmap-env.yaml).
+#
+# Provisionnement pgvector : OPTION (a) — pgvector IN-CLUSTER, déjà embarqué
+# dans le chart via la sous-dépendance bitnami `postgresql` (image pgvector).
+# OPTION (b) PostgreSQL managé (RDS) : voir README. Décision → Oussama.
+# =============================================================================
+
+
+# --- Labels réseau stables (release-independent) -----------------------------
+# Posés sur les pods pour que les NetworkPolicy (networkpolicy.yaml) sélectionnent
+# sans dépendre du nom de release Helm (les selectorLabels du chart, eux, en
+# dépendent). NE PAS retirer sans adapter networkpolicy.yaml en conséquence.
+podLabels:
+  vermeer.network/role: librechat
+
+
+# --- Sous-dépendance RAG API -------------------------------------------------
+librechat-rag-api:
+  # Bascule l'activation : false (défaut chart) -> true.
+  # C'est CE flag qui déclenche aussi l'injection de RAG_API_URL côté LibreChat.
+  enabled: true
+  # Provider d'embeddings exposé par le chart (azure|openai|huggingface|huggingfacetei).
+  embeddingsProvider: openai
+
+  image:
+    # Image documentée par LibreChat (seule la variante "lite" l'est).
+    repository: danny-avila/librechat-rag-api-dev-lite
+    registry: registry.librechat.ai
+    pullPolicy: IfNotPresent
+    tag: latest   # PROD : épingler un tag immuable (cf. README, garde-fou traçabilité)
+
+  rag:
+    enabled: true
+    replicaCount: 1
+    # Secret k8s (clé d'API embeddings) : voir note ci-dessous + external-secrets.yaml.
+    existingSecret: ''
+    # Labels stables pour la NetworkPolicy d'ingress (seul LibreChat -> rag-api).
+    podLabels:
+      vermeer.network/role: rag-api
+    # Variables NON sensibles du rag-api (la clé OpenAI est injectée à part, voir + bas).
+    configEnv:
+      DB_PORT: '5432'
+      RAG_PORT: '8000'
+      EMBEDDINGS_PROVIDER: openai
+      EMBEDDINGS_MODEL: text-embedding-3-small
+
+  # --- Clé OpenAI pour les embeddings (PAR RÉFÉRENCE, jamais en clair) --------
+  # Le Deployment rag-api injecte OPENAI_API_KEY depuis le secret défini dans
+  # global.librechat (cf. helm/librechat-rag-api/templates/rag-deployment.yaml).
+  # PAR DÉFAUT il réutilise le secret existant `librechat-credentials-env`
+  # (déjà géré par l'ExternalSecret du gitops). Aucune clé n'est dupliquée.
+  # Si tu veux une clé embeddings DÉDIÉE (RAG_OPENAI_API_KEY distincte de la clé
+  # LibreChat), utilise external-secrets.yaml et pointe global.librechat dessus.
+
+  # --- Provisionnement pgvector IN-CLUSTER — OPTION (a) ----------------------
+  postgresql:
+    enabled: true
+    image:
+      registry: ghcr.io
+      repository: bat-bs/bitnami-pgvector
+      tag: pg16
+    auth:
+      database: librechat-vectordb
+      username: postgres
+      # IDEMPOTENCE GITOPS : on FOURNIT le secret (external-secrets.yaml) au lieu
+      # de laisser le chart en générer un aléatoire (vectordb-secret.yaml ne
+      # s'active que si existingSecret est vide -> randAlphaNum régénéré à chaque
+      # render = mot de passe qui change = pod qui ne redémarre plus). À garder.
+      existingSecret: librechat-vectordb
+      secretKeys:
+        userPasswordKey: postgres-password
+        adminPasswordKey: postgres-password
+        replicationPasswordKey: postgres-password
+    primary:
+      # Label stable pour la NetworkPolicy (seul rag-api -> pgvector).
+      podLabels:
+        vermeer.network/role: rag-vectordb
+      persistence:
+        enabled: true
+        size: 8Gi
+        # storageClassName: ""   # DÉCISION Oussama : StorageClass du cluster (cf. README)
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: '1'
+          memory: 1Gi
+
+  # --- Probes (TCP : indépendant du chemin /health, à confirmer) -------------
+  # Le chart laisse livenessProbe/readinessProbe à nil -> render cassé sans ça.
+  livenessProbe:
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 20
+    periodSeconds: 15
+  readinessProbe:
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+
+  # --- Service strictement interne (le rag-api n'a PAS d'auth propre) --------
+  service:
+    type: ClusterIP   # JAMAIS LoadBalancer/NodePort. Étanchéité = ClusterIP + NetworkPolicy.
+    port: 8000
+
+  # --- Resources rag-api ------------------------------------------------------
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: '1'
+      memory: 1Gi
+
+  # --- Durcissement pod/conteneur rag-api ------------------------------------
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false   # le rag-api écrit des fichiers temporaires
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+  # ⚠️ Si le pod rag-api crashloop sur des permissions (l'image lite peut
+  # attendre root), relâcher runAsNonRoot/runAsUser et le documenter. À valider
+  # par un `helm template` + un déploiement alpha avant staging.

@@ -1,0 +1,78 @@
+# =============================================================================
+# NETWORKPOLICY RAG — POINT IMPORTANT DE SÉCURITÉ
+# =============================================================================
+# DRAFT de préparation — à relire/déployer par Oussama après la release.
+#
+# Le rag-api n'a PAS d'auth propre (constaté au POC local). Quiconque l'atteint
+# peut indexer/interroger les embeddings. Il DOIT donc être strictement interne :
+#   - Service ClusterIP (jamais exposé hors cluster) -> fixé dans values-rag.yaml.
+#   - NetworkPolicy n'autorisant QUE le pod LibreChat à l'atteindre -> ci-dessous.
+# Idem pour pgvector : seul le rag-api doit pouvoir l'atteindre.
+#
+# Sélecteurs basés sur les labels stables `vermeer.network/role` posés via
+# values-rag.yaml (podLabels), PAS sur les selectorLabels du chart (qui dépendent
+# du nom de release). Si tu retires ces podLabels, adapte ces policies.
+#
+# Prérequis : un CNI qui APPLIQUE les NetworkPolicy (Calico, Cilium...). Sinon la
+# policy est inerte -> à confirmer par Oussama.
+# =============================================================================
+
+
+# --- 1) rag-api : ingress autorisé UNIQUEMENT depuis LibreChat ---------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vermeer-rag-api
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: librechat-rag-api
+    app.kubernetes.io/part-of: vermeer-rag
+spec:
+  podSelector:
+    matchLabels:
+      vermeer.network/role: rag-api
+  policyTypes:
+    - Ingress
+  ingress:
+    # Seul LibreChat appelle le rag-api (indexation + requêtes RAG).
+    - from:
+        - podSelector:
+            matchLabels:
+              vermeer.network/role: librechat
+      ports:
+        - port: 8000
+          protocol: TCP
+  # NB : Ingress-only volontairement. L'egress du rag-api (DNS + pgvector +
+  # api.openai.com:443 pour les embeddings) reste ouvert. Pour verrouiller aussi
+  # l'egress, AJOUTER policyTypes: [Egress] + des règles autorisant DNS,
+  # pgvector (5432) et OpenAI (443) — sinon l'indexation casse. Durcissement
+  # optionnel post-key-users (cf. README, section scale).
+
+---
+# --- 2) pgvector : ingress autorisé UNIQUEMENT depuis le rag-api -------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vermeer-rag-vectordb
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: librechat-rag-vectordb
+    app.kubernetes.io/part-of: vermeer-rag
+spec:
+  podSelector:
+    matchLabels:
+      vermeer.network/role: rag-vectordb
+  policyTypes:
+    - Ingress
+  ingress:
+    # Seul le rag-api parle à la base d'embeddings.
+    - from:
+        - podSelector:
+            matchLabels:
+              vermeer.network/role: rag-api
+      ports:
+        - port: 5432
+          protocol: TCP
+# OPTION (b) RDS : la base n'est plus un pod -> cette 2e policy devient sans objet.
+# L'accès se borne alors côté Security Group AWS (autoriser seulement le SG/subnet
+# des nodes, ou le rag-api via egress policy). Cf. README.
