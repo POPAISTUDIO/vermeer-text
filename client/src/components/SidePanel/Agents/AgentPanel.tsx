@@ -3,12 +3,7 @@ import { Plus, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, useToastContext } from '@librechat/client';
 import { useWatch, useForm, FormProvider } from 'react-hook-form';
-import {
-  Tools,
-  SystemRoles,
-  ResourceType,
-  PermissionBits,
-} from 'librechat-data-provider';
+import { Tools, SystemRoles, ResourceType, PermissionBits } from 'librechat-data-provider';
 import type { FieldNamesMarkedBoolean } from 'react-hook-form';
 import type { Agent } from 'librechat-data-provider';
 import type { TranslationKeys } from '~/hooks/useLocalize';
@@ -75,6 +70,7 @@ export function composeAgentUpdatePayload(data: AgentForm, agent_id?: string | n
     tool_options,
     skills,
     skills_enabled,
+    shared_memory,
     avatar_action: avatarActionState,
   } = data;
 
@@ -104,6 +100,7 @@ export function composeAgentUpdatePayload(data: AgentForm, agent_id?: string | n
       tool_options,
       skills,
       skills_enabled,
+      shared_memory,
       ...(shouldResetAvatar ? { avatar: null } : {}),
     },
     provider,

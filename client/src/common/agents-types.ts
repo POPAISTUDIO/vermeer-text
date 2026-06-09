@@ -2,6 +2,7 @@ import { AgentCapabilities, ArtifactModes } from 'librechat-data-provider';
 import type {
   AgentModelParameters,
   AgentSubagentsConfig,
+  AgentSharedMemory,
   AgentToolOptions,
   SupportContact,
   AgentProvider,
@@ -50,6 +51,8 @@ export type AgentForm = {
   recursion_limit?: number;
   support_contact?: SupportContact;
   category: string;
+  /** Mémoire-assistant partagée (Approche B) — curatée via le formulaire, persistée au Save. */
+  shared_memory?: AgentSharedMemory[];
   // Avatar management fields
   avatar_file?: File | null;
   avatar_preview?: string | null;

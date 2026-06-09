@@ -1,20 +1,19 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Pencil } from 'lucide-react';
 import { Trans } from 'react-i18next';
+import { useWatch, useFormContext } from 'react-hook-form';
 import {
   Input,
   Label,
   Button,
-  Spinner,
   TrashIcon,
   OGDialog,
   TooltipAnchor,
   OGDialogTrigger,
   OGDialogTemplate,
-  useToastContext,
 } from '@librechat/client';
 import type { AgentSharedMemory as TSharedMemory } from 'librechat-data-provider';
-import { useGetExpandedAgentByIdQuery, useUpdateAgentMutation } from '~/data-provider';
+import type { AgentForm } from '~/common';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
@@ -29,7 +28,6 @@ interface SharedMemoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initial: TSharedMemory | null;
-  isSaving: boolean;
   onSubmit: (key: string, value: string) => void;
   children?: React.ReactNode;
   triggerRef?: React.MutableRefObject<HTMLButtonElement | null>;
@@ -39,7 +37,6 @@ function SharedMemoryDialog({
   open,
   onOpenChange,
   initial,
-  isSaving,
   onSubmit,
   children,
   triggerRef,
@@ -107,10 +104,10 @@ function SharedMemoryDialog({
             variant="submit"
             onClick={handleSave}
             aria-label={localize('com_ui_save')}
-            disabled={isSaving || !key.trim() || !value.trim()}
+            disabled={!key.trim() || !value.trim()}
             className="text-white"
           >
-            {isSaving ? <Spinner className="size-4" /> : localize('com_ui_save')}
+            {localize('com_ui_save')}
           </Button>
         }
       />
@@ -119,49 +116,30 @@ function SharedMemoryDialog({
 }
 
 interface AgentSharedMemoryProps {
-  agentId: string;
   canEdit: boolean;
 }
 
 /**
  * Mémoire-assistant partagée (Approche B) — groupe « Mémoire de l'assistant (partagée) ».
- * Lit `agent.shared_memory` (portée par la définition de l'agent, renvoyée via l'endpoint
- * expanded gaté EDIT) et la persiste via PATCH /agents/:id — JAMAIS via /api/memories.
- * Édition réservée aux utilisateurs avec EDIT sur l'agent ; sinon lecture seule.
+ * Édite le champ `shared_memory` du FORMULAIRE d'agent (react-hook-form) : add/edit/delete
+ * marquent le formulaire dirty et sont persistés au Save de l'assistant (PATCH /agents/:id,
+ * cf. composeAgentUpdatePayload). Aucun PATCH immédiat, aucun toast propre — un seul flux de
+ * sauvegarde. Distinct des mémoires perso (/api/memories), inchangées.
  */
-export default function AgentSharedMemory({ agentId, canEdit }: AgentSharedMemoryProps) {
+export default function AgentSharedMemory({ canEdit }: AgentSharedMemoryProps) {
   const localize = useLocalize();
-  const { showToast } = useToastContext();
+  const { control, setValue } = useFormContext<AgentForm>();
   const createTriggerRef = useRef<HTMLButtonElement>(null);
 
-  /** L'endpoint expanded est gaté EDIT côté serveur ; AgentMemory n'est monté que dans
-   *  AgentConfig (lui-même gaté `canEditAgent`), donc la lecture réussit toujours ici.
-   *  On affiche la mémoire partagée dès que l'assistant est enregistré ; seules les
-   *  actions d'écriture sont gatées par `canEdit`. */
-  const { data: agent, isLoading } = useGetExpandedAgentByIdQuery(agentId, {
-    enabled: !!agentId,
-  });
-  const entries = useMemo<TSharedMemory[]>(() => agent?.shared_memory ?? [], [agent]);
-
-  const { mutate: updateAgent, isLoading: isSaving } = useUpdateAgentMutation();
+  const watched = useWatch({ control, name: 'shared_memory' });
+  const entries: TSharedMemory[] = Array.isArray(watched) ? watched : [];
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TSharedMemory | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TSharedMemory | null>(null);
 
-  const persist = (next: TSharedMemory[], onDone?: () => void) => {
-    updateAgent(
-      { agent_id: agentId, data: { shared_memory: next } },
-      {
-        onSuccess: () => {
-          showToast({ message: localize('com_ui_saved'), status: 'success' });
-          onDone?.();
-        },
-        onError: () => {
-          showToast({ message: localize('com_ui_error'), status: 'error' });
-        },
-      },
-    );
+  const commit = (next: TSharedMemory[]) => {
+    setValue('shared_memory', next, { shouldDirty: true, shouldTouch: true });
   };
 
   const handleSubmit = (key: string, value: string) => {
@@ -171,18 +149,17 @@ export default function AgentSharedMemory({ agentId, canEdit }: AgentSharedMemor
     const next: TSharedMemory[] = exists
       ? entries.map((e) => (e.key === editingKey ? { key, value, updated_at: now } : e))
       : [...entries, { key, value, updated_at: now }];
-    persist(next, () => {
-      setDialogOpen(false);
-      setEditing(null);
-    });
+    commit(next);
+    setDialogOpen(false);
+    setEditing(null);
   };
 
   const confirmDelete = () => {
     if (!deleteTarget) {
       return;
     }
-    const next = entries.filter((e) => e.key !== deleteTarget.key);
-    persist(next, () => setDeleteTarget(null));
+    commit(entries.filter((e) => e.key !== deleteTarget.key));
+    setDeleteTarget(null);
   };
 
   const buttonBaseClass = cn(
@@ -209,7 +186,6 @@ export default function AgentSharedMemory({ agentId, canEdit }: AgentSharedMemor
               }
             }}
             initial={null}
-            isSaving={isSaving}
             onSubmit={handleSubmit}
             triggerRef={createTriggerRef}
           >
@@ -220,6 +196,7 @@ export default function AgentSharedMemory({ agentId, canEdit }: AgentSharedMemor
                 render={
                   <Button
                     ref={createTriggerRef}
+                    type="button"
                     variant="outline"
                     size="icon"
                     className="size-8 shrink-0 bg-transparent"
@@ -239,17 +216,11 @@ export default function AgentSharedMemory({ agentId, canEdit }: AgentSharedMemor
       </div>
       <p className="text-xs text-text-secondary">{localize('com_assistants_memory_shared_hint')}</p>
 
-      {isLoading && (
-        <div className="flex w-full items-center justify-center p-4">
-          <Spinner />
-        </div>
-      )}
-      {!isLoading && entries.length === 0 && (
+      {entries.length === 0 ? (
         <p className="px-1 py-2 text-sm text-text-secondary">
           {localize('com_assistants_memory_shared_empty')}
         </p>
-      )}
-      {!isLoading && entries.length > 0 && (
+      ) : (
         <div role="list" className="space-y-2">
           {entries.map((entry) => (
             <div
@@ -320,7 +291,6 @@ export default function AgentSharedMemory({ agentId, canEdit }: AgentSharedMemor
             }
           }}
           initial={editing}
-          isSaving={isSaving}
           onSubmit={handleSubmit}
         />
       )}

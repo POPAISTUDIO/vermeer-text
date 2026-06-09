@@ -130,6 +130,11 @@ function AgentSelect({
           return;
         }
 
+        if (name === 'shared_memory' && Array.isArray(value)) {
+          formValues[name] = value;
+          return;
+        }
+
         if (name === 'tool_options' && typeof value === 'object' && value !== null) {
           formValues[name] = value;
           return;

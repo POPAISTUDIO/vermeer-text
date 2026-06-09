@@ -30,8 +30,9 @@ const formatDate = (dateString: string): string =>
 
 /**
  * Section « Mémoire » du builder — 3 catégories en 2 groupes.
- *  - Groupe « partagée » : `agent.shared_memory` (Approche B), badge « Assistant (partagée) »,
- *    éditée via PATCH /agents/:id (cf. {@link AgentSharedMemory}). Distincte des mémoires perso.
+ *  - Groupe « partagée » : champ `shared_memory` du formulaire d'agent (Approche B), badge
+ *    « Assistant (partagée) », persisté au Save de l'assistant (cf. {@link AgentSharedMemory}).
+ *    Distinct des mémoires perso.
  *  - Groupe « perso » : vue union (global ∪ assistant courant) scopée par l'agentId, via
  *    /api/memories. Badges « Cet assistant » (éditable) / « Global » (lecture seule ici, géré
  *    dans le panneau Mémoires de la sidebar).
@@ -85,7 +86,7 @@ export default function AgentMemory() {
             </div>
           ) : (
             <div className="space-y-4 pt-1">
-              <AgentSharedMemory agentId={agentId} canEdit={hasUpdateAccess} />
+              <AgentSharedMemory canEdit={hasUpdateAccess} />
 
               <div className="h-px bg-border-light" />
 
