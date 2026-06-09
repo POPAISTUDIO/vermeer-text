@@ -251,6 +251,11 @@ Features livrées (commits clés) :
   - `packages/api/src/agents/validation.ts` (`agentSharedMemorySchema` ajouté à `agentBaseSchema` = whitelist d'édition PATCH/POST ; pas de nouvelle route)
   - `api/server/controllers/agents/client.js` (déjà listé comme point de fusion runtime) — méthode `formatSharedMemory(agent)` + assemblage `memoryContext` en sections (`# Existing memory about the user:` ∥ `# Assistant's curated memory:`) ; vide/éphémère → pas de bloc partagé.
 
+- **Mémoire-assistant partagée — Approche B, lot UI (même branche `feat/memoire-assistant-partagee`)**. Section « Mémoire » du builder réorganisée en **2 groupes / 3 catégories** : groupe « partagée » (`agent.shared_memory`, badge « Assistant (partagée) ») au-dessus du groupe « perso » (badges « Cet assistant » / « Global », comportement /api/memories inchangé). Le CRUD partagé tape **PATCH /agents/:id** (`useUpdateAgentMutation`, tableau `shared_memory` reconstruit puis persisté), **jamais** /api/memories ; lecture via `useGetExpandedAgentByIdQuery` (endpoint expanded gaté EDIT). Édition gatée `hasUpdateAccess` ; comme `AgentConfig` n'est monté que si `canEditAgent` (cf. `AgentPanel.tsx`), les viewers n'atteignent pas le builder — le rendu lecture seule est un filet de sécurité. Fichiers Vermeer à surveiller :
+  - `client/src/components/SidePanel/Agents/AgentMemory.tsx` (déjà en watchlist) — restructuré en 2 groupes ; rend `<AgentSharedMemory>` puis la liste perso
+  - nouveau `client/src/components/SidePanel/Agents/AgentSharedMemory.tsx` (liste + dialogue create/edit + delete confirm, CRUD via PATCH agent, read-only si `!canEdit`)
+  - clés i18n `com_assistants_memory_badge_shared`, `com_assistants_memory_personal_section`, `com_assistants_memory_shared_empty`, `com_assistants_memory_shared_hint`, `com_assistants_memory_shared_section` (FR+EN, parité OK)
+
 ---
 
 ## 12. Déploiement et CI/CD
