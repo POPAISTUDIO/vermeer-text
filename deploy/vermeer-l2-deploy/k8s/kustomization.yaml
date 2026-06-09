@@ -1,0 +1,24 @@
+# Regroupe les manifests de l'interpreteur L2 (OPTION a : MinIO in-cluster).
+# Deploiement (par Oussama, APRES release V1) : kubectl apply -k . / ou via Flux.
+# Pour OPTION (b) AWS S3 : retirer les 3 ressources minio-* + adapter configmap +
+# externalsecret (cf. README).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: llm
+
+resources:
+  # Config & secrets
+  - configmap.yaml
+  - externalsecret.yaml
+  # Interpreteur
+  - interpreter-deployment.yaml
+  - interpreter-service.yaml
+  - networkpolicy.yaml
+  # Redis
+  - redis-deployment.yaml
+  - redis-service.yaml
+  # Stockage S3 in-cluster (OPTION a)
+  - minio-deployment.yaml
+  - minio-service.yaml
+  - minio-makebucket-job.yaml

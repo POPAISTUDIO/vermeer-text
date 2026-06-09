@@ -1,0 +1,143 @@
+# Interpreteur de code L2 (LibreCodeInterpreter, compatible API LibreChat).
+# Execute du code utilisateur dans des sandboxes nsjail. C'est le composant
+# sensible : voir securityContext + networkpolicy.yaml.
+---
+# ServiceAccount dedie SANS token monte et SANS role IRSA AWS : meme si du code
+# s'echappait, il n'aurait aucun credential cloud a voler.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vermeer-code-interpreter
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-interpreter
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vermeer-code-interpreter
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: vermeer-code-interpreter
+    app.kubernetes.io/part-of: vermeer-code-interpreter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vermeer-code-interpreter
+  strategy:
+    type: Recreate            # sandboxes/Redis a etat : on evite 2 versions en parallele
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vermeer-code-interpreter
+        app.kubernetes.io/part-of: vermeer-code-interpreter
+      annotations:
+        # AppArmor unconfined (cf. securityContext ci-dessous pour le pourquoi).
+        # Forme annotation = compatible k8s < 1.30 ; sur 1.30+ preferer le champ
+        # securityContext.appArmorProfile (laisse en commentaire plus bas).
+        container.apparmor.security.beta.kubernetes.io/api: unconfined
+    spec:
+      serviceAccountName: vermeer-code-interpreter
+      automountServiceAccountToken: false
+      # tini (init:true du compose) : reape les process nsjail/python orphelins.
+      enableServiceLinks: false
+      securityContext:
+        # Pod-level : pas de fsGroup impose (volumes emptyDir), pas de privileged.
+        seccompProfile:
+          type: Unconfined      # cf. conteneur (nsjail a besoin de mount/clone/...)
+      containers:
+        - name: api
+          # IMAGE : a MIRORER sur l'ECR Vermeer puis PINNER par digest.
+          # Source POC : ghcr.io/usnavy13/librecodeinterpreter:main
+          # Cible (a confirmer par Oussama) :
+          image: 897388551593.dkr.ecr.eu-west-1.amazonaws.com/librecodeinterpreter@sha256:CHANGEME
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: vermeer-code-interpreter-config
+            - secretRef:
+                name: vermeer-code-interpreter-secrets   # API_KEY, MASTER_API_KEY, S3_ACCESS_KEY, S3_SECRET_KEY
+          securityContext:
+            privileged: false                 # POC : confirme INUTILE
+            allowPrivilegeEscalation: true    # requis : unshare/mount/nsjail
+            runAsNonRoot: false               # root requis pour unshare+mount du wrapper REPL ;
+            runAsUser: 0                       # nsjail redescend ensuite le CODE UTILISATEUR en uid 1001
+            readOnlyRootFilesystem: false     # le wrapper REPL fait des bind/tmpfs mounts a chaud
+            capabilities:
+              drop: ["ALL"]                   # on repart de zero...
+              add:
+                - SYS_ADMIN                    # nsjail : creation de namespaces (mount/pid/user) + cgroups
+                - NET_ADMIN                    # nsjail : regles iptables d'egress de la sandbox.
+                                               # Strictement requis seulement si ENABLE_SANDBOX_NETWORK=true.
+                                               # Conserve par parite POC ; peut etre DROP tant que le
+                                               # reseau sandbox reste desactive (cf. README durcissement).
+            seccompProfile:
+              type: Unconfined                # nsjail appelle mount/pivot_root/unshare/clone, bloques par
+                                               # RuntimeDefault. Le CODE UTILISATEUR, lui, tourne SOUS le
+                                               # filtre seccomp strict applique PAR nsjail -> defense en
+                                               # profondeur : conteneur unconfined, mais chaque exec confinee.
+            # Sur k8s >= 1.30, remplacer l'annotation AppArmor par :
+            # appArmorProfile:
+            #   type: Unconfined
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"                        # exec + pool de sandboxes ; ajuster selon charge
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: sandbox-data
+              mountPath: /var/lib/code-interpreter/sandboxes
+            - name: skill-deps
+              mountPath: /opt/skill-deps
+            - name: ssl                       # DOIT exister : le wrapper REPL masque /app/ssl par un
+              mountPath: /app/ssl             # tmpfs au lancement. Absent -> "REPL process not available".
+            - name: app-data
+              mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
+            - name: var-log
+              mountPath: /var/log
+      volumes:
+        # Tout en emptyDir : sessions/fichiers sont transitoires (TTL 24h) et la
+        # persistance durable des livraisons vit dans S3/MinIO, pas sur le pod.
+        - name: sandbox-data
+          emptyDir: {}
+        - name: skill-deps
+          emptyDir: {}
+        - name: ssl
+          emptyDir: {}
+        - name: app-data
+          emptyDir:
+            medium: Memory
+            sizeLimit: 100Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Mi
+        - name: var-log
+          emptyDir:
+            sizeLimit: 100Mi
