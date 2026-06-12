@@ -33,6 +33,34 @@ export interface UserBudget {
   currentMonthSpend: number;
 }
 
+/**
+ * Ascending comparison placing null/missing before strings, matching MongoDB's `$sort`
+ * ordering (null sorts lowest). Used to reproduce in application code the secondary sort
+ * keys that can no longer ride on a single aggregation stage.
+ */
+function compareAscNullsFirst(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  return a < b ? -1 : 1;
+}
+
+/**
+ * Reproduces the original `$sort: { currentMonthSpend: -1, name: 1, email: 1, user: 1 }`:
+ * descending month-to-date spend, then name/email ascending (nulls first), with the
+ * always-present user id as a deterministic final tiebreaker.
+ */
+function compareBudgetRows(a: AdminBudgetRow, b: AdminBudgetRow): number {
+  if (a.currentMonthSpend !== b.currentMonthSpend) {
+    return b.currentMonthSpend - a.currentMonthSpend;
+  }
+  const byName = compareAscNullsFirst(a.name, b.name);
+  if (byName !== 0) return byName;
+  const byEmail = compareAscNullsFirst(a.email, b.email);
+  if (byEmail !== 0) return byEmail;
+  return compareAscNullsFirst(a.user, b.user);
+}
+
 export function createBudgetMethods(mongoose: typeof import('mongoose')) {
   /**
    * Returns one row per user in the User collection (outer join Users ⟕ Balance ⟕
@@ -43,9 +71,26 @@ export function createBudgetMethods(mongoose: typeof import('mongoose')) {
    */
   async function getAllBudgets(): Promise<AdminBudgetRow[]> {
     const User = mongoose.models.User;
+    const Transaction = mongoose.models.Transaction;
     const startOfMonth = currentMonthStartUTC();
 
-    return User.aggregate<AdminBudgetRow>([
+    const spendRows = await Transaction.aggregate<{ _id: Types.ObjectId; spend: number }>([
+      {
+        $match: {
+          createdAt: { $gte: startOfMonth },
+          tokenType: { $in: ['prompt', 'completion'] },
+        },
+      },
+      {
+        $group: {
+          _id: '$user',
+          spend: { $sum: { $abs: { $ifNull: ['$tokenValue', 0] } } },
+        },
+      },
+    ]);
+    const spendByUser = new Map(spendRows.map((row) => [String(row._id), row.spend]));
+
+    const rows = await User.aggregate<Omit<AdminBudgetRow, 'currentMonthSpend'>>([
       {
         $lookup: {
           from: 'balances',
@@ -55,33 +100,6 @@ export function createBudgetMethods(mongoose: typeof import('mongoose')) {
         },
       },
       { $unwind: { path: '$balanceDoc', preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: 'transactions',
-          let: { uid: '$_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$user', '$$uid'] },
-                    { $gte: ['$createdAt', startOfMonth] },
-                    { $in: ['$tokenType', ['prompt', 'completion']] },
-                  ],
-                },
-              },
-            },
-            {
-              $group: {
-                _id: null,
-                spend: { $sum: { $abs: { $ifNull: ['$tokenValue', 0] } } },
-              },
-            },
-          ],
-          as: 'spendDoc',
-        },
-      },
-      { $unwind: { path: '$spendDoc', preserveNullAndEmptyArrays: true } },
       {
         $project: {
           _id: 0,
@@ -93,11 +111,13 @@ export function createBudgetMethods(mongoose: typeof import('mongoose')) {
           monthlyBudgetBaseline: {
             $ifNull: ['$balanceDoc.monthlyBudgetBaseline', DEFAULT_MONTHLY_BUDGET],
           },
-          currentMonthSpend: { $ifNull: ['$spendDoc.spend', 0] },
         },
       },
-      { $sort: { currentMonthSpend: -1, name: 1, email: 1, user: 1 } },
     ]);
+
+    return rows
+      .map((row) => ({ ...row, currentMonthSpend: spendByUser.get(row.user) ?? 0 }))
+      .sort(compareBudgetRows);
   }
 
   /**
