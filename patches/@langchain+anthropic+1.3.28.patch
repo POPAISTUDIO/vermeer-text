@@ -1,0 +1,34 @@
+diff --git a/node_modules/@langchain/anthropic/dist/chat_models.cjs b/node_modules/@langchain/anthropic/dist/chat_models.cjs
+index 493b360..067ba7e 100644
+--- a/node_modules/@langchain/anthropic/dist/chat_models.cjs
++++ b/node_modules/@langchain/anthropic/dist/chat_models.cjs
+@@ -696,7 +696,11 @@ var ChatAnthropicMessages = class extends _langchain_core_language_models_chat_m
+ 		if (!tools) return;
+ 		return tools.map((tool) => {
+ 			if ((0, _langchain_core_utils_function_calling.isLangChainTool)(tool) && tool.extras?.providerToolDefinition) return tool.extras.providerToolDefinition;
+-			if (isBuiltinTool(tool)) return tool;
++			if (isBuiltinTool(tool)) {
++				const { extras, ...rest } = tool;
++				if (extras?.cache_control) rest.cache_control = extras.cache_control;
++				return rest;
++			}
+ 			if (isAnthropicTool(tool)) return tool;
+ 			if ((0, _langchain_core_language_models_base.isOpenAITool)(tool)) return {
+ 				name: tool.function.name,
+diff --git a/node_modules/@langchain/anthropic/dist/chat_models.js b/node_modules/@langchain/anthropic/dist/chat_models.js
+index 1bed462..379516b 100644
+--- a/node_modules/@langchain/anthropic/dist/chat_models.js
++++ b/node_modules/@langchain/anthropic/dist/chat_models.js
+@@ -695,7 +695,11 @@ var ChatAnthropicMessages = class extends BaseChatModel {
+ 		if (!tools) return;
+ 		return tools.map((tool) => {
+ 			if (isLangChainTool(tool) && tool.extras?.providerToolDefinition) return tool.extras.providerToolDefinition;
+-			if (isBuiltinTool(tool)) return tool;
++			if (isBuiltinTool(tool)) {
++				const { extras, ...rest } = tool;
++				if (extras?.cache_control) rest.cache_control = extras.cache_control;
++				return rest;
++			}
+ 			if (isAnthropicTool(tool)) return tool;
+ 			if (isOpenAITool(tool)) return {
+ 				name: tool.function.name,

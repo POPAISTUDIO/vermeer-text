@@ -263,6 +263,14 @@ Features livrées (commits clés) :
   _Fichier touché par les deux approches — listé une seule fois (1 fichier) :_
   - `api/server/controllers/agents/client.js` (point de fusion runtime, modifié par les deux approches) — approche A : `effectiveAgentId` via `isEphemeralAgentId(this.options.agent.id)`, passé à `getFormattedMemories` et `createMemoryProcessor` ; approche B : méthode `formatSharedMemory(agent)` + assemblage `memoryContext` en sections (`# Existing memory about the user:` ∥ `# Assistant's curated memory:`), vide/éphémère → pas de bloc partagé.
 
+- **Patch TEMPORAIRE `@langchain/anthropic@1.3.28` — web search + prompt cache (400 `tools.0.web_search_20250305.extras`).** Via `patch-package` (`patches/@langchain+anthropic+1.3.28.patch`), appliqué au `postinstall`.
+  - **Symptôme** : quand le prompt cache est actif, l'API Anthropic renvoie un 400 `tools.0.web_search_20250305.extras: Extra inputs are not permitted` et la conversation casse.
+  - **Cause amont** : `@librechat/agents@3.1.78` stampe `extras: { cache_control }` sur le dernier outil statique ; `@langchain/anthropic@1.3.28` renvoie les outils builtin **verbatim** (`if (isBuiltinTool(tool)) return tool;`) sans nettoyer `extras` → le champ `extras` non supporté part tel quel vers l'API.
+  - **Correctif** : dans `formatStructuredToolToAnthropic` (les DEUX builds `dist/chat_models.js` ET `dist/chat_models.cjs`), on destructure `extras` hors de l'outil builtin, on le retire, et on **reporte `cache_control` à la racine** s'il est présent (version non-conservatrice ; `cache_control` racine est accepté par le SDK `WebSearchTool20250305`).
+  - **Câblage** : `package.json` (`postinstall: patch-package` + devDep `patch-package ^8.0.1`) ; `Dockerfile` (`COPY --chown=node:node patches ./patches` AVANT le `npm ci`, sinon le postinstall n'a rien à appliquer en build image). Le `package-lock.json` est resynchronisé (`npm install`) et fait partie du commit.
+  - **⚠️ TEMPORAIRE — épinglé à `@langchain/anthropic@1.3.28`** : tout bump de cette dépendance déplace les lignes ciblées et **fait échouer `patch-package`** (warning au postinstall) ; revalider/régénérer le patch après tout merge upstream touchant `@langchain/anthropic` ou `@librechat/agents`.
+  - **Chantier de suivi** : bump `@librechat/agents` → **3.2.35** (corrige la cause amont), **conditionné au passage à Node 24**. Une fois fait, supprimer le patch, la devDep et le `postinstall`, et retirer le `COPY patches` du Dockerfile.
+
 ---
 
 ## 12. Déploiement et CI/CD
