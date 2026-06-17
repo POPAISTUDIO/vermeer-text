@@ -38,9 +38,8 @@ const { addTitle } = require('~/server/services/Endpoints/assistants');
 const { createRunBody } = require('~/server/services/createRunBody');
 const { sendResponse } = require('~/server/middleware/error');
 const {
-  createAutoRefillTransaction,
   findBalanceByUser,
-  upsertBalanceFields,
+  getCurrentMonthSpend,
   getTransactions,
   getMultiplier,
   getConvo,
@@ -300,10 +299,8 @@ const chatV1 = async (req, res) => {
         {
           findBalanceByUser,
           getMultiplier,
-          createAutoRefillTransaction,
+          getCurrentMonthSpend,
           logViolation,
-          balanceConfig,
-          upsertBalanceFields,
         },
       );
     };

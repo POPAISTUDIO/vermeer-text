@@ -3,6 +3,7 @@ import { ViolationTypes, ErrorTypes } from 'librechat-data-provider';
 import { getEndpointAlternateName } from '~/utils';
 import type { LocalizeFunction } from '~/common';
 import { formatJSON, extractJson, isJson } from '~/utils/json';
+import { formatUSD } from '~/components/Admin/credits';
 import { useLocalize } from '~/hooks';
 import CodeBlock from './CodeBlock';
 
@@ -19,7 +20,8 @@ type TMessageLimit = {
 
 type TTokenBalance = {
   type: ViolationTypes | ErrorTypes;
-  balance: number;
+  currentMonthSpend: number;
+  monthlyBudget: number;
   tokenCost: number;
   promptTokens: number;
   prev_count: number;
@@ -101,9 +103,12 @@ const errorMessages = {
       windowInMinutes > 1 ? `${windowInMinutes} minutes` : 'minute'
     }.`;
   },
-  token_balance: (json: TTokenBalance) => {
-    const { balance, tokenCost, promptTokens, generations } = json;
-    const message = `Insufficient Funds! Balance: ${balance}. Prompt tokens: ${promptTokens}. Cost: ${tokenCost}.`;
+  token_balance: (json: TTokenBalance, localize: LocalizeFunction) => {
+    const { currentMonthSpend, monthlyBudget, generations } = json;
+    const message = localize('com_error_token_balance', {
+      spent: formatUSD(currentMonthSpend),
+      budget: formatUSD(monthlyBudget),
+    });
     return (
       <>
         {message}
