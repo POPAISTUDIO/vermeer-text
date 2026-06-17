@@ -1,18 +1,10 @@
-import { logger } from '@librechat/data-schemas';
+import { logger, DEFAULT_MONTHLY_BUDGET } from '@librechat/data-schemas';
 import { ViolationTypes } from 'librechat-data-provider';
-import type { BalanceConfig, IBalanceUpdate } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
 
-type TimeUnit = 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months';
-
 interface BalanceRecord {
-  tokenCredits: number;
-  autoRefillEnabled?: boolean;
-  refillAmount?: number;
-  lastRefill?: Date;
-  refillIntervalValue?: number;
-  refillIntervalUnit?: TimeUnit;
+  monthlyBudget?: number;
 }
 
 interface TxData {
@@ -29,9 +21,7 @@ interface TxData {
 export interface CheckBalanceDeps {
   findBalanceByUser: (user: string) => Promise<BalanceRecord | null>;
   getMultiplier: (params: Record<string, unknown>) => number;
-  createAutoRefillTransaction: (
-    data: Record<string, unknown>,
-  ) => Promise<{ balance: number } | undefined>;
+  getCurrentMonthSpend: (user: string) => Promise<number>;
   logViolation: (
     req: unknown,
     res: unknown,
@@ -39,44 +29,23 @@ export interface CheckBalanceDeps {
     errorMessage: Record<string, unknown>,
     score: number,
   ) => Promise<void>;
-  /** Balance config for lazy initialization when no record exists */
-  balanceConfig?: BalanceConfig;
-  /** Upsert function for lazy initialization when no record exists */
-  upsertBalanceFields?: (userId: string, fields: IBalanceUpdate) => Promise<BalanceRecord | null>;
 }
 
-function addIntervalToDate(date: Date, value: number, unit: TimeUnit): Date {
-  const result = new Date(date);
-  switch (unit) {
-    case 'seconds':
-      result.setSeconds(result.getSeconds() + value);
-      break;
-    case 'minutes':
-      result.setMinutes(result.getMinutes() + value);
-      break;
-    case 'hours':
-      result.setHours(result.getHours() + value);
-      break;
-    case 'days':
-      result.setDate(result.getDate() + value);
-      break;
-    case 'weeks':
-      result.setDate(result.getDate() + value * 7);
-      break;
-    case 'months':
-      result.setMonth(result.getMonth() + value);
-      break;
-    default:
-      break;
-  }
-  return result;
+interface BudgetCheck {
+  canSpend: boolean;
+  currentMonthSpend: number;
+  monthlyBudget: number;
+  tokenCost: number;
 }
 
-/** Checks a user's balance record and handles auto-refill if needed. */
-async function checkBalanceRecord(
-  txData: TxData,
-  deps: CheckBalanceDeps,
-): Promise<{ canSpend: boolean; balance: number; tokenCost: number }> {
+/**
+ * Gates a request against the user's monthly budget. The budget caps month-to-date
+ * consumption; it is not a depleting wallet. Spend is derived live from transactions since
+ * the start of the current month UTC (calendar-based reset, no reset job), and the threshold
+ * is admin-editable (`monthlyBudget`). A user with no Balance record falls back to
+ * DEFAULT_MONTHLY_BUDGET so editing or omitting a threshold never locks anyone out.
+ */
+async function checkBalanceRecord(txData: TxData, deps: CheckBalanceDeps): Promise<BudgetCheck> {
   const { user, model, endpoint, valueKey, tokenType, amount, endpointTokenConfig } = txData;
   const multiplier = deps.getMultiplier({
     valueKey,
@@ -87,102 +56,45 @@ async function checkBalanceRecord(
   });
   const tokenCost = amount * multiplier;
 
-  const record = await deps.findBalanceByUser(user);
-  if (!record) {
-    if (deps.balanceConfig?.startBalance != null && deps.upsertBalanceFields) {
-      logger.debug('[Balance.check] Lazy-initializing balance record for user', {
-        user,
-        startBalance: deps.balanceConfig.startBalance,
-      });
-      try {
-        const fields: IBalanceUpdate = {
-          user,
-          tokenCredits: deps.balanceConfig.startBalance,
-        };
-        const config = deps.balanceConfig;
-        if (
-          config.autoRefillEnabled &&
-          config.refillIntervalValue != null &&
-          config.refillIntervalUnit != null &&
-          config.refillAmount != null
-        ) {
-          fields.autoRefillEnabled = config.autoRefillEnabled;
-          fields.refillIntervalValue = config.refillIntervalValue;
-          fields.refillIntervalUnit = config.refillIntervalUnit;
-          fields.refillAmount = config.refillAmount;
-          fields.lastRefill = new Date();
-        }
-        const created = await deps.upsertBalanceFields(user, fields);
-        const balance = created?.tokenCredits ?? deps.balanceConfig.startBalance;
-        return { canSpend: balance >= tokenCost, balance, tokenCost };
-      } catch (error) {
-        logger.error('[Balance.check] Failed to lazy-initialize balance record', { user, error });
-        return { canSpend: false, balance: 0, tokenCost };
-      }
-    }
-    logger.debug('[Balance.check] No balance record found for user', { user });
-    return { canSpend: false, balance: 0, tokenCost };
-  }
-  let balance = record.tokenCredits;
+  const [record, currentMonthSpend] = await Promise.all([
+    deps.findBalanceByUser(user),
+    deps.getCurrentMonthSpend(user),
+  ]);
+  const monthlyBudget = record?.monthlyBudget ?? DEFAULT_MONTHLY_BUDGET;
 
-  logger.debug('[Balance.check] Initial state', {
+  logger.debug('[Balance.check] Monthly budget gate', {
     user,
     model,
     endpoint,
     valueKey,
     tokenType,
     amount,
-    balance,
     multiplier,
-    endpointTokenConfig: !!endpointTokenConfig,
+    currentMonthSpend,
+    monthlyBudget,
+    tokenCost,
   });
 
-  if (
-    balance - tokenCost <= 0 &&
-    record.autoRefillEnabled &&
-    record.refillAmount &&
-    record.refillAmount > 0
-  ) {
-    const lastRefillDate = new Date(record.lastRefill ?? 0);
-    const now = new Date();
-    if (
-      isNaN(lastRefillDate.getTime()) ||
-      now >=
-        addIntervalToDate(
-          lastRefillDate,
-          record.refillIntervalValue ?? 0,
-          record.refillIntervalUnit ?? 'days',
-        )
-    ) {
-      try {
-        const result = await deps.createAutoRefillTransaction({
-          user,
-          tokenType: 'credits',
-          context: 'autoRefill',
-          rawAmount: record.refillAmount,
-        });
-        if (result) {
-          balance = result.balance;
-        }
-      } catch (error) {
-        logger.error('[Balance.check] Failed to record transaction for auto-refill', error);
-      }
-    }
-  }
-
-  logger.debug('[Balance.check] Token cost', { tokenCost });
-  return { canSpend: balance >= tokenCost, balance, tokenCost };
+  return {
+    canSpend: currentMonthSpend + tokenCost <= monthlyBudget,
+    currentMonthSpend,
+    monthlyBudget,
+    tokenCost,
+  };
 }
 
 /**
- * Checks balance for a user and logs a violation if they cannot spend.
- * Throws an error with the balance info if insufficient funds.
+ * Checks the monthly budget for a user and logs a violation if the next request would push
+ * month-to-date spend over the threshold. Throws an error with the budget info when blocked.
  */
 export async function checkBalance(
   { req, res, txData }: { req: ServerRequest; res: Response; txData: TxData },
   deps: CheckBalanceDeps,
 ): Promise<boolean> {
-  const { canSpend, balance, tokenCost } = await checkBalanceRecord(txData, deps);
+  const { canSpend, currentMonthSpend, monthlyBudget, tokenCost } = await checkBalanceRecord(
+    txData,
+    deps,
+  );
   if (canSpend) {
     return true;
   }
@@ -190,7 +102,8 @@ export async function checkBalance(
   const type = ViolationTypes.TOKEN_BALANCE;
   const errorMessage: Record<string, unknown> = {
     type,
-    balance,
+    currentMonthSpend,
+    monthlyBudget,
     tokenCost,
     promptTokens: txData.amount,
   };

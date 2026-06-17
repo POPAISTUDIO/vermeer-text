@@ -10,6 +10,7 @@ export {
   RoleConflictError,
   DEFAULT_REFRESH_TOKEN_EXPIRY,
   DEFAULT_SESSION_EXPIRY,
+  DEFAULT_MONTHLY_BUDGET,
   tokenValues,
   cacheTokenValues,
   premiumTokenValues,

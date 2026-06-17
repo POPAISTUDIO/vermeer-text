@@ -43,7 +43,7 @@ import {
   defaultRate,
 } from './tx';
 import { createTransactionMethods, type TransactionMethods } from './transaction';
-import { createBudgetMethods, type BudgetMethods } from './budget';
+import { createBudgetMethods, DEFAULT_MONTHLY_BUDGET, type BudgetMethods } from './budget';
 import { createSpendTokensMethods, type SpendTokensMethods } from './spendTokens';
 import { createPromptMethods, type PromptMethods, type PromptDeps } from './prompt';
 import {
@@ -65,6 +65,7 @@ import { createAgentMethods, type AgentMethods, type AgentDeps } from './agent';
 import { createConfigMethods, type ConfigMethods } from './config';
 
 export { RoleConflictError, DEFAULT_REFRESH_TOKEN_EXPIRY, DEFAULT_SESSION_EXPIRY };
+export { DEFAULT_MONTHLY_BUDGET };
 export { tokenValues, cacheTokenValues, premiumTokenValues, defaultRate };
 export { permissionBitSupersets };
 

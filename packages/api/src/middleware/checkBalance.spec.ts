@@ -1,4 +1,5 @@
 import { ViolationTypes } from 'librechat-data-provider';
+import { DEFAULT_MONTHLY_BUDGET } from '@librechat/data-schemas';
 import type { Response } from 'express';
 import type { CheckBalanceDeps } from './checkBalance';
 import type { ServerRequest } from '~/types/http';
@@ -12,11 +13,11 @@ jest.mock('@librechat/data-schemas', () => ({
   },
 }));
 
-describe('checkBalance', () => {
+describe('checkBalance (monthly budget gate)', () => {
   const createMockDeps = (overrides: Partial<CheckBalanceDeps> = {}): CheckBalanceDeps => ({
-    findBalanceByUser: jest.fn().mockResolvedValue({ tokenCredits: 1000 }),
+    findBalanceByUser: jest.fn().mockResolvedValue({ monthlyBudget: 1000 }),
+    getCurrentMonthSpend: jest.fn().mockResolvedValue(0),
     getMultiplier: jest.fn().mockReturnValue(1),
-    createAutoRefillTransaction: jest.fn(),
     logViolation: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   });
@@ -32,17 +33,33 @@ describe('checkBalance', () => {
     model: 'gpt-4',
   };
 
-  it('should return true when user has sufficient balance', async () => {
-    const deps = createMockDeps();
+  it('allows the request when month-to-date spend plus cost stays under the budget', async () => {
+    const deps = createMockDeps({
+      findBalanceByUser: jest.fn().mockResolvedValue({ monthlyBudget: 1000 }),
+      getCurrentMonthSpend: jest.fn().mockResolvedValue(500),
+    });
 
     const result = await checkBalance({ req, res, txData: baseTxData }, deps);
+
+    expect(result).toBe(true);
+    expect(deps.logViolation).not.toHaveBeenCalled();
+  });
+
+  it('allows the request when spend plus cost exactly equals the budget (inclusive cap)', async () => {
+    const deps = createMockDeps({
+      findBalanceByUser: jest.fn().mockResolvedValue({ monthlyBudget: 1000 }),
+      getCurrentMonthSpend: jest.fn().mockResolvedValue(900),
+    });
+
+    const result = await checkBalance({ req, res, txData: { ...baseTxData, amount: 100 } }, deps);
+
     expect(result).toBe(true);
   });
 
-  it('should throw when user has insufficient balance', async () => {
+  it('blocks the request and reports budget terms when spend plus cost exceeds the budget', async () => {
     const deps = createMockDeps({
-      findBalanceByUser: jest.fn().mockResolvedValue({ tokenCredits: 10 }),
-      getMultiplier: jest.fn().mockReturnValue(1),
+      findBalanceByUser: jest.fn().mockResolvedValue({ monthlyBudget: 1000 }),
+      getCurrentMonthSpend: jest.fn().mockResolvedValue(950),
     });
 
     await expect(
@@ -53,214 +70,70 @@ describe('checkBalance', () => {
       req,
       res,
       ViolationTypes.TOKEN_BALANCE,
-      expect.objectContaining({ balance: 10, tokenCost: 100 }),
+      expect.objectContaining({ currentMonthSpend: 950, monthlyBudget: 1000, tokenCost: 100 }),
       0,
     );
   });
 
-  describe('lazy balance initialization', () => {
-    it('should create balance record when no record exists and startBalance is configured', async () => {
-      const upsertBalanceFields = jest.fn().mockResolvedValue({ tokenCredits: 5000 });
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        balanceConfig: { startBalance: 5000 },
-        upsertBalanceFields,
-      });
-
-      const result = await checkBalance({ req, res, txData: baseTxData }, deps);
-
-      expect(result).toBe(true);
-      expect(upsertBalanceFields).toHaveBeenCalledWith('user-1', {
-        user: 'user-1',
-        tokenCredits: 5000,
-      });
+  it('applies the model multiplier to the token cost before comparing against the budget', async () => {
+    const deps = createMockDeps({
+      findBalanceByUser: jest.fn().mockResolvedValue({ monthlyBudget: 1000 }),
+      getCurrentMonthSpend: jest.fn().mockResolvedValue(0),
+      getMultiplier: jest.fn().mockReturnValue(20),
     });
 
-    it('should include auto-refill fields when configured', async () => {
-      const upsertBalanceFields = jest.fn().mockResolvedValue({ tokenCredits: 5000 });
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        balanceConfig: {
-          startBalance: 5000,
-          autoRefillEnabled: true,
-          refillIntervalValue: 1,
-          refillIntervalUnit: 'days',
-          refillAmount: 1000,
-        },
-        upsertBalanceFields,
-      });
+    await expect(
+      checkBalance({ req, res, txData: { ...baseTxData, amount: 100 } }, deps),
+    ).rejects.toThrow();
 
-      await checkBalance({ req, res, txData: baseTxData }, deps);
+    expect(deps.logViolation).toHaveBeenCalledWith(
+      req,
+      res,
+      ViolationTypes.TOKEN_BALANCE,
+      expect.objectContaining({ tokenCost: 2000, monthlyBudget: 1000 }),
+      0,
+    );
+  });
 
-      expect(upsertBalanceFields).toHaveBeenCalledWith(
-        'user-1',
-        expect.objectContaining({
-          user: 'user-1',
-          tokenCredits: 5000,
-          autoRefillEnabled: true,
-          refillIntervalValue: 1,
-          refillIntervalUnit: 'days',
-          refillAmount: 1000,
-          lastRefill: expect.any(Date),
-        }),
-      );
+  it('falls back to the default budget and allows the request when the user has no Balance record', async () => {
+    const deps = createMockDeps({
+      findBalanceByUser: jest.fn().mockResolvedValue(null),
+      getCurrentMonthSpend: jest.fn().mockResolvedValue(0),
     });
 
-    it('should not include auto-refill fields when config is partial', async () => {
-      const upsertBalanceFields = jest.fn().mockResolvedValue({ tokenCredits: 5000 });
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        balanceConfig: { startBalance: 5000, autoRefillEnabled: true },
-        upsertBalanceFields,
-      });
+    const result = await checkBalance({ req, res, txData: baseTxData }, deps);
 
-      await checkBalance({ req, res, txData: baseTxData }, deps);
+    expect(result).toBe(true);
+  });
 
-      expect(upsertBalanceFields).toHaveBeenCalledWith('user-1', {
-        user: 'user-1',
-        tokenCredits: 5000,
-      });
+  it('blocks against the default budget when no record exists and spend already exceeds it', async () => {
+    const deps = createMockDeps({
+      findBalanceByUser: jest.fn().mockResolvedValue(null),
+      getCurrentMonthSpend: jest.fn().mockResolvedValue(DEFAULT_MONTHLY_BUDGET),
     });
 
-    it('should throw a TOKEN_BALANCE violation when lazy-initialized balance is less than token cost', async () => {
-      const upsertBalanceFields = jest.fn().mockResolvedValue({ tokenCredits: 50 });
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        getMultiplier: jest.fn().mockReturnValue(1),
-        balanceConfig: { startBalance: 50 },
-        upsertBalanceFields,
-      });
+    await expect(
+      checkBalance({ req, res, txData: { ...baseTxData, amount: 100 } }, deps),
+    ).rejects.toThrow();
 
-      await expect(
-        checkBalance({ req, res, txData: { ...baseTxData, amount: 100 } }, deps),
-      ).rejects.toThrow();
+    expect(deps.logViolation).toHaveBeenCalledWith(
+      req,
+      res,
+      ViolationTypes.TOKEN_BALANCE,
+      expect.objectContaining({ monthlyBudget: DEFAULT_MONTHLY_BUDGET }),
+      0,
+    );
+  });
 
-      expect(upsertBalanceFields).toHaveBeenCalledWith('user-1', {
-        user: 'user-1',
-        tokenCredits: 50,
-      });
-      expect(deps.logViolation).toHaveBeenCalledWith(
-        req,
-        res,
-        ViolationTypes.TOKEN_BALANCE,
-        expect.objectContaining({ balance: 50, tokenCost: 100 }),
-        0,
-      );
+  it('does not lock out a user whose Balance has tokenCredits 0 but is under the monthly budget (bug a regression)', async () => {
+    const deps = createMockDeps({
+      findBalanceByUser: jest.fn().mockResolvedValue({ tokenCredits: 0, monthlyBudget: 1000 }),
+      getCurrentMonthSpend: jest.fn().mockResolvedValue(100),
     });
 
-    it('should use DB-returned tokenCredits over raw startBalance config constant', async () => {
-      const upsertBalanceFields = jest.fn().mockResolvedValue({ tokenCredits: 3000 });
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        getMultiplier: jest.fn().mockReturnValue(1),
-        balanceConfig: { startBalance: 5000 },
-        upsertBalanceFields,
-      });
+    const result = await checkBalance({ req, res, txData: { ...baseTxData, amount: 100 } }, deps);
 
-      await expect(
-        checkBalance({ req, res, txData: { ...baseTxData, amount: 4000 } }, deps),
-      ).rejects.toThrow();
-
-      expect(deps.logViolation).toHaveBeenCalledWith(
-        req,
-        res,
-        ViolationTypes.TOKEN_BALANCE,
-        expect.objectContaining({ balance: 3000, tokenCost: 4000 }),
-        0,
-      );
-    });
-
-    it('should throw a TOKEN_BALANCE violation when no record and no balanceConfig', async () => {
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-      });
-
-      await expect(checkBalance({ req, res, txData: baseTxData }, deps)).rejects.toThrow();
-      expect(deps.logViolation).toHaveBeenCalledWith(
-        req,
-        res,
-        ViolationTypes.TOKEN_BALANCE,
-        expect.objectContaining({ balance: 0 }),
-        0,
-      );
-    });
-
-    it('should throw a TOKEN_BALANCE violation when no record and startBalance is undefined', async () => {
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        balanceConfig: {},
-        upsertBalanceFields: jest.fn(),
-      });
-
-      await expect(checkBalance({ req, res, txData: baseTxData }, deps)).rejects.toThrow();
-      expect(deps.upsertBalanceFields).not.toHaveBeenCalled();
-      expect(deps.logViolation).toHaveBeenCalledWith(
-        req,
-        res,
-        ViolationTypes.TOKEN_BALANCE,
-        expect.objectContaining({ balance: 0 }),
-        0,
-      );
-    });
-
-    it('should throw a TOKEN_BALANCE violation when upsertBalanceFields is not provided', async () => {
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        balanceConfig: { startBalance: 5000 },
-      });
-
-      await expect(checkBalance({ req, res, txData: baseTxData }, deps)).rejects.toThrow();
-      expect(deps.logViolation).toHaveBeenCalledWith(
-        req,
-        res,
-        ViolationTypes.TOKEN_BALANCE,
-        expect.objectContaining({ balance: 0 }),
-        0,
-      );
-    });
-
-    it('should handle startBalance of 0', async () => {
-      const upsertBalanceFields = jest.fn().mockResolvedValue({ tokenCredits: 0 });
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        getMultiplier: jest.fn().mockReturnValue(1),
-        balanceConfig: { startBalance: 0 },
-        upsertBalanceFields,
-      });
-
-      await expect(
-        checkBalance({ req, res, txData: { ...baseTxData, amount: 100 } }, deps),
-      ).rejects.toThrow();
-
-      expect(upsertBalanceFields).toHaveBeenCalledWith('user-1', {
-        user: 'user-1',
-        tokenCredits: 0,
-      });
-      expect(deps.logViolation).toHaveBeenCalledWith(
-        req,
-        res,
-        ViolationTypes.TOKEN_BALANCE,
-        expect.objectContaining({ balance: 0, tokenCost: 100 }),
-        0,
-      );
-    });
-
-    it('should fall back to balance: 0 when upsertBalanceFields rejects', async () => {
-      const upsertBalanceFields = jest.fn().mockRejectedValue(new Error('DB unavailable'));
-      const deps = createMockDeps({
-        findBalanceByUser: jest.fn().mockResolvedValue(null),
-        balanceConfig: { startBalance: 5000 },
-        upsertBalanceFields,
-      });
-
-      await expect(checkBalance({ req, res, txData: baseTxData }, deps)).rejects.toThrow();
-      expect(deps.logViolation).toHaveBeenCalledWith(
-        req,
-        res,
-        ViolationTypes.TOKEN_BALANCE,
-        expect.objectContaining({ balance: 0 }),
-        0,
-      );
-    });
+    expect(result).toBe(true);
+    expect(deps.logViolation).not.toHaveBeenCalled();
   });
 });

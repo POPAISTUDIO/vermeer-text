@@ -37,8 +37,7 @@ const {
   getMultiplier,
   getTransactions,
   findBalanceByUser,
-  upsertBalanceFields,
-  createAutoRefillTransaction,
+  getCurrentMonthSpend,
 } = require('~/models');
 const { logViolation, getLogStores } = require('~/cache');
 const { getOpenAIClient } = require('./helpers');
@@ -173,10 +172,8 @@ const chatV2 = async (req, res) => {
         {
           findBalanceByUser,
           getMultiplier,
-          createAutoRefillTransaction,
+          getCurrentMonthSpend,
           logViolation,
-          balanceConfig,
-          upsertBalanceFields,
         },
       );
     };

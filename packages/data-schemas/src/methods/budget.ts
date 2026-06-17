@@ -162,21 +162,18 @@ export function createBudgetMethods(mongoose: typeof import('mongoose')) {
   }
 
   /**
-   * Returns a single user's budget thresholds and current-month spend.
-   * Thresholds fall back to DEFAULT_MONTHLY_BUDGET when the user has no Balance record;
-   * spend is derived live from current-month prompt + completion transactions (0 if none).
+   * Month-to-date consumption for a single user, in tokenCredits, derived live from
+   * prompt + completion transactions since the start of the current month UTC (0 if none).
+   * Calendar-based: the aggregation window moves with the month, so spend resets implicitly
+   * at each month boundary with no reset job. This is the single source feeding the monthly
+   * budget gate (see checkBalance).
    */
-  async function getUserBudget(userId: string): Promise<UserBudget> {
-    const Balance = mongoose.models.Balance as Model<IBalance>;
+  async function getCurrentMonthSpend(userId: string): Promise<number> {
     const Transaction = mongoose.models.Transaction;
-    const objectId = new Types.ObjectId(userId);
-
-    const balance = await Balance.findOne({ user: objectId }).lean<IBalance>();
-
     const spendResult = await Transaction.aggregate<{ spend: number }>([
       {
         $match: {
-          user: objectId,
+          user: new Types.ObjectId(userId),
           createdAt: { $gte: currentMonthStartUTC() },
           tokenType: { $in: ['prompt', 'completion'] },
         },
@@ -188,15 +185,31 @@ export function createBudgetMethods(mongoose: typeof import('mongoose')) {
         },
       },
     ]);
+    return spendResult[0]?.spend ?? 0;
+  }
+
+  /**
+   * Returns a single user's budget thresholds and current-month spend.
+   * Thresholds fall back to DEFAULT_MONTHLY_BUDGET when the user has no Balance record;
+   * spend is derived live from current-month prompt + completion transactions (0 if none).
+   */
+  async function getUserBudget(userId: string): Promise<UserBudget> {
+    const Balance = mongoose.models.Balance as Model<IBalance>;
+    const objectId = new Types.ObjectId(userId);
+
+    const [balance, currentMonthSpend] = await Promise.all([
+      Balance.findOne({ user: objectId }).lean<IBalance>(),
+      getCurrentMonthSpend(userId),
+    ]);
 
     return {
       monthlyBudget: balance?.monthlyBudget ?? DEFAULT_MONTHLY_BUDGET,
       monthlyBudgetBaseline: balance?.monthlyBudgetBaseline ?? DEFAULT_MONTHLY_BUDGET,
-      currentMonthSpend: spendResult[0]?.spend ?? 0,
+      currentMonthSpend,
     };
   }
 
-  return { getAllBudgets, updateBudget, resetMonthBudgets, getUserBudget };
+  return { getAllBudgets, updateBudget, resetMonthBudgets, getUserBudget, getCurrentMonthSpend };
 }
 
 export type BudgetMethods = ReturnType<typeof createBudgetMethods>;
