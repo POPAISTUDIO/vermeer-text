@@ -1295,6 +1295,8 @@
   "com_ui_memories_filter": "Filter memories...",
   "com_ui_memory": "Memory",
   "com_ui_memory_already_exceeded": "Memory storage already full - exceeded by {{tokens}} tokens. Delete existing memories before adding new ones.",
+  "com_ui_memory_auto_capture": "Automatic memory",
+  "com_ui_memory_auto_capture_description": "Vermeer Chat automatically remembers some of the information you share (preferences, context, projects) to recall it from one conversation to the next. You can turn memory off at any time, and view or delete your memories in the Memories panel.",
   "com_ui_memory_created": "Memory created successfully",
   "com_ui_memory_deleted": "Memory deleted",
   "com_ui_memory_deleted_items": "Deleted Memories",
