@@ -1061,6 +1061,8 @@
   "com_ui_memories_filter": "Filtrer les Souvenirs",
   "com_ui_memory": "Mémoire",
   "com_ui_memory_already_exceeded": "La mémoire est déjà saturée - excédent de {{tokens}} jetons. Effacez les mémoires existantes avant d'en créer de nouvelles.",
+  "com_ui_memory_auto_capture": "Mémoire automatique",
+  "com_ui_memory_auto_capture_description": "Vermeer Chat retient automatiquement certaines informations que tu partages (préférences, contexte, projets) pour s'en souvenir d'une conversation à l'autre. Tu peux désactiver la mémoire à tout moment, et consulter ou supprimer tes mémoires dans le panneau Mémoires.",
   "com_ui_memory_created": "Mémoire créée avec succès",
   "com_ui_memory_deleted": "Mémoire supprimée",
   "com_ui_memory_deleted_items": "Mémoires supprimées",

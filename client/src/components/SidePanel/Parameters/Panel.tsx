@@ -22,15 +22,18 @@ import { useSetIndexOptions, useLocalize } from '~/hooks';
 import { useGetEndpointsQuery } from '~/data-provider';
 import { componentMapping } from './components';
 import { useChatContext } from '~/Providers';
+import MemorySwitch from './MemorySwitch';
 import { logger } from '~/utils';
 
 // V1 UX POP/BETC : refonte light du panel Paramètres modèle :
-// - params essentiels visibles (Instructions perso, Nom perso, Créativité, Recherche web)
+// - params essentiels visibles (Créativité, Recherche web) + toggle Mémoire automatique
 // - Reste des params LLM techniques en accordéon "Réglages avancés" replié
 // - Tooltips pédagogiques FR hardcodés (atelier specs post-congé pour
 //   i18n EN propre + composant Créativité 3-presets).
+// - Instructions/Nom personnalisés retirés : inopérants sur Claude (absents des
+//   définitions Anthropic → purgés) et intention couverte par la mémoire auto.
 // Pattern aligné sur builder Agent ModelPanel.tsx.
-const ESSENTIAL_PARAM_KEYS = ['promptPrefix', 'modelLabel', 'chatGptLabel', 'temperature', 'web_search'];
+const ESSENTIAL_PARAM_KEYS = ['temperature', 'web_search'];
 
 interface ParamOverride {
   label?: string;
@@ -38,11 +41,6 @@ interface ParamOverride {
 }
 
 const PARAM_OVERRIDES: Record<string, ParamOverride> = {
-  promptPrefix: {
-    label: 'Instructions personnalisées',
-    description:
-      "Décris comment Vermeer doit te répondre par défaut (ton, format, expertise…). Ces instructions s'appliquent à toutes tes conversations.",
-  },
   maxContextTokens: {
     description:
       "Quantité maximale de texte que l'IA peut prendre en compte dans une conversation (historique + ta question). Plus c'est élevé, plus l'IA se souvient, mais plus c'est coûteux. Laisse 'Système' pour la valeur recommandée.",
@@ -141,6 +139,12 @@ export default function Parameters() {
       // La useEffect de nettoyage ci-dessous retire alors le param de la
       // conversation si l'user bascule vers un endpoint custom.
       .filter((param) => param.key !== 'web_search' || endpointType !== EModelEndpoint.custom)
+      // Instructions perso (promptPrefix) et Nom perso (modelLabel/chatGptLabel)
+      // retirés du panneau : inopérants sur Claude (absents des définitions
+      // Anthropic → purgés au nettoyage) et intention couverte par la mémoire
+      // automatique. Filtre d'affichage uniquement ; parameterSettings.ts
+      // (partagé upstream) reste intact. Le param disparaît aussi de l'accordéon.
+      .filter((param) => !['promptPrefix', 'modelLabel', 'chatGptLabel'].includes(param.key))
       .map((param) => (overriddenParamsMap[param.key] as SettingDefinition) ?? param)
       .map((param) => {
         const override = PARAM_OVERRIDES[param.key];
@@ -288,9 +292,14 @@ export default function Parameters() {
 
   return (
     <div className="h-auto max-w-full px-3 pb-3 pt-2">
-      {/* Section visible : paramètres essentiels (Instructions, Nom, Température) */}
+      {/* Section visible : paramètres essentiels (Créativité, Recherche web) +
+          toggle Mémoire automatique (préférence utilisateur, se masque seul si pas
+          de permission MEMORIES/OPT_OUT) */}
       {essentialParams.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">{essentialParams.map(renderParam)}</div>
+        <div className="grid grid-cols-2 gap-4">
+          {essentialParams.map(renderParam)}
+          <MemorySwitch />
+        </div>
       )}
 
       {/* Accordéon "Réglages avancés" replié par défaut : tous les autres params LLM */}
