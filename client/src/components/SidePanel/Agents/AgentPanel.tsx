@@ -543,7 +543,7 @@ export default function AgentPanel() {
             </div>
           )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.builder && (
-            <AgentConfig />
+            <AgentConfig key={agent_id} />
           )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.advanced && (
             <AdvancedPanel />
