@@ -24,7 +24,7 @@ function FileSearch({
   const { watch, setValue } = useFormContext<AgentForm>();
   useEffect(() => {
     setValue(AgentCapabilities.file_search, true);
-  }, [setValue]);
+  }, [setValue, agent_id]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<Map<string, ExtendedFile>>(new Map());
   const fileHandlingState = useMemo(() => ({ files, setFiles, conversation: null }), [files]);
