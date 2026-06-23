@@ -46,6 +46,7 @@ const { resolveConfigServers } = require('~/server/services/MCP');
 const { getMCPServersRegistry } = require('~/config');
 const { getLogStores } = require('~/cache');
 const mongoose = require('mongoose');
+const { forkSharedConversation } = require('~/server/services/Conversations/forkShared');
 const db = require('~/models');
 
 const systemTools = {
@@ -1215,6 +1216,53 @@ const getSharedConversationMessagesHandler = async (req, res) => {
   }
 };
 
+/**
+ * Forks a shared conversation into a new conversation owned by the requesting user.
+ * Gating (VIEW on the agent) is enforced by the route middleware (canAccessAgentResource).
+ * IDOR protection: the conversation must belong to the gated agent AND be shared, asserted
+ * BEFORE any fork. A uniform 404 is used so failures do not disclose existence.
+ * @route POST /agents/:id/shared-conversations/:conversationId/fork
+ */
+const forkSharedConversationHandler = async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const { conversationId } = req.params;
+
+    // (2) Load the conversation WITHOUT a { user } filter (cross-user), only the fields needed to authorize.
+    const Conversation = mongoose.models.Conversation;
+    const convo = await Conversation.findOne(
+      { conversationId },
+      'conversationId agent_id isSharedWithAgentMembers user title endpoint',
+    ).lean();
+
+    if (!convo) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // (3) The conversation must belong to the agent that was access-checked by the route middleware.
+    if (convo.agent_id !== agentId) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // (4) The conversation must be explicitly shared with the agent's members.
+    if (convo.isSharedWithAgentMembers !== true) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // (5) Only now is it safe to fork it into a copy owned by the requester.
+    const conversation = await forkSharedConversation({
+      requestUserId: req.user.id,
+      sourceConversationId: conversationId,
+    });
+
+    // (6) Return the new conversation (owned by the forker).
+    res.status(200).json({ conversation });
+  } catch (error) {
+    logger.error('[forkSharedConversation] Error forking shared conversation', error);
+    res.status(500).json({ error: 'Error forking shared conversation' });
+  }
+};
+
 module.exports = {
   createAgent: createAgentHandler,
   getAgent: getAgentHandler,
@@ -1227,5 +1275,6 @@ module.exports = {
   getAgentCategories,
   getSharedConversations: getSharedConversationsHandler,
   getSharedConversationMessages: getSharedConversationMessagesHandler,
+  forkSharedConversation: forkSharedConversationHandler,
   filterAuthorizedTools,
 };

@@ -100,6 +100,24 @@ router.get(
 );
 
 /**
+ * Forks a shared conversation into a new conversation owned by the requesting user (VIEW required).
+ * The conversation must belong to the agent and be shared (asserted in the handler before any fork).
+ * @route POST /agents/:id/shared-conversations/:conversationId/fork
+ * @param {string} req.params.id - Agent identifier.
+ * @param {string} req.params.conversationId - Conversation identifier.
+ * @returns {{ conversation: object }} 200 - The new conversation owned by the forker - application/json
+ */
+router.post(
+  '/:id/shared-conversations/:conversationId/fork',
+  checkAgentAccess,
+  canAccessAgentResource({
+    requiredPermission: PermissionBits.VIEW,
+    resourceIdParam: 'id',
+  }),
+  v1.forkSharedConversation,
+);
+
+/**
  * Retrieves full agent details including sensitive configuration (EDIT permission required).
  * Returns complete agent data for editing/configuration purposes.
  * @route GET /agents/:id/expanded
