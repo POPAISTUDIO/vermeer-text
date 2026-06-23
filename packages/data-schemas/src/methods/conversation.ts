@@ -36,6 +36,13 @@ export interface ConversationMethods {
       sortDirection?: string;
     },
   ): Promise<{ conversations: IConversation[]; nextCursor: string | null }>;
+  getSharedConvosByAgent(
+    agentId: string,
+    options?: {
+      cursor?: string | null;
+      limit?: number;
+    },
+  ): Promise<{ conversations: IConversation[]; nextCursor: string | null }>;
   getConvosQueried(
     user: string,
     convoIds: Array<{ conversationId: string }> | null,
@@ -402,6 +409,79 @@ export function createConversationMethods(
     }
   }
 
+  // CROSS-USER: returns conversations of ALL users for a shared agent. Gating MUST be enforced by the caller (route middleware).
+  async function getSharedConvosByAgent(
+    agentId: string,
+    {
+      cursor,
+      limit = 25,
+    }: {
+      cursor?: string | null;
+      limit?: number;
+    } = {},
+  ) {
+    const Conversation = mongoose.models.Conversation as Model<IConversation>;
+    const filters: FilterQuery<IConversation>[] = [
+      { agent_id: agentId, isSharedWithAgentMembers: true } as FilterQuery<IConversation>,
+    ];
+
+    filters.push({
+      $or: [{ expiredAt: null }, { expiredAt: { $exists: false } }],
+    } as FilterQuery<IConversation>);
+
+    const finalSortBy = 'updatedAt';
+    const op = '$lt';
+
+    let cursorFilter: FilterQuery<IConversation> | null = null;
+    if (cursor) {
+      try {
+        const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString());
+        const { primary } = decoded;
+        const primaryValue = new Date(primary);
+
+        cursorFilter = {
+          [finalSortBy]: { [op]: primaryValue },
+        } as FilterQuery<IConversation>;
+      } catch {
+        logger.warn('[getSharedConvosByAgent] Invalid cursor format, starting from beginning');
+      }
+      if (cursorFilter) {
+        filters.push(cursorFilter);
+      }
+    }
+
+    const query: FilterQuery<IConversation> =
+      filters.length === 1 ? filters[0] : ({ $and: filters } as FilterQuery<IConversation>);
+
+    try {
+      const sortOrder: SortOrder = -1;
+      const sortObj: Record<string, SortOrder> = { [finalSortBy]: sortOrder };
+
+      const convos = await Conversation.find(query)
+        .select(
+          'conversationId endpoint title createdAt updatedAt user model agent_id assistant_id spec iconURL',
+        )
+        .sort(sortObj)
+        .limit(limit + 1)
+        .lean();
+
+      let nextCursor: string | null = null;
+      if (convos.length > limit) {
+        convos.pop();
+        const lastReturned = convos[convos.length - 1] as Record<string, unknown>;
+        const primaryStr = (lastReturned[finalSortBy] as Date).toISOString();
+        const secondaryStr = (lastReturned.updatedAt as Date).toISOString();
+        const composite = { primary: primaryStr, secondary: secondaryStr };
+        nextCursor = Buffer.from(JSON.stringify(composite)).toString('base64');
+      }
+
+      return { conversations: convos, nextCursor };
+    } catch (error) {
+      logger.error('[getSharedConvosByAgent] Error getting conversations', error);
+      throw new Error('Error getting conversations');
+    }
+  }
+
   /**
    * Fetches specific conversations by ID array with pagination.
    */
@@ -507,6 +587,7 @@ export function createConversationMethods(
     saveConvo,
     bulkSaveConvos,
     getConvosByCursor,
+    getSharedConvosByAgent,
     getConvosQueried,
     getConvo,
     getConvoTitle,

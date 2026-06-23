@@ -45,6 +45,7 @@ const { getCachedTools } = require('~/server/services/Config');
 const { resolveConfigServers } = require('~/server/services/MCP');
 const { getMCPServersRegistry } = require('~/config');
 const { getLogStores } = require('~/cache');
+const mongoose = require('mongoose');
 const db = require('~/models');
 
 const systemTools = {
@@ -1129,6 +1130,91 @@ const getAgentCategories = async (_req, res) => {
     });
   }
 };
+
+/**
+ * Lists conversations shared with members of an agent, across ALL users.
+ * Gating (VIEW on the agent) is enforced by the route middleware (canAccessAgentResource).
+ * @route GET /agents/:id/shared-conversations
+ */
+const getSharedConversationsHandler = async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const cursor = req.query.cursor || null;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 25, 100);
+
+    const { conversations, nextCursor } = await db.getSharedConvosByAgent(agentId, {
+      cursor,
+      limit,
+    });
+
+    const userIds = [...new Set(conversations.map((convo) => convo.user).filter(Boolean))];
+    const authors = userIds.length
+      ? await db.findUsers({ _id: { $in: userIds } }, 'name email username')
+      : [];
+    const authorById = new Map(authors.map((author) => [String(author._id), author]));
+
+    const withAuthors = conversations.map((convo) => {
+      const author = authorById.get(String(convo.user));
+      return {
+        ...convo,
+        author: author
+          ? { name: author.name, email: author.email, username: author.username }
+          : null,
+      };
+    });
+
+    res.status(200).json({ conversations: withAuthors, nextCursor });
+  } catch (error) {
+    logger.error('[getSharedConversations] Error fetching shared conversations', error);
+    res.status(500).json({ error: 'Error fetching shared conversations' });
+  }
+};
+
+/**
+ * Reads the messages of a single shared conversation, cross-user.
+ * Gating (VIEW on the agent) is enforced by the route middleware (canAccessAgentResource).
+ * IDOR protection: the conversation must belong to the gated agent AND be shared, asserted
+ * BEFORE any message read. A uniform 404 is used so failures do not disclose existence.
+ * @route GET /agents/:id/shared-conversations/:conversationId/messages
+ */
+const getSharedConversationMessagesHandler = async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const { conversationId } = req.params;
+
+    // (2) Load the conversation WITHOUT a { user } filter (cross-user), only the fields needed to authorize.
+    const Conversation = mongoose.models.Conversation;
+    const convo = await Conversation.findOne(
+      { conversationId },
+      'conversationId agent_id isSharedWithAgentMembers user',
+    ).lean();
+
+    if (!convo) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // (3) The conversation must belong to the agent that was access-checked by the route middleware.
+    if (convo.agent_id !== agentId) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // (4) The conversation must be explicitly shared with the agent's members.
+    if (convo.isSharedWithAgentMembers !== true) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    // Only now is it safe to read messages cross-user.
+    const messages = await db.getMessages({ conversationId });
+    res.status(200).json({ messages });
+  } catch (error) {
+    logger.error(
+      '[getSharedConversationMessages] Error fetching shared conversation messages',
+      error,
+    );
+    res.status(500).json({ error: 'Error fetching shared conversation messages' });
+  }
+};
+
 module.exports = {
   createAgent: createAgentHandler,
   getAgent: getAgentHandler,
@@ -1139,5 +1225,7 @@ module.exports = {
   uploadAgentAvatar: uploadAgentAvatarHandler,
   revertAgentVersion: revertAgentVersionHandler,
   getAgentCategories,
+  getSharedConversations: getSharedConversationsHandler,
+  getSharedConversationMessages: getSharedConversationMessagesHandler,
   filterAuthorizedTools,
 };
