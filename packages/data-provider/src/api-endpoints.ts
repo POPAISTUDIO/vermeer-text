@@ -278,6 +278,11 @@ export const agentSharedConversationMessages = (agentId: string, conversationId:
     conversationId,
   )}/messages`;
 
+export const agentForkSharedConversation = (agentId: string, conversationId: string) =>
+  `${BASE_URL}/api/agents/${encodeURIComponent(agentId)}/shared-conversations/${encodeURIComponent(
+    conversationId,
+  )}/fork`;
+
 export const activeJobs = () => `${BASE_URL}/api/agents/chat/active`;
 
 export const mcp = {

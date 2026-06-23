@@ -505,6 +505,13 @@ export const getAgentSharedConversationMessages = (
   return request.get(endpoints.agentSharedConversationMessages(agentId, conversationId));
 };
 
+export const forkSharedConversation = (
+  agentId: string,
+  conversationId: string,
+): Promise<t.TForkSharedConversationResponse> => {
+  return request.post(endpoints.agentForkSharedConversation(agentId, conversationId), {});
+};
+
 export const getExpandedAgentById = ({ agent_id }: { agent_id: string }): Promise<a.Agent> => {
   return request.get(
     endpoints.agents({

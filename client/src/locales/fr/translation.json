@@ -1177,6 +1177,8 @@
   "com_ui_resource": "Ressource",
   "com_ui_response": "Réponse",
   "com_ui_result": "Résultat",
+  "com_ui_resume_conversation": "Reprendre cette conversation",
+  "com_ui_resume_conversation_error": "Échec de la reprise de la conversation",
   "com_ui_revoke": "Révoquer",
   "com_ui_revoke_info": "Révoquer toutes les informations d'identification fournies par l'utilisateur",
   "com_ui_revoke_key_confirm": "Êtes-vous sûr de vouloir révoquer cette clé ?",

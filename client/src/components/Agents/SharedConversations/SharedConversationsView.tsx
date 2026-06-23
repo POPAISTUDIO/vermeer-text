@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { Spinner } from '@librechat/client';
+import { Spinner, useToastContext } from '@librechat/client';
 import { buildTree, dataService } from 'librechat-data-provider';
 import type { TSharedConversation } from 'librechat-data-provider';
 import {
   useSharedConversations,
   useSharedConversationMessages,
+  useForkSharedConversationMutation,
   useGetAgentByIdQuery,
 } from '~/data-provider';
 import { ShareMessagesProvider } from '~/components/Share/ShareMessagesProvider';
 import ShareMessagesView from '~/components/Share/MessagesView';
+import { NotificationSeverity } from '~/common';
 import { ShareContext } from '~/Providers';
 import { useLocalize } from '~/hooks';
 
@@ -164,7 +166,18 @@ function ThreadView({
   onBack: () => void;
 }) {
   const localize = useLocalize();
+  const { showToast } = useToastContext();
   const { data, isLoading } = useSharedConversationMessages(agentId, conversationId);
+
+  const forkMutation = useForkSharedConversationMutation({
+    onError: () => {
+      showToast({
+        message: localize('com_ui_resume_conversation_error'),
+        severity: NotificationSeverity.ERROR,
+        showIcon: true,
+      });
+    },
+  });
 
   const messages = data?.messages ?? [];
   const dataTree = buildTree({ messages });
@@ -173,7 +186,7 @@ function ThreadView({
   return (
     <ShareContext.Provider value={{ isSharedConvo: true }}>
       <div className="flex h-full w-full flex-col bg-presentation">
-        <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-4 pt-4">
           <button
             type="button"
             onClick={onBack}
@@ -181,6 +194,18 @@ function ThreadView({
           >
             <ArrowLeft className="size-4" aria-hidden="true" />
             {localize('com_ui_back')}
+          </button>
+          <button
+            type="button"
+            onClick={() => forkMutation.mutate({ agentId, conversationId })}
+            disabled={forkMutation.isLoading}
+            className="btn btn-primary h-9 px-4"
+          >
+            {forkMutation.isLoading ? (
+              <Spinner className="size-4" />
+            ) : (
+              localize('com_ui_resume_conversation')
+            )}
           </button>
         </div>
 

@@ -332,6 +332,15 @@ export type TSharedConversationMessagesResponse = {
   messages: TMessage[];
 };
 
+export type TForkSharedConversationRequest = {
+  agentId: string;
+  conversationId: string;
+};
+
+export type TForkSharedConversationResponse = {
+  conversation: TConversation;
+};
+
 export type TSharedMessagesResponse = Omit<TSharedLink, 'messages'> & {
   messages: TMessage[];
 };
