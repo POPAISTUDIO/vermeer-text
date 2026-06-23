@@ -142,6 +142,38 @@ export const useArchiveConvoMutation = (
   );
 };
 
+export const useShareWithAgentMutation = (
+  options?: t.ShareConversationOptions,
+): UseMutationResult<
+  t.TShareConversationResponse,
+  unknown,
+  t.TShareConversationRequest,
+  unknown
+> => {
+  const queryClient = useQueryClient();
+  const convoQueryKey = [QueryKeys.allConversations];
+  const { onMutate, onError, onSuccess, ..._options } = options || {};
+
+  return useMutation(
+    (payload: t.TShareConversationRequest) => dataService.shareConversation(payload),
+    {
+      onMutate,
+      onSuccess: (_data, vars, context) => {
+        queryClient.setQueryData([QueryKeys.conversation, vars.conversationId], _data);
+        onSuccess?.(_data, vars, context);
+      },
+      onError,
+      onSettled: () => {
+        queryClient.invalidateQueries({
+          queryKey: convoQueryKey,
+          refetchPage: (_, index) => index === 0,
+        });
+      },
+      ..._options,
+    },
+  );
+};
+
 export const useCreateSharedLinkMutation = (
   options?: t.MutationOptions<
     t.TCreateShareLinkRequest,

@@ -491,6 +491,20 @@ export const getAgentById = ({ agent_id }: { agent_id: string }): Promise<a.Agen
   );
 };
 
+export const getAgentSharedConversations = (
+  agentId: string,
+  cursor?: string,
+): Promise<t.TSharedConversationsResponse> => {
+  return request.get(endpoints.agentSharedConversations(agentId, cursor));
+};
+
+export const getAgentSharedConversationMessages = (
+  agentId: string,
+  conversationId: string,
+): Promise<t.TSharedConversationMessagesResponse> => {
+  return request.get(endpoints.agentSharedConversationMessages(agentId, conversationId));
+};
+
 export const getExpandedAgentById = ({ agent_id }: { agent_id: string }): Promise<a.Agent> => {
   return request.get(
     endpoints.agents({
@@ -778,6 +792,12 @@ export function archiveConversation(
   payload: t.TArchiveConversationRequest,
 ): Promise<t.TArchiveConversationResponse> {
   return request.post(endpoints.archiveConversation(), { arg: payload });
+}
+
+export function shareConversation(
+  payload: t.TShareConversationRequest,
+): Promise<t.TShareConversationResponse> {
+  return request.post(endpoints.shareConversation(), { arg: payload });
 }
 
 export function genTitle(payload: m.TGenTitleRequest): Promise<m.TGenTitleResponse> {
