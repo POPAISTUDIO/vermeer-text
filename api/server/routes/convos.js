@@ -185,6 +185,41 @@ router.post('/archive', validateConvoAccess, async (req, res) => {
   }
 });
 
+/**
+ * Toggles whether a conversation is shared with other members of its agent.
+ * @route POST /share
+ * @param {string} req.body.arg.conversationId
+ * @param {boolean} req.body.arg.isSharedWithAgentMembers
+ * @returns {object} 200 - The updated conversation object.
+ */
+router.post('/share', validateConvoAccess, async (req, res) => {
+  const { conversationId, isSharedWithAgentMembers } = req.body?.arg ?? {};
+
+  if (!conversationId) {
+    return res.status(400).json({ error: 'conversationId is required' });
+  }
+
+  if (typeof isSharedWithAgentMembers !== 'boolean') {
+    return res.status(400).json({ error: 'isSharedWithAgentMembers must be a boolean' });
+  }
+
+  try {
+    const dbResponse = await db.saveConvo(
+      {
+        userId: req?.user?.id,
+        isTemporary: req?.body?.isTemporary,
+        interfaceConfig: req?.config?.interfaceConfig,
+      },
+      { conversationId, isSharedWithAgentMembers },
+      { context: `POST /api/convos/share ${conversationId}` },
+    );
+    res.status(200).json(dbResponse);
+  } catch (error) {
+    logger.error('Error updating conversation share state', error);
+    res.status(500).send('Error updating conversation share state');
+  }
+});
+
 /** Maximum allowed length for conversation titles */
 const MAX_CONVO_TITLE_LENGTH = 1024;
 
