@@ -162,6 +162,15 @@ const userSchema = new Schema<IUser>(
       type: String,
       index: true,
     },
+    companyName: {
+      type: String,
+    },
+    department: {
+      type: String,
+    },
+    jobTitle: {
+      type: String,
+    },
   },
   { timestamps: true },
 );
