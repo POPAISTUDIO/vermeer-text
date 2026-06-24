@@ -88,6 +88,50 @@ export const useGetAgentByIdQuery = (
 };
 
 /**
+ * Hook for listing the cross-user conversations shared on an agent (shared-conversations panel)
+ */
+export const useSharedConversations = (
+  agentId: string | null | undefined,
+  config?: UseQueryOptions<t.TSharedConversationsResponse>,
+): QueryObserverResult<t.TSharedConversationsResponse> => {
+  return useQuery<t.TSharedConversationsResponse>(
+    [QueryKeys.agentSharedConversations, agentId],
+    () => dataService.getAgentSharedConversations(agentId as string),
+    {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      retry: false,
+      enabled: !!agentId && (config?.enabled ?? true),
+      ...config,
+    },
+  );
+};
+
+/**
+ * Hook for reading the messages of a single shared conversation (only fetches once a thread is selected)
+ */
+export const useSharedConversationMessages = (
+  agentId: string | null | undefined,
+  conversationId: string | null | undefined,
+  config?: UseQueryOptions<t.TSharedConversationMessagesResponse>,
+): QueryObserverResult<t.TSharedConversationMessagesResponse> => {
+  return useQuery<t.TSharedConversationMessagesResponse>(
+    [QueryKeys.agentSharedConversations, agentId, conversationId],
+    () =>
+      dataService.getAgentSharedConversationMessages(agentId as string, conversationId as string),
+    {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+      retry: false,
+      enabled: !!agentId && !!conversationId && (config?.enabled ?? true),
+      ...config,
+    },
+  );
+};
+
+/**
  * Hook for retrieving full agent details including sensitive configuration (EDIT permission)
  */
 export const useGetExpandedAgentByIdQuery = (

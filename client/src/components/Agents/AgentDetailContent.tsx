@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link, Pin, PinOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Link, Pin, PinOff, MessagesSquare } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { OGDialogContent, Button, useToastContext } from '@librechat/client';
 import {
@@ -34,6 +35,7 @@ interface AgentDetailContentProps {
  */
 const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
   const localize = useLocalize();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToastContext();
   const getDefaultConversation = useDefaultConvo();
@@ -180,6 +182,15 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
           aria-label={localize('com_agents_copy_link')}
         >
           <Link className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => navigate(`/agents/${agent.id}/shared-conversations`)}
+          title={localize('com_ui_shared_conversations')}
+          aria-label={localize('com_ui_shared_conversations')}
+        >
+          <MessagesSquare className="h-4 w-4" aria-hidden="true" />
         </Button>
         <Button
           variant="submit"

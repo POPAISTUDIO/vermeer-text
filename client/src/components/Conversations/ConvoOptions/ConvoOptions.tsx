@@ -4,14 +4,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { QueryKeys } from 'librechat-data-provider';
 import { useQueryClient } from '@tanstack/react-query';
 import { DropdownPopup, Spinner, useToastContext } from '@librechat/client';
-import { Ellipsis, Share2, CopyPlus, Archive, Pen, Trash } from 'lucide-react';
+import { Ellipsis, Share2, CopyPlus, Archive, Users, Pen, Trash } from 'lucide-react';
 import type { MouseEvent } from 'react';
-import type { TMessage } from 'librechat-data-provider';
+import type { TMessage, TConversation } from 'librechat-data-provider';
 import {
   useDuplicateConversationMutation,
   useDeleteConversationMutation,
   useGetStartupConfig,
   useArchiveConvoMutation,
+  useShareWithAgentMutation,
 } from '~/data-provider';
 import { useLocalize, useNavigateToConvo, useNewConvo } from '~/hooks';
 import { NotificationSeverity } from '~/common';
@@ -58,6 +59,7 @@ function ConvoOptions({
   const [announcement, setAnnouncement] = useState('');
 
   const archiveConvoMutation = useArchiveConvoMutation();
+  const shareWithAgentMutation = useShareWithAgentMutation();
 
   const deleteMutation = useDeleteConversationMutation({
     onSuccess: () => {
@@ -106,6 +108,12 @@ function ConvoOptions({
 
   const isDuplicateLoading = duplicateConversation.isLoading;
   const isArchiveLoading = archiveConvoMutation.isLoading;
+  const isShareWithAgentLoading = shareWithAgentMutation.isLoading;
+  const cachedConversation = queryClient.getQueryData<TConversation>([
+    QueryKeys.conversation,
+    conversationId ?? '',
+  ]);
+  const isSharedWithAgentMembers = cachedConversation?.isSharedWithAgentMembers ?? false;
   const isDeleteLoading = deleteMutation.isLoading;
 
   const shareHandler = useCallback(() => {
@@ -177,6 +185,40 @@ function ConvoOptions({
     ],
   );
 
+  const handleShareWithAgentClick = useCallback(
+    async (e?: MouseEvent) => {
+      e?.stopPropagation();
+      const convoId = conversationId ?? '';
+      if (!convoId) {
+        return;
+      }
+
+      const currentConvo = queryClient.getQueryData<TConversation>([
+        QueryKeys.conversation,
+        convoId,
+      ]);
+      const nextValue = !(currentConvo?.isSharedWithAgentMembers ?? false);
+
+      shareWithAgentMutation.mutate(
+        { conversationId: convoId, isSharedWithAgentMembers: nextValue },
+        {
+          onSuccess: () => {
+            showToast({ message: localize('com_ui_convo_shared') });
+            setIsPopoverActive(false);
+          },
+          onError: () => {
+            showToast({
+              message: localize('com_ui_share_with_agent_error'),
+              severity: NotificationSeverity.ERROR,
+              showIcon: true,
+            });
+          },
+        },
+      );
+    },
+    [conversationId, queryClient, shareWithAgentMutation, showToast, setIsPopoverActive, localize],
+  );
+
   const handleDuplicateClick = useCallback(() => {
     duplicateConversation.mutate({
       conversationId: conversationId ?? '',
@@ -223,6 +265,18 @@ function ConvoOptions({
         ),
       },
       {
+        label: localize(
+          isSharedWithAgentMembers ? 'com_ui_unshare_with_agent' : 'com_ui_share_with_agent',
+        ),
+        onClick: handleShareWithAgentClick,
+        hideOnClick: false,
+        icon: isShareWithAgentLoading ? (
+          <Spinner className="size-4" />
+        ) : (
+          <Users className="icon-sm mr-2 text-text-primary" aria-hidden="true" />
+        ),
+      },
+      {
         label: localize('com_ui_delete'),
         onClick: deleteHandler,
         icon: <Trash className="icon-sm mr-2 text-text-primary" aria-hidden="true" />,
@@ -244,6 +298,9 @@ function ConvoOptions({
       isDuplicateLoading,
       handleArchiveClick,
       handleDuplicateClick,
+      isShareWithAgentLoading,
+      isSharedWithAgentMembers,
+      handleShareWithAgentClick,
     ],
   );
 

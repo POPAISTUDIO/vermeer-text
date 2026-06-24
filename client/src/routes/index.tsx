@@ -38,6 +38,11 @@ const loadSkillsView = () =>
     Component: m.default,
   }));
 
+const loadSharedConversationsView = () =>
+  import('~/components/Agents/SharedConversations/SharedConversationsView').then((m) => ({
+    Component: m.default,
+  }));
+
 const baseEl = document.querySelector('base');
 const baseHref = baseEl?.getAttribute('href') || '/';
 
@@ -144,6 +149,10 @@ export const router = createBrowserRouter(
             {
               path: 'skills/:skillId/edit',
               lazy: loadSkillsView,
+            },
+            {
+              path: 'agents/:agentId/shared-conversations',
+              lazy: loadSharedConversationsView,
             },
             {
               path: 'agents',

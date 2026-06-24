@@ -15,6 +15,7 @@ import {
   removeConvoFromAllQueries,
 } from '~/utils';
 import useUpdateTagsInConvo from '~/hooks/Conversations/useUpdateTagsInConvo';
+import useNavigateToConvo from '~/hooks/Conversations/useNavigateToConvo';
 import { updateConversationTag } from '~/utils/conversationTags';
 import { useConversationTagsQuery } from './queries';
 
@@ -136,6 +137,75 @@ export const useArchiveConvoMutation = (
           queryKey: archivedConvoQueryKey,
           refetchPage: (_, index) => index === 0,
         });
+      },
+      ..._options,
+    },
+  );
+};
+
+export const useShareWithAgentMutation = (
+  options?: t.ShareConversationOptions,
+): UseMutationResult<
+  t.TShareConversationResponse,
+  unknown,
+  t.TShareConversationRequest,
+  unknown
+> => {
+  const queryClient = useQueryClient();
+  const convoQueryKey = [QueryKeys.allConversations];
+  const { onMutate, onError, onSuccess, ..._options } = options || {};
+
+  return useMutation(
+    (payload: t.TShareConversationRequest) => dataService.shareConversation(payload),
+    {
+      onMutate,
+      onSuccess: (_data, vars, context) => {
+        queryClient.setQueryData([QueryKeys.conversation, vars.conversationId], _data);
+        onSuccess?.(_data, vars, context);
+      },
+      onError,
+      onSettled: () => {
+        queryClient.invalidateQueries({
+          queryKey: convoQueryKey,
+          refetchPage: (_, index) => index === 0,
+        });
+      },
+      ..._options,
+    },
+  );
+};
+
+export const useForkSharedConversationMutation = (
+  options?: t.MutationOptions<t.TForkSharedConversationResponse, t.TForkSharedConversationRequest>,
+): UseMutationResult<
+  t.TForkSharedConversationResponse,
+  unknown,
+  t.TForkSharedConversationRequest,
+  unknown
+> => {
+  const queryClient = useQueryClient();
+  const { navigateToConvo } = useNavigateToConvo();
+  const { onSuccess, ..._options } = options || {};
+
+  return useMutation(
+    (payload: t.TForkSharedConversationRequest) =>
+      dataService.forkSharedConversation(payload.agentId, payload.conversationId),
+    {
+      onSuccess: (data, vars, context) => {
+        const conversation = data.conversation;
+        if (conversation?.conversationId) {
+          queryClient.setQueryData(
+            [QueryKeys.conversation, conversation.conversationId],
+            conversation,
+          );
+          addConvoToAllQueries(queryClient, conversation);
+          queryClient.invalidateQueries({
+            queryKey: [QueryKeys.allConversations],
+            refetchPage: (_, index) => index === 0,
+          });
+          navigateToConvo(conversation);
+        }
+        onSuccess?.(data, vars, context);
       },
       ..._options,
     },

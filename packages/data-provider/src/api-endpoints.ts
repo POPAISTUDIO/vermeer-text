@@ -116,6 +116,8 @@ export const updateConversation = () => `${conversationsRoot}/update`;
 
 export const archiveConversation = () => `${conversationsRoot}/archive`;
 
+export const shareConversation = () => `${conversationsRoot}/share`;
+
 export const deleteConversation = () => `${conversationsRoot}`;
 
 export const deleteAllConversation = () => `${conversationsRoot}/all`;
@@ -267,6 +269,19 @@ export const agents = ({ path = '', options }: { path?: string; options?: object
 
   return url;
 };
+
+export const agentSharedConversations = (agentId: string, cursor?: string) =>
+  `${BASE_URL}/api/agents/${encodeURIComponent(agentId)}/shared-conversations${buildQuery({ cursor })}`;
+
+export const agentSharedConversationMessages = (agentId: string, conversationId: string) =>
+  `${BASE_URL}/api/agents/${encodeURIComponent(agentId)}/shared-conversations/${encodeURIComponent(
+    conversationId,
+  )}/messages`;
+
+export const agentForkSharedConversation = (agentId: string, conversationId: string) =>
+  `${BASE_URL}/api/agents/${encodeURIComponent(agentId)}/shared-conversations/${encodeURIComponent(
+    conversationId,
+  )}/fork`;
 
 export const activeJobs = () => `${BASE_URL}/api/agents/chat/active`;
 

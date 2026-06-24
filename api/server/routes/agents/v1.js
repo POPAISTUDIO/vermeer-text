@@ -66,6 +66,58 @@ router.get(
 );
 
 /**
+ * Lists conversations shared with members of an agent, across all users (VIEW permission required).
+ * @route GET /agents/:id/shared-conversations
+ * @param {string} req.params.id - Agent identifier.
+ * @returns {{ conversations: object[]; nextCursor: string | null }} 200 - Shared conversations - application/json
+ */
+router.get(
+  '/:id/shared-conversations',
+  checkAgentAccess,
+  canAccessAgentResource({
+    requiredPermission: PermissionBits.VIEW,
+    resourceIdParam: 'id',
+  }),
+  v1.getSharedConversations,
+);
+
+/**
+ * Reads the messages of a single shared conversation of an agent (VIEW permission required).
+ * The conversation must belong to the agent and be shared (asserted in the handler before any read).
+ * @route GET /agents/:id/shared-conversations/:conversationId/messages
+ * @param {string} req.params.id - Agent identifier.
+ * @param {string} req.params.conversationId - Conversation identifier.
+ * @returns {{ messages: object[] }} 200 - Conversation messages - application/json
+ */
+router.get(
+  '/:id/shared-conversations/:conversationId/messages',
+  checkAgentAccess,
+  canAccessAgentResource({
+    requiredPermission: PermissionBits.VIEW,
+    resourceIdParam: 'id',
+  }),
+  v1.getSharedConversationMessages,
+);
+
+/**
+ * Forks a shared conversation into a new conversation owned by the requesting user (VIEW required).
+ * The conversation must belong to the agent and be shared (asserted in the handler before any fork).
+ * @route POST /agents/:id/shared-conversations/:conversationId/fork
+ * @param {string} req.params.id - Agent identifier.
+ * @param {string} req.params.conversationId - Conversation identifier.
+ * @returns {{ conversation: object }} 200 - The new conversation owned by the forker - application/json
+ */
+router.post(
+  '/:id/shared-conversations/:conversationId/fork',
+  checkAgentAccess,
+  canAccessAgentResource({
+    requiredPermission: PermissionBits.VIEW,
+    resourceIdParam: 'id',
+  }),
+  v1.forkSharedConversation,
+);
+
+/**
  * Retrieves full agent details including sensitive configuration (EDIT permission required).
  * Returns complete agent data for editing/configuration purposes.
  * @route GET /agents/:id/expanded

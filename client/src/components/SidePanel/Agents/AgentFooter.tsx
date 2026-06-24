@@ -1,5 +1,6 @@
-import { Globe } from 'lucide-react';
+import { Globe, MessagesSquare } from 'lucide-react';
 import { Spinner } from '@librechat/client';
+import { useNavigate } from 'react-router-dom';
 import { useWatch, useFormContext } from 'react-hook-form';
 import {
   SystemRoles,
@@ -10,6 +11,7 @@ import {
 } from 'librechat-data-provider';
 import type { AgentForm, AgentPanelProps } from '~/common';
 import { useLocalize, useAuthContext, useHasAccess, useResourcePermissions } from '~/hooks';
+import { isEphemeralAgent } from '~/common';
 import { GenericGrantAccessDialog } from '~/components/Sharing';
 import { useUpdateAgentMutation } from '~/data-provider';
 import AdvancedButton from './Advanced/AdvancedButton';
@@ -33,6 +35,7 @@ export default function AgentFooter({
   isAvatarUploading?: boolean;
 }) {
   const localize = useLocalize();
+  const navigate = useNavigate();
   const { user } = useAuthContext();
 
   const methods = useFormContext<AgentForm>();
@@ -117,6 +120,17 @@ export default function AgentFooter({
               </button>
             </GenericGrantAccessDialog>
           )}
+        {!!agent_id && !isEphemeralAgent(agent_id) && (
+          <button
+            type="button"
+            onClick={() => navigate(`/agents/${agent_id}/shared-conversations`)}
+            className="btn btn-neutral border-token-border-light h-9 px-3"
+            title={localize('com_ui_shared_conversations')}
+            aria-label={localize('com_ui_shared_conversations')}
+          >
+            <MessagesSquare className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
         {(agent?.author === user?.id || user?.role === SystemRoles.ADMIN || canEditThisAgent) &&
           !permissionsLoading && <DuplicateAgent agent_id={agent_id} />}
         {/* Submit Button */}

@@ -306,6 +306,41 @@ export type TArchiveConversationRequest = {
 
 export type TArchiveConversationResponse = TConversation;
 
+export type TShareConversationRequest = {
+  conversationId: string;
+  isSharedWithAgentMembers: boolean;
+};
+
+export type TShareConversationResponse = TConversation;
+
+export type TSharedConversationAuthor = {
+  name?: string;
+  email?: string;
+  username?: string;
+};
+
+export type TSharedConversation = TConversation & {
+  author: TSharedConversationAuthor | null;
+};
+
+export type TSharedConversationsResponse = {
+  conversations: TSharedConversation[];
+  nextCursor: string | null;
+};
+
+export type TSharedConversationMessagesResponse = {
+  messages: TMessage[];
+};
+
+export type TForkSharedConversationRequest = {
+  agentId: string;
+  conversationId: string;
+};
+
+export type TForkSharedConversationResponse = {
+  conversation: TConversation;
+};
+
 export type TSharedMessagesResponse = Omit<TSharedLink, 'messages'> & {
   messages: TMessage[];
 };

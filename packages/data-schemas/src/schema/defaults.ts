@@ -115,6 +115,10 @@ export const conversationPreset = {
     type: Boolean,
     default: false,
   },
+  isSharedWithAgentMembers: {
+    type: Boolean,
+    default: false,
+  },
   /* UI Components */
   iconURL: {
     type: String,

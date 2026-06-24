@@ -90,6 +90,8 @@ export enum QueryKeys {
   adminPeriods = 'adminPeriods',
   /* Admin scalar KPIs (avg cost/conv, conv/active user, agents created) */
   adminKpis = 'adminKpis',
+  /* Cross-user conversations shared on an agent (shared-conversations panel) */
+  agentSharedConversations = 'agentSharedConversations',
 }
 
 // Dynamic query keys that require parameters
