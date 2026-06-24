@@ -14,14 +14,23 @@ export function currentMonthStartUTC(): Date {
 /** A MongoDB aggregation expression (JSON-like tree of operators, literals and field paths). */
 type AggExpr = string | number | boolean | null | RegExp | AggExpr[] | { [key: string]: AggExpr };
 
+/** companyName values (normalized to upper-case) that identify the BETC Fullsix sub-entity. */
+const FULLSIX_COMPANY_NAMES = ['BETC FULLSIX', 'BETC DIGITAL', 'BETC DIGITAL EXT'];
+
 /**
  * Aggregation expression deriving a user's Business Unit (single source of truth).
- * An explicit `tenantId` wins; otherwise the email domain maps to POP / BETC / Vermeer;
- * otherwise the raw email domain is used; `null` when there is no email.
+ * An explicit `tenantId` wins; otherwise the email domain maps to POP / BETC / Vermeer
+ * (with @betc.com further split into 'BETC Fullsix' when companyName matches the Fullsix
+ * directory values); otherwise the raw email domain is used; `null` when there is no email.
  * @param emailPath field path to the user email (e.g. '$userDoc.email')
  * @param tenantIdPath field path to the user tenantId (e.g. '$userDoc.tenantId')
+ * @param companyNamePath field path to the user companyName (e.g. '$userDoc.companyName')
  */
-export function buExpression(emailPath: string, tenantIdPath: string): AggExpr {
+export function buExpression(
+  emailPath: string,
+  tenantIdPath: string,
+  companyNamePath: string,
+): AggExpr {
   return {
     $cond: {
       if: { $ne: [{ $ifNull: [tenantIdPath, null] }, null] },
@@ -32,6 +41,20 @@ export function buExpression(emailPath: string, tenantIdPath: string): AggExpr {
             {
               case: { $regexMatch: { input: { $ifNull: [emailPath, ''] }, regex: /@proseonpixels\.com$/i } },
               then: 'POP',
+            },
+            {
+              case: {
+                $and: [
+                  { $regexMatch: { input: { $ifNull: [emailPath, ''] }, regex: /@betc\.com$/i } },
+                  {
+                    $in: [
+                      { $toUpper: { $trim: { input: { $ifNull: [companyNamePath, ''] } } } },
+                      FULLSIX_COMPANY_NAMES,
+                    ],
+                  },
+                ],
+              },
+              then: 'BETC Fullsix',
             },
             {
               case: { $regexMatch: { input: { $ifNull: [emailPath, ''] }, regex: /@betc\.com$/i } },
@@ -56,7 +79,7 @@ export function buExpression(emailPath: string, tenantIdPath: string): AggExpr {
 }
 
 /** BU filter values, matching the client-side BUFilter ('all' = no filtering). */
-export type BuFilter = 'all' | 'POP' | 'BETC' | 'Other';
+export type BuFilter = 'all' | 'POP' | 'BETC' | 'BETC Fullsix' | 'Other';
 
 /** Optional window + BU filter for the admin usage aggregations. */
 export interface UsageQueryParams {
@@ -558,7 +581,7 @@ export function createTransactionMethods(
           user: { $toString: '$_id' },
           name: { $ifNull: ['$userDoc.name', null] },
           email: { $ifNull: ['$userDoc.email', null] },
-          bu: buExpression('$userDoc.email', '$userDoc.tenantId'),
+          bu: buExpression('$userDoc.email', '$userDoc.tenantId', '$userDoc.companyName'),
           totalCredits: 1,
           totalTokens: 1,
           messageCount: {
@@ -619,7 +642,10 @@ export function createTransactionMethods(
             {
               $match: {
                 $expr: {
-                  $eq: [buExpression('$userDoc.email', '$userDoc.tenantId'), buValue],
+                  $eq: [
+                    buExpression('$userDoc.email', '$userDoc.tenantId', '$userDoc.companyName'),
+                    buValue,
+                  ],
                 },
               },
             },
@@ -702,7 +728,12 @@ export function createTransactionMethods(
       { $unwind: { path: '$userDoc', preserveNullAndEmptyArrays: true } },
       {
         $match: {
-          $expr: { $eq: [buExpression('$userDoc.email', '$userDoc.tenantId'), buValue] },
+          $expr: {
+            $eq: [
+              buExpression('$userDoc.email', '$userDoc.tenantId', '$userDoc.companyName'),
+              buValue,
+            ],
+          },
         },
       },
     ];
