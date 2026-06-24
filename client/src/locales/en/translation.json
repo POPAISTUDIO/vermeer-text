@@ -1836,6 +1836,7 @@
   "com_usage_export_csv": "Export CSV",
   "com_usage_filter_all": "All",
   "com_usage_filter_bu_betc": "BETC",
+  "com_usage_filter_bu_betc_fullsix": "BETC Fullsix",
   "com_usage_filter_bu_other": "Other",
   "com_usage_filter_bu_pop": "POP",
   "com_usage_kpi_agents_created": "Agents created",

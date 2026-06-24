@@ -9,7 +9,7 @@ const router = express.Router();
 const requireAdminAccess = requireCapability(SystemCapabilities.ACCESS_ADMIN);
 const requireReadUsage = requireCapability(SystemCapabilities.READ_USAGE);
 
-const ALLOWED_BU = new Set(['POP', 'BETC', 'Other']);
+const ALLOWED_BU = new Set(['POP', 'BETC', 'BETC Fullsix', 'Other']);
 
 /** Parses a YYYY-MM-DD query value into a UTC Date, or null if absent/invalid. */
 const parseDateUTC = (value) => {

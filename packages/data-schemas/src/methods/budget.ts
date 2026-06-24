@@ -106,7 +106,7 @@ export function createBudgetMethods(mongoose: typeof import('mongoose')) {
           user: { $toString: '$_id' },
           name: { $ifNull: ['$name', null] },
           email: { $ifNull: ['$email', null] },
-          bu: buExpression('$email', '$tenantId'),
+          bu: buExpression('$email', '$tenantId', '$companyName'),
           monthlyBudget: { $ifNull: ['$balanceDoc.monthlyBudget', DEFAULT_MONTHLY_BUDGET] },
           monthlyBudgetBaseline: {
             $ifNull: ['$balanceDoc.monthlyBudgetBaseline', DEFAULT_MONTHLY_BUDGET],
