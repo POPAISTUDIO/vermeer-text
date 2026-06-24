@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, useEffect } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { Folder, Upload } from 'lucide-react';
 import * as Ariakit from '@ariakit/react';
 import { useFormContext } from 'react-hook-form';
@@ -11,6 +11,7 @@ import { useAgentFileConfig, useLocalize, useLazyEffect } from '~/hooks';
 import { SharePointPickerDialog } from '~/components/SharePoint';
 import FileRow from '~/components/Chat/Input/Files/FileRow';
 import { useGetStartupConfig } from '~/data-provider';
+import FileSearchCheckbox from './FileSearchCheckbox';
 import { isEphemeralAgent } from '~/common';
 
 function FileSearch({
@@ -21,10 +22,7 @@ function FileSearch({
   files?: [string, ExtendedFile][];
 }) {
   const localize = useLocalize();
-  const { watch, setValue } = useFormContext<AgentForm>();
-  useEffect(() => {
-    setValue(AgentCapabilities.file_search, true);
-  }, [setValue, agent_id]);
+  const { watch } = useFormContext<AgentForm>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<Map<string, ExtendedFile>>(new Map());
   const fileHandlingState = useMemo(() => ({ files, setFiles, conversation: null }), [files]);
@@ -125,6 +123,7 @@ function FileSearch({
 
   return (
     <div className="w-full">
+      <FileSearchCheckbox />
       <div className="flex flex-col gap-3">
         {/* File Search (RAG API) Files */}
         <FileRow
