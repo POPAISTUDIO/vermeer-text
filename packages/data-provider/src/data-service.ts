@@ -1317,7 +1317,7 @@ const buildAnalyticsQuery = ({ period, bu }: q.AnalyticsQueryParams): string => 
     parts.push(`start=${period.key}-01`, `end=${end}`);
   }
   if (bu !== 'all') {
-    parts.push(`bu=${bu}`);
+    parts.push(`bu=${encodeURIComponent(bu)}`);
   }
   return parts.length ? `?${parts.join('&')}` : '';
 };

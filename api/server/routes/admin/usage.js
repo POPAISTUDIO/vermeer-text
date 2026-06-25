@@ -9,7 +9,14 @@ const router = express.Router();
 const requireAdminAccess = requireCapability(SystemCapabilities.ACCESS_ADMIN);
 const requireReadUsage = requireCapability(SystemCapabilities.READ_USAGE);
 
-const ALLOWED_BU = new Set(['POP', 'BETC', 'BETC Fullsix', 'Other']);
+const ALLOWED_BU = new Set([
+  'POP',
+  'BETC',
+  'BETC Fullsix',
+  'BETC Etoile Rouge',
+  'Maison BETC',
+  'Other',
+]);
 
 /** Parses a YYYY-MM-DD query value into a UTC Date, or null if absent/invalid. */
 const parseDateUTC = (value) => {
@@ -55,7 +62,8 @@ const monthKeyIfMonthWindow = (start, end) => {
 /**
  * Parses the analytics query (?overall | ?start&end | default) + ?bu from a request.
  * Returns { params, period, error } — params feed the aggregation, period is echoed in the
- * response, error is a 400 message (params/period null) when a date is malformed.
+ * response, error is a 400 message (params/period null) when a date is malformed or when a
+ * provided bu is not a recognized filter value (absent or 'all' means no filter, which is valid).
  * Shared by GET /api/admin/usage and GET /api/admin/usage/models so both honour the same contract.
  */
 const parseUsageQuery = (req) => {
@@ -105,7 +113,10 @@ const parseUsageQuery = (req) => {
     }
   }
 
-  if (typeof bu === 'string' && ALLOWED_BU.has(bu)) {
+  if (bu !== undefined && bu !== 'all') {
+    if (typeof bu !== 'string' || !ALLOWED_BU.has(bu)) {
+      return { params: null, period: null, error: 'Invalid BU filter' };
+    }
     params.bu = bu;
   }
 
