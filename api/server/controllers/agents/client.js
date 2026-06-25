@@ -33,6 +33,7 @@ const {
   isSkillPrimeMessage,
   buildSkillPrimeContentParts,
   buildInitialToolSessions,
+  stripEmptyTextBlocks,
 } = require('@librechat/api');
 const {
   Callback,
@@ -361,7 +362,7 @@ class AgentClient extends BaseClient {
       return formattedMessage;
     });
 
-    payload = formattedMessages;
+    payload = stripEmptyTextBlocks(formattedMessages);
     messages = orderedMessages;
     promptTokens = promptTokenTotal;
 
@@ -553,7 +554,10 @@ class AgentClient extends BaseClient {
 
     if (!isMemoryAgentEnabled(memoryConfig)) {
       try {
-        const { withoutKeys } = await db.getFormattedMemories({ userId, agentId: effectiveAgentId });
+        const { withoutKeys } = await db.getFormattedMemories({
+          userId,
+          agentId: effectiveAgentId,
+        });
         return withoutKeys;
       } catch (error) {
         logger.error(

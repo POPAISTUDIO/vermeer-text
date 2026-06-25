@@ -100,6 +100,17 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
     return res.status(429).json(violationInfo);
   }
 
+  // Vermeer — reject a request with no usable content (neither text nor media).
+  // Persisting an empty user message produces an empty text content block that
+  // Anthropic rejects (400 "text content blocks must contain non-whitespace
+  // text") and poisons the whole conversation. Image-only messages stay valid:
+  // `hasFiles` covers attachments/images sent without text.
+  const hasText = typeof text === 'string' && text.trim().length > 0;
+  const hasFiles = Array.isArray(req.body.files) && req.body.files.length > 0;
+  if (!hasText && !hasFiles) {
+    return res.status(400).json({ error: 'Message vide : ajoutez du texte ou un fichier.' });
+  }
+
   // Generate conversationId upfront if not provided - streamId === conversationId always
   // Treat "new" as a placeholder that needs a real UUID (frontend may send "new" for new convos)
   const isNewConvo = !reqConversationId || reqConversationId === 'new';
