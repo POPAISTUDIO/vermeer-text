@@ -554,7 +554,10 @@ class AgentClient extends BaseClient {
 
     if (!isMemoryAgentEnabled(memoryConfig)) {
       try {
-        const { withoutKeys } = await db.getFormattedMemories({ userId, agentId: effectiveAgentId });
+        const { withoutKeys } = await db.getFormattedMemories({
+          userId,
+          agentId: effectiveAgentId,
+        });
         return withoutKeys;
       } catch (error) {
         logger.error(
