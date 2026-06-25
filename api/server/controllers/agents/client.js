@@ -34,6 +34,7 @@ const {
   buildSkillPrimeContentParts,
   buildInitialToolSessions,
   stripEmptyTextBlocks,
+  sanitizeServerToolMessages,
 } = require('@librechat/api');
 const {
   Callback,
@@ -897,6 +898,7 @@ class AgentClient extends BaseClient {
         summary: initialSummary,
         boundaryTokenAdjustment,
       } = formatAgentMessages(payload, this.indexTokenCountMap, toolSet, skillPrimeResult?.skills);
+      initialMessages = sanitizeServerToolMessages(initialMessages);
       if (boundaryTokenAdjustment) {
         logger.debug(
           `[AgentClient] Boundary token adjustment: ${boundaryTokenAdjustment.original} → ${boundaryTokenAdjustment.adjusted} (${boundaryTokenAdjustment.remainingChars}/${boundaryTokenAdjustment.totalChars} chars)`,

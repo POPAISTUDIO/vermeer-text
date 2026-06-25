@@ -1,5 +1,8 @@
+import { Constants } from '@librechat/agents';
 import { ContentTypes } from 'librechat-data-provider';
+import { isAIMessage } from '@librechat/agents/langchain/messages';
 import type { TMessageContentParts, TFile } from 'librechat-data-provider';
+import type { BaseMessage } from '@librechat/agents/langchain/messages';
 
 /**
  * Minimal shape of a message as produced by `formatMessage` just before
@@ -65,4 +68,51 @@ export function stripEmptyTextBlocks<T extends SanitizableMessage>(messages: T[]
 
     return { ...message, content: content.filter((part) => !isEmptyTextPart(part)) };
   });
+}
+
+/**
+ * Vermeer — repairs the Anthropic 400 "text content blocks must contain
+ * non-whitespace text" triggered by an assistant turn that used a native
+ * server tool (e.g. web search, whose tool-call id is prefixed `srvtoolu_`).
+ *
+ * After `formatAgentMessages`, such a turn is reconstructed as an `AIMessage`
+ * with an empty-string `content` plus `tool_calls` that are all server tools.
+ * When `@librechat/agents` converts that message to the Anthropic payload
+ * (`message_inputs.cjs` `_convertMessagesToAnthropicPayload`), the empty
+ * `content` is replaced by `[{ type: 'text', text: ' ' }]` — a whitespace-only
+ * block the API rejects, poisoning every subsequent request in the conversation.
+ * This fires downstream of `stripEmptyTextBlocks` (the offending block does not
+ * exist yet at that stage), so a separate, later pass is required.
+ *
+ * Fills the empty content with a minimal non-whitespace placeholder so the
+ * conversion emits a valid text block instead. Strictly scoped: only AIMessages
+ * whose `content` is an empty/whitespace string AND whose `tool_calls` are ALL
+ * server tools are touched. Mutates `content` in place to preserve the
+ * `AIMessage` prototype (`tool_calls`, `additional_kwargs`, `_getType`, …);
+ * never removes, reorders, or alters tool_calls, so the following tool result is
+ * never orphaned and array indices stay aligned with `indexTokenCountMap`.
+ */
+export function sanitizeServerToolMessages(messages: BaseMessage[]): BaseMessage[] {
+  for (const message of messages) {
+    if (!isAIMessage(message)) {
+      continue;
+    }
+    if (typeof message.content !== 'string' || message.content.trim().length > 0) {
+      continue;
+    }
+    const toolCalls = message.tool_calls;
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      continue;
+    }
+    const allServerTools = toolCalls.every(
+      (toolCall) =>
+        typeof toolCall.id === 'string' &&
+        toolCall.id.startsWith(Constants.ANTHROPIC_SERVER_TOOL_PREFIX),
+    );
+    if (!allServerTools) {
+      continue;
+    }
+    message.content = '.';
+  }
+  return messages;
 }
