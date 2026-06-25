@@ -113,6 +113,8 @@ const BU_FILTERS = [
   { key: 'POP', labelKey: 'com_usage_filter_bu_pop' },
   { key: 'BETC', labelKey: 'com_usage_filter_bu_betc' },
   { key: 'BETC Fullsix', labelKey: 'com_usage_filter_bu_betc_fullsix' },
+  { key: 'BETC Etoile Rouge', labelKey: 'com_usage_filter_bu_betc_etoile_rouge' },
+  { key: 'Maison BETC', labelKey: 'com_usage_filter_bu_maison_betc' },
 ] as const;
 
 const USER_SEGMENTS = [
@@ -142,7 +144,20 @@ function BuBadge({ bu }: { bu: string | null }) {
               className: 'bg-purple-500/15 text-purple-300',
               label: localize('com_usage_filter_bu_betc_fullsix'),
             }
-          : { className: 'bg-gray-500/15 text-gray-300', label: localize('com_usage_filter_bu_other') };
+          : bu === 'BETC Etoile Rouge'
+            ? {
+                className: 'bg-emerald-500/15 text-emerald-300',
+                label: localize('com_usage_filter_bu_betc_etoile_rouge'),
+              }
+            : bu === 'Maison BETC'
+              ? {
+                  className: 'bg-amber-500/15 text-amber-300',
+                  label: localize('com_usage_filter_bu_maison_betc'),
+                }
+              : {
+                  className: 'bg-gray-500/15 text-gray-300',
+                  label: localize('com_usage_filter_bu_other'),
+                };
   return (
     <span
       className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${config.className}`}

@@ -230,7 +230,14 @@ export type GraphTokenResponse = {
 };
 
 /* Business-unit filter shared by the admin analytics views ('all' = no filter). */
-export type BUFilter = 'all' | 'POP' | 'BETC' | 'BETC Fullsix' | 'Other';
+export type BUFilter =
+  | 'all'
+  | 'POP'
+  | 'BETC'
+  | 'BETC Fullsix'
+  | 'BETC Etoile Rouge'
+  | 'Maison BETC'
+  | 'Other';
 
 /* Selected analytics window: 'overall', 'current-month', a 'YYYY-MM' month, or a custom range. */
 export interface AnalyticsPeriod {

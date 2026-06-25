@@ -17,11 +17,18 @@ type AggExpr = string | number | boolean | null | RegExp | AggExpr[] | { [key: s
 /** companyName values (normalized to upper-case) that identify the BETC Fullsix sub-entity. */
 const FULLSIX_COMPANY_NAMES = ['BETC FULLSIX', 'BETC DIGITAL', 'BETC DIGITAL EXT'];
 
+/** companyName value (normalized to upper-case) that identifies the BETC Etoile Rouge sub-entity. */
+const ETOILE_ROUGE_COMPANY_NAME = 'ETOILE ROUGE';
+
+/** companyName values (normalized to upper-case) that identify the Maison BETC sub-entity. */
+const LUXE_COMPANY_NAMES = ['BETC LUXE', 'MAISON BETC', 'MAISON BETC EXT'];
+
 /**
  * Aggregation expression deriving a user's Business Unit (single source of truth).
  * An explicit `tenantId` wins; otherwise the email domain maps to POP / BETC / Vermeer
- * (with @betc.com further split into 'BETC Fullsix' when companyName matches the Fullsix
- * directory values); otherwise the raw email domain is used; `null` when there is no email.
+ * (with @betc.com further split into 'BETC Fullsix', 'BETC Etoile Rouge' or 'Maison BETC' when
+ * companyName matches the corresponding directory values); otherwise the raw email domain is
+ * used; `null` when there is no email.
  * @param emailPath field path to the user email (e.g. '$userDoc.email')
  * @param tenantIdPath field path to the user tenantId (e.g. '$userDoc.tenantId')
  * @param companyNamePath field path to the user companyName (e.g. '$userDoc.companyName')
@@ -57,6 +64,34 @@ export function buExpression(
               then: 'BETC Fullsix',
             },
             {
+              case: {
+                $and: [
+                  { $regexMatch: { input: { $ifNull: [emailPath, ''] }, regex: /@betc\.com$/i } },
+                  {
+                    $eq: [
+                      { $toUpper: { $trim: { input: { $ifNull: [companyNamePath, ''] } } } },
+                      ETOILE_ROUGE_COMPANY_NAME,
+                    ],
+                  },
+                ],
+              },
+              then: 'BETC Etoile Rouge',
+            },
+            {
+              case: {
+                $and: [
+                  { $regexMatch: { input: { $ifNull: [emailPath, ''] }, regex: /@betc\.com$/i } },
+                  {
+                    $in: [
+                      { $toUpper: { $trim: { input: { $ifNull: [companyNamePath, ''] } } } },
+                      LUXE_COMPANY_NAMES,
+                    ],
+                  },
+                ],
+              },
+              then: 'Maison BETC',
+            },
+            {
               case: { $regexMatch: { input: { $ifNull: [emailPath, ''] }, regex: /@betc\.com$/i } },
               then: 'BETC',
             },
@@ -79,7 +114,14 @@ export function buExpression(
 }
 
 /** BU filter values, matching the client-side BUFilter ('all' = no filtering). */
-export type BuFilter = 'all' | 'POP' | 'BETC' | 'BETC Fullsix' | 'Other';
+export type BuFilter =
+  | 'all'
+  | 'POP'
+  | 'BETC'
+  | 'BETC Fullsix'
+  | 'BETC Etoile Rouge'
+  | 'Maison BETC'
+  | 'Other';
 
 /** Optional window + BU filter for the admin usage aggregations. */
 export interface UsageQueryParams {
