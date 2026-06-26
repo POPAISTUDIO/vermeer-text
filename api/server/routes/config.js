@@ -74,6 +74,7 @@ function buildSharedPayload() {
       isEnabled(process.env.SHOW_BIRTHDAY_ICON) ||
       process.env.SHOW_BIRTHDAY_ICON === '',
     helpAndFaqURL: process.env.HELP_AND_FAQ_URL || 'https://librechat.ai',
+    reportIssueURL: process.env.REPORT_ISSUE_URL || null,
     sharedLinksEnabled,
     publicSharedLinksEnabled,
     analyticsGtmId: process.env.ANALYTICS_GTM_ID,

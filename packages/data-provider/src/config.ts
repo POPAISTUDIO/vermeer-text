@@ -1057,6 +1057,7 @@ export type TStartupConfig = {
   emailEnabled: boolean;
   showBirthdayIcon: boolean;
   helpAndFaqURL: string;
+  reportIssueURL?: string | null;
   customFooter?: string;
   modelSpecs?: TSpecsConfig;
   modelDescriptions?: Record<string, Record<string, string>>;
