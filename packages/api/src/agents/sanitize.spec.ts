@@ -1,12 +1,20 @@
 import { ContentTypes } from 'librechat-data-provider';
-import { AIMessage, HumanMessage, ToolMessage } from '@librechat/agents/langchain/messages';
 import type { TMessageContentParts } from 'librechat-data-provider';
-import { stripEmptyTextBlocks, sanitizeServerToolMessages } from './sanitize';
+import { stripEmptyTextBlocks, stripServerToolParts } from './sanitize';
 
 const textPart = (text: string): TMessageContentParts => ({ type: ContentTypes.TEXT, text });
 
 const imagePart = (url: string): TMessageContentParts =>
   ({ type: ContentTypes.IMAGE_URL, image_url: { url } }) as unknown as TMessageContentParts;
+
+const toolCallPart = (
+  id: string,
+  { output, name = 'web_search' }: { output?: string; name?: string } = {},
+): TMessageContentParts =>
+  ({
+    type: ContentTypes.TOOL_CALL,
+    tool_call: { type: 'tool_call', id, name, args: {}, ...(output != null ? { output } : {}) },
+  }) as unknown as TMessageContentParts;
 
 describe('stripEmptyTextBlocks', () => {
   it('removes the empty text block from an image-only message but keeps the image', () => {
@@ -68,126 +76,105 @@ describe('stripEmptyTextBlocks', () => {
   });
 });
 
-const serverToolCall = (id: string) => ({ id, name: 'web_search', args: {} });
+describe('stripServerToolParts', () => {
+  it('removes the server-tool call part from an assistant message, keeping text and tool_call_ids', () => {
+    const answer: TMessageContentParts = {
+      type: ContentTypes.TEXT,
+      text: "Voici ce que j'ai trouvé [1][2]",
+      tool_call_ids: ['srvtoolu_abc'],
+    } as unknown as TMessageContentParts;
+    const messages = [
+      {
+        role: 'assistant',
+        content: [toolCallPart('srvtoolu_abc', { output: '<results>' }), answer],
+      },
+    ];
 
-describe('sanitizeServerToolMessages', () => {
-  it('fills empty content of an all-server-tool AIMessage with a placeholder, leaving tool_calls and identity intact', () => {
-    const toolCalls = [serverToolCall('srvtoolu_abc')];
-    const message = new AIMessage({ content: '', tool_calls: toolCalls });
-    const messages = [message];
+    const result = stripServerToolParts(messages);
 
-    const result = sanitizeServerToolMessages(messages);
-
-    expect(result[0]).toBe(message);
-    expect(result[0].content).toBe('.');
-    expect((result[0] as AIMessage).tool_calls).toEqual(toolCalls);
+    expect(result[0].content).toEqual([answer]);
   });
 
-  it('fills a whitespace-only content of an all-server-tool AIMessage', () => {
-    const message = new AIMessage({ content: '   ', tool_calls: [serverToolCall('srvtoolu_x')] });
+  it('leaves an assistant message with a client tool call unchanged', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: [toolCallPart('toolu_x', { name: 'calculator' }), textPart('hi')],
+      },
+    ];
 
-    const result = sanitizeServerToolMessages([message]);
+    const result = stripServerToolParts(messages);
 
-    expect(result[0].content).toBe('.');
+    expect(result[0]).toBe(messages[0]);
   });
 
-  it('leaves an empty AIMessage whose tool_calls are client tools unchanged', () => {
-    const toolu = new AIMessage({
-      content: '',
-      tool_calls: [{ id: 'toolu_client', name: 'calculator', args: {} }],
-    });
-    const call = new AIMessage({
-      content: '',
-      tool_calls: [{ id: 'call_client', name: 'calculator', args: {} }],
-    });
+  it('leaves a text-only assistant message unchanged', () => {
+    const messages = [{ role: 'assistant', content: [textPart('plain answer')] }];
 
-    const result = sanitizeServerToolMessages([toolu, call]);
+    const result = stripServerToolParts(messages);
 
-    expect(result[0].content).toBe('');
-    expect(result[1].content).toBe('');
+    expect(result[0]).toBe(messages[0]);
   });
 
-  it('leaves an empty AIMessage with mixed server and client tool_calls unchanged', () => {
-    const message = new AIMessage({
-      content: '',
-      tool_calls: [
-        serverToolCall('srvtoolu_x'),
-        { id: 'toolu_client', name: 'calculator', args: {} },
-      ],
-    });
+  it('leaves a user message unchanged even if it carries a server-tool part', () => {
+    const messages = [{ role: 'user', content: [toolCallPart('srvtoolu_x'), textPart('q')] }];
 
-    const result = sanitizeServerToolMessages([message]);
+    const result = stripServerToolParts(messages);
 
-    expect(result[0].content).toBe('');
+    expect(result[0]).toBe(messages[0]);
   });
 
-  it('leaves an AIMessage with non-empty content unchanged', () => {
-    const message = new AIMessage({
-      content: 'réponse',
-      tool_calls: [serverToolCall('srvtoolu_x')],
-    });
+  it('reduces an assistant message whose only part is a server tool to empty content', () => {
+    const messages = [{ role: 'assistant', content: [toolCallPart('srvtoolu_only')] }];
 
-    const result = sanitizeServerToolMessages([message]);
+    const result = stripServerToolParts(messages);
 
-    expect(result[0].content).toBe('réponse');
+    expect(result[0].content).toEqual([]);
   });
 
-  it('leaves an AIMessage with array content unchanged (string path only)', () => {
-    const content = [{ type: 'text', text: 'x' }];
-    const message = new AIMessage({ content, tool_calls: [serverToolCall('srvtoolu_x')] });
+  it('leaves an assistant message with string content unchanged', () => {
+    const messages = [{ role: 'assistant', content: 'string answer' }];
 
-    const result = sanitizeServerToolMessages([message]);
+    const result = stripServerToolParts(messages);
 
-    expect(result[0].content).toEqual(content);
+    expect(result[0]).toBe(messages[0]);
+    expect(result[0].content).toBe('string answer');
   });
 
-  it('leaves an empty AIMessage without tool_calls unchanged', () => {
-    const message = new AIMessage({ content: '' });
+  it('does not remove a tool call with a missing or empty id', () => {
+    const noId = {
+      type: ContentTypes.TOOL_CALL,
+      tool_call: { name: 'web_search', args: {} },
+    } as unknown as TMessageContentParts;
+    const emptyId = toolCallPart('');
+    const messages = [{ role: 'assistant', content: [noId, emptyId] }];
 
-    const result = sanitizeServerToolMessages([message]);
+    const result = stripServerToolParts(messages);
 
-    expect(result[0].content).toBe('');
+    expect(result[0]).toBe(messages[0]);
   });
 
-  it('leaves an empty AIMessage whose tool_call has no id unchanged', () => {
-    const message = new AIMessage({ content: '', tool_calls: [{ name: 'web_search', args: {} }] });
+  it('removes only the server-tool part from a mixed assistant message', () => {
+    const clientCall = toolCallPart('toolu_client', { name: 'calculator' });
+    const answer = textPart('done');
+    const messages = [
+      { role: 'assistant', content: [toolCallPart('srvtoolu_x'), clientCall, answer] },
+    ];
 
-    const result = sanitizeServerToolMessages([message]);
+    const result = stripServerToolParts(messages);
 
-    expect(result[0].content).toBe('');
+    expect(result[0].content).toEqual([clientCall, answer]);
   });
 
-  it('never touches HumanMessage or ToolMessage', () => {
-    const human = new HumanMessage({ content: '' });
-    const tool = new ToolMessage({ content: '', tool_call_id: 'srvtoolu_x', name: 'web_search' });
+  it('preserves the messages array length across all cases', () => {
+    const messages = [
+      { role: 'user', content: [textPart('q')] },
+      { role: 'assistant', content: [toolCallPart('srvtoolu_x'), textPart('a')] },
+      { role: 'assistant', content: 'string' },
+    ];
 
-    const result = sanitizeServerToolMessages([human, tool]);
+    const result = stripServerToolParts(messages);
 
-    expect(result[0].content).toBe('');
-    expect(result[1].content).toBe('');
-  });
-
-  it('preserves length and order, keeping the following tool result intact', () => {
-    const human = new HumanMessage({ content: 'cherche X' });
-    const healed = new AIMessage({ content: '', tool_calls: [serverToolCall('srvtoolu_x')] });
-    const toolResult = new ToolMessage({
-      content: '<results>',
-      tool_call_id: 'srvtoolu_x',
-      name: 'web_search',
-    });
-    const answer = new AIMessage({ content: 'voici la réponse' });
-    const messages = [human, healed, toolResult, answer];
-
-    const result = sanitizeServerToolMessages(messages);
-
-    expect(result).toHaveLength(4);
-    expect(result[0]).toBe(human);
-    expect(result[1]).toBe(healed);
-    expect(result[2]).toBe(toolResult);
-    expect(result[3]).toBe(answer);
-    expect(result[1].content).toBe('.');
-    expect(result[2]).toBeInstanceOf(ToolMessage);
-    expect(result[2].content).toBe('<results>');
-    expect(result[3].content).toBe('voici la réponse');
+    expect(result).toHaveLength(messages.length);
   });
 });

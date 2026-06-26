@@ -34,7 +34,7 @@ const {
   buildSkillPrimeContentParts,
   buildInitialToolSessions,
   stripEmptyTextBlocks,
-  sanitizeServerToolMessages,
+  stripServerToolParts,
 } = require('@librechat/api');
 const {
   Callback,
@@ -892,13 +892,16 @@ class AgentClient extends BaseClient {
         agents: [this.options.agent, ...(this.agentConfigs ? this.agentConfigs.values() : [])],
       });
 
+      /** Vermeer — strip native server-tool (web search, `srvtoolu_`) call parts
+       *  BEFORE formatting so no orphan ToolMessage is reconstructed; see
+       *  `stripServerToolParts`. */
+      payload = stripServerToolParts(payload);
       let {
         messages: initialMessages,
         indexTokenCountMap,
         summary: initialSummary,
         boundaryTokenAdjustment,
       } = formatAgentMessages(payload, this.indexTokenCountMap, toolSet, skillPrimeResult?.skills);
-      initialMessages = sanitizeServerToolMessages(initialMessages);
       if (boundaryTokenAdjustment) {
         logger.debug(
           `[AgentClient] Boundary token adjustment: ${boundaryTokenAdjustment.original} → ${boundaryTokenAdjustment.adjusted} (${boundaryTokenAdjustment.remainingChars}/${boundaryTokenAdjustment.totalChars} chars)`,
