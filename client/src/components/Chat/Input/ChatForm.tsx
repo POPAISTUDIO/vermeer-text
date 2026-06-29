@@ -57,6 +57,8 @@ interface ChatFormProps {
   setFilesLoading: React.Dispatch<React.SetStateAction<boolean>>;
   newConversation: ConvoGenerator;
   handleStopGenerating: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  /** Vermeer: true tant que l'historique d'une conv existante charge (envoi gelé) */
+  messagesLoading?: boolean;
 }
 
 const ChatForm = memo(function ChatForm({
@@ -69,6 +71,7 @@ const ChatForm = memo(function ChatForm({
   setFilesLoading,
   newConversation,
   handleStopGenerating,
+  messagesLoading = false,
 }: ChatFormProps) {
   const submitButtonRef = useRef<HTMLButtonElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -384,10 +387,20 @@ const ChatForm = memo(function ChatForm({
                   <StopButton stop={handleStopGenerating} setShowStopButton={setShowStopButton} />
                 ) : (
                   endpoint && (
+                    // Vermeer: messagesLoading ajoute à la condition disabled —
+                    // bloque clic ET Entree (handleKeyDown fait submitButtonRef.click(),
+                    // no-op sur un bouton disabled) tant que l'historique d'une conv
+                    // existante n'est pas hydrate (parentMessageId fiable).
                     <SendButton
                       ref={submitButtonRef}
                       control={methods.control}
-                      disabled={filesLoading || isSubmitting || disableInputs || isNotAppendable}
+                      disabled={
+                        filesLoading ||
+                        isSubmitting ||
+                        disableInputs ||
+                        isNotAppendable ||
+                        messagesLoading
+                      }
                     />
                   )
                 )}
@@ -407,7 +420,14 @@ ChatForm.displayName = 'ChatForm';
  * to the memo'd ChatForm. This prevents ChatForm from re-rendering on every
  * streaming chunk — it only re-renders when the specific values it uses change.
  */
-function ChatFormWrapper({ index = 0 }: { index?: number }) {
+function ChatFormWrapper({
+  index = 0,
+  messagesLoading = false,
+}: {
+  index?: number;
+  /** Vermeer: relayé depuis ChatView (état de chargement de l'historique) */
+  messagesLoading?: boolean;
+}) {
   const {
     files,
     setFiles,
@@ -467,6 +487,7 @@ function ChatFormWrapper({ index = 0 }: { index?: number }) {
       setFilesLoading={setFilesLoading}
       newConversation={stableNewConversation}
       handleStopGenerating={stableHandleStop}
+      messagesLoading={messagesLoading}
     />
   );
 }

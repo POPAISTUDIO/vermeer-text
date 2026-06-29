@@ -68,6 +68,15 @@ function ChatView({ index = 0 }: { index?: number }) {
     (conversationId === Constants.NEW_CONVO || !conversationId);
   const isNavigating = (!messagesTree || messagesTree.length === 0) && conversationId != null;
 
+  // Vermeer: gate l'envoi tant que l'historique d'une conversation EXISTANTE
+  // n'est pas hydraté. Tant que `useGetMessagesByConvoId` charge, l'atome Recoil
+  // `latestMessage` n'est pas encore posé (seul call-site: useMessageProcess.tsx,
+  // au rendu de la feuille de l'arbre) → useChatFunctions résoudrait
+  // `parentMessageId = NO_PARENT` et le serveur démarrerait un fil neuf
+  // (réponse hors-contexte). On exclut la conv neuve (rien à charger).
+  const messagesLoading =
+    isLoading && conversationId != null && conversationId !== Constants.NEW_CONVO;
+
   if (isLoading && conversationId !== Constants.NEW_CONVO) {
     content = <LoadingSpinner />;
   } else if ((isLoading || isNavigating) && !isLandingPage) {
@@ -101,7 +110,8 @@ function ChatView({ index = 0 }: { index?: number }) {
                       isLandingPage && 'max-w-3xl transition-all duration-200 xl:max-w-4xl',
                     )}
                   >
-                    <ChatForm index={index} />
+                    {/* Vermeer: messagesLoading gèle l'envoi pendant l'hydratation de l'historique */}
+                    <ChatForm index={index} messagesLoading={messagesLoading} />
                     <BudgetCard />
                     {isLandingPage && <SuggestionGrid index={index} />}
                     {isLandingPage ? (
