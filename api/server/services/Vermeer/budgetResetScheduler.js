@@ -54,7 +54,10 @@ async function ensureMonthlyBudgetReset() {
       { _id: JOB_ID },
       { $set: { lastResetMonth: prev ? prev.lastResetMonth : null, updatedAt: new Date() } },
     ).catch((rollbackErr) => {
-      logger.error(`[Vermeer] Monthly budget reset marker rollback failed for ${monthKey}:`, rollbackErr);
+      logger.error(
+        `[Vermeer] Monthly budget reset marker rollback failed for ${monthKey}:`,
+        rollbackErr,
+      );
     });
     logger.error(`[Vermeer] Monthly budget reset failed for ${monthKey}:`, err);
   }
@@ -65,7 +68,9 @@ async function ensureMonthlyBudgetReset() {
 function startBudgetResetScheduler() {
   // Vermeer: kill-switch réversible en 1 ligne (défaut activé ; 'false' désarme tout).
   if (process.env.VERMEER_BUDGET_RESET_ENABLED === 'false') {
-    logger.info('[Vermeer] Monthly budget reset scheduler disabled via VERMEER_BUDGET_RESET_ENABLED=false.');
+    logger.info(
+      '[Vermeer] Monthly budget reset scheduler disabled via VERMEER_BUDGET_RESET_ENABLED=false.',
+    );
     return;
   }
 

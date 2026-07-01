@@ -6,7 +6,11 @@
 // Vermeer: usd_proxy is a PROXY on the Vermeer rate table (abs(tokenValue)/1e6), NOT the invoice.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '@librechat/client';
-import type { AnalyticsQueryParams, AnalyticsPeriod, ProviderCostRow } from 'librechat-data-provider';
+import type {
+  AnalyticsQueryParams,
+  AnalyticsPeriod,
+  ProviderCostRow,
+} from 'librechat-data-provider';
 import { useAdminCostByProviderQuery } from '~/data-provider';
 import PeriodSelector from './PeriodSelector';
 import { useLocalize } from '~/hooks';
@@ -28,7 +32,12 @@ const PROVIDER_ORDER = ['Anthropic', 'Google', 'OpenAI', 'Other'];
 const ALL = 'all';
 
 // Vermeer: default local period for the graph = current month (label resolved by PeriodSelector).
-const CURRENT_MONTH_PERIOD: AnalyticsPeriod = { key: 'current-month', label: '', start: null, end: null };
+const CURRENT_MONTH_PERIOD: AnalyticsPeriod = {
+  key: 'current-month',
+  label: '',
+  start: null,
+  end: null,
+};
 
 /** Vermeer: current UTC month as 'YYYY-MM'. */
 function currentMonthKey(): string {
@@ -119,7 +128,7 @@ function buildChart(rows: ProviderCostRow[], selectedProvider: string): ChartMod
   const colorByKey = new Map<string, string>();
   seriesKeys.forEach((key, index) => {
     const color = viewingAll
-      ? PROVIDER_PALETTE[key] ?? PROVIDER_FALLBACK_COLOR
+      ? (PROVIDER_PALETTE[key] ?? PROVIDER_FALLBACK_COLOR)
       : MODEL_PALETTE[index % MODEL_PALETTE.length];
     colorByKey.set(key, color);
   });
@@ -387,7 +396,9 @@ function ProviderCostSeries({ bu }: Pick<AnalyticsQueryParams, 'bu'>) {
                 >
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: chart.colorByKey.get(key) ?? PROVIDER_FALLBACK_COLOR }}
+                    style={{
+                      backgroundColor: chart.colorByKey.get(key) ?? PROVIDER_FALLBACK_COLOR,
+                    }}
                   />
                   <span className="max-w-[12rem] truncate text-text-primary" title={key}>
                     {key}

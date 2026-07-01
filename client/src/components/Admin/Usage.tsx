@@ -191,7 +191,7 @@ function KpiCard({
       <p className="text-sm text-text-secondary">{label}</p>
       <p className="text-2xl font-semibold text-text-primary">{value}</p>
       {sublabel && (
-        <p className={`text-xs text-text-tertiary${muted ? ' opacity-70' : ''}`}>{sublabel}</p>
+        <p className={`text-xs text-text-tertiary ${muted ? 'opacity-70' : ''}`}>{sublabel}</p>
       )}
     </div>
   );
@@ -484,11 +484,9 @@ function Usage() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col gap-6 overflow-y-auto bg-surface-primary px-8 py-6 min-h-0 [&>*]:shrink-0">
+    <div className="flex h-full min-h-0 w-full flex-col gap-6 overflow-y-auto bg-surface-primary px-8 py-6 [&>*]:shrink-0">
       <header>
-        <h1 className="text-2xl font-semibold text-text-primary">
-          {localize('com_usage_title')}
-        </h1>
+        <h1 className="text-2xl font-semibold text-text-primary">{localize('com_usage_title')}</h1>
         <p className="text-sm text-text-secondary">{localize('com_usage_subtitle')}</p>
       </header>
 
@@ -787,7 +785,10 @@ function Usage() {
                           {formatUSD(row.monthlyBudget)}
                         </td>
                         <td className="px-4 py-3">
-                          <BudgetProgress spent={row.currentMonthSpend} budget={row.monthlyBudget} />
+                          <BudgetProgress
+                            spent={row.currentMonthSpend}
+                            budget={row.monthlyBudget}
+                          />
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button
