@@ -23,7 +23,7 @@ import { useLocalize } from '~/hooks';
 import { formatUSD, creditsToUsdInput, budgetColor } from './credits';
 
 // Vermeer: V1 provider cost series, flip to true to activate.
-const SHOW_PROVIDER_COST_SERIES = false;
+const SHOW_PROVIDER_COST_SERIES = true;
 
 // Vermeer: shared section-card wrapper — homogenizes Model Mix / provider graph with the KPI cards
 // (reuses existing design-system tokens; no new tokens, no global style changes).
