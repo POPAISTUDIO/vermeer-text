@@ -63,6 +63,9 @@ const startServer = async () => {
     logger.error('[indexSync] Background sync failed:', err);
   });
 
+  // Vermeer: reset mensuel automatique des seuils budget (après connexion Mongoose)
+  require('~/server/services/Vermeer/budgetResetScheduler').startBudgetResetScheduler();
+
   app.disable('x-powered-by');
   app.set('trust proxy', trusted_proxy);
 
