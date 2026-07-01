@@ -18,8 +18,16 @@ import {
 import { NotificationSeverity } from '~/common';
 import EditBudgetModal from './EditBudgetModal';
 import PeriodSelector from './PeriodSelector';
+import ProviderCostSeries from './ProviderCostSeries';
 import { useLocalize } from '~/hooks';
 import { formatUSD, creditsToUsdInput, budgetColor } from './credits';
+
+// Vermeer: V1 provider cost series, flip to true to activate.
+const SHOW_PROVIDER_COST_SERIES = false;
+
+// Vermeer: shared section-card wrapper — homogenizes Model Mix / provider graph with the KPI cards
+// (reuses existing design-system tokens; no new tokens, no global style changes).
+const SECTION_CARD = 'rounded-lg border border-border-light bg-surface-secondary p-6';
 
 function formatTokens(value: number): string {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value);
@@ -179,11 +187,11 @@ function KpiCard({
   muted?: boolean;
 }) {
   return (
-    <div className="rounded-lg bg-surface-secondary p-4">
+    <div className="rounded-lg bg-surface-secondary p-5">
       <p className="text-sm text-text-secondary">{label}</p>
       <p className="text-2xl font-semibold text-text-primary">{value}</p>
       {sublabel && (
-        <p className={`text-xs text-text-tertiary${muted ? ' opacity-70' : ''}`}>{sublabel}</p>
+        <p className={`text-xs text-text-tertiary ${muted ? 'opacity-70' : ''}`}>{sublabel}</p>
       )}
     </div>
   );
@@ -476,11 +484,9 @@ function Usage() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 overflow-y-auto bg-surface-primary px-8 py-6 min-h-0 [&>*]:shrink-0">
+    <div className="flex h-full min-h-0 w-full flex-col gap-6 overflow-y-auto bg-surface-primary px-8 py-6 [&>*]:shrink-0">
       <header>
-        <h1 className="text-2xl font-semibold text-text-primary">
-          {localize('com_usage_title')}
-        </h1>
+        <h1 className="text-2xl font-semibold text-text-primary">{localize('com_usage_title')}</h1>
         <p className="text-sm text-text-secondary">{localize('com_usage_subtitle')}</p>
       </header>
 
@@ -531,7 +537,9 @@ function Usage() {
 
       {activeTab === 'analytics' && (
         <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {/* Vermeer: single responsive grid for the 7 headline KPIs — consistent card widths
+              (was two rows of 4/3 that misaligned). */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             <KpiCard
               label={localize('com_usage_kpi_users')}
               value={formatTokens(filteredRows.length)}
@@ -552,8 +560,6 @@ function Usage() {
               value={formatTokens(totals.messages)}
               sublabel={periodSubLabel}
             />
-          </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <KpiCard
               label={localize('com_usage_kpi_avg_cost_per_conversation')}
               value={kpisData ? formatUSD(kpisData.stats.avgCostPerConversation) : '—'}
@@ -570,7 +576,8 @@ function Usage() {
               sublabel={periodSubLabel}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* Vermeer: user-intensity segments — same grid scheme so widths align with the KPIs above. */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {USER_SEGMENTS.map((segment) => (
               <KpiCard
                 key={segment.key}
@@ -581,11 +588,18 @@ function Usage() {
               />
             ))}
           </div>
-          <ModelMixSection
-            rows={modelData?.rows ?? []}
-            isLoading={isModelLoading}
-            caption={modelMixCaption}
-          />
+          <div className={SECTION_CARD}>
+            <ModelMixSection
+              rows={modelData?.rows ?? []}
+              isLoading={isModelLoading}
+              caption={modelMixCaption}
+            />
+          </div>
+          {SHOW_PROVIDER_COST_SERIES && (
+            <div className={SECTION_CARD}>
+              <ProviderCostSeries bu={activeBU} />
+            </div>
+          )}
 
           <div className="overflow-hidden rounded-lg border border-border-light">
             <div
@@ -771,7 +785,10 @@ function Usage() {
                           {formatUSD(row.monthlyBudget)}
                         </td>
                         <td className="px-4 py-3">
-                          <BudgetProgress spent={row.currentMonthSpend} budget={row.monthlyBudget} />
+                          <BudgetProgress
+                            spent={row.currentMonthSpend}
+                            budget={row.monthlyBudget}
+                          />
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button

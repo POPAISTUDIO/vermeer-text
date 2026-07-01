@@ -13,12 +13,15 @@ jest.mock('~/config/winston', () => ({
 
 let mongoServer: InstanceType<typeof MongoMemoryServer>;
 let getAllBudgets: ReturnType<typeof createBudgetMethods>['getAllBudgets'];
+let resetMonthBudgets: ReturnType<typeof createBudgetMethods>['resetMonthBudgets'];
 
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
   const models = createModels(mongoose);
   Object.assign(mongoose.models, models);
-  getAllBudgets = createBudgetMethods(mongoose).getAllBudgets;
+  const methods = createBudgetMethods(mongoose);
+  getAllBudgets = methods.getAllBudgets;
+  resetMonthBudgets = methods.resetMonthBudgets;
   await mongoose.connect(mongoServer.getUri());
 });
 
@@ -125,5 +128,39 @@ describe('getAllBudgets', () => {
     const rows = await getAllBudgets();
 
     expect(rows.map((r) => r.user)).toEqual([String(big), String(nullName), String(named)]);
+  });
+});
+
+describe('resetMonthBudgets', () => {
+  test('restores monthlyBudget to baseline per doc, falling back to default when baseline is null', async () => {
+    const alice = await seedUser('Alice', 'alice@betc.com');
+    const bob = await seedUser('Bob', 'bob@pop.com');
+
+    await mongoose.models.Balance.create({
+      user: alice,
+      monthlyBudget: 5_000_000,
+      monthlyBudgetBaseline: 7_000_000,
+    });
+    await mongoose.models.Balance.create({
+      user: bob,
+      monthlyBudget: 3_000_000,
+      monthlyBudgetBaseline: null,
+    });
+
+    const modified = await resetMonthBudgets();
+
+    expect(modified).toBe(2);
+    const aliceBalance = await mongoose.models.Balance.findOne({ user: alice }).lean<{
+      monthlyBudget: number;
+    }>();
+    const bobBalance = await mongoose.models.Balance.findOne({ user: bob }).lean<{
+      monthlyBudget: number;
+    }>();
+    expect(aliceBalance!.monthlyBudget).toBe(7_000_000);
+    expect(bobBalance!.monthlyBudget).toBe(DEFAULT_MONTHLY_BUDGET);
+  });
+
+  test('no Balance documents: returns 0 without throwing', async () => {
+    await expect(resetMonthBudgets()).resolves.toBe(0);
   });
 });

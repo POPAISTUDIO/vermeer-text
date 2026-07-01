@@ -1,4 +1,5 @@
 import logger from '~/config/winston';
+import { providerSwitchExpr } from '~/methods/provider'; // Vermeer: model -> provider mapping (source of truth)
 import type { FilterQuery, Model, Types } from 'mongoose';
 import type { IBalance, IBalanceUpdate, TransactionData } from '~/types';
 import type { ITransaction } from '~/schema/transaction';
@@ -909,6 +910,81 @@ export function createTransactionMethods(
     return { count: result[0]?.count ?? 0 };
   }
 
+  // Vermeer: 1 USD = 1_000_000 tokenCredits (cf. client/src/components/Admin/credits.ts).
+  // Vermeer: usd_proxy is a PROXY (abs(tokenValue)/1e6), NOT the provider invoice.
+  const VERMEER_CREDITS_PER_USD = 1_000_000;
+
+  /** Vermeer: one row of the day x provider x model cost series. */
+  interface ProviderCostDailyRow {
+    date: string;
+    provider: string;
+    model: string;
+    usd_proxy: number;
+    completions: number;
+  }
+
+  /**
+   * Vermeer: cost time-series at day x provider x model granularity, over an optional window
+   * (defaults to the current UTC month) and optional BU filter. Sums absolute `tokenValue` over
+   * prompt + completion transactions; provider is derived from the model name via providerSwitchExpr.
+   * `usd_proxy` is a proxy (credits / 1e6), NOT the actual invoice. Sorted by date, provider, model.
+   * Used by GET /api/admin/usage/providers. Additive, read-only — touches no existing method.
+   */
+  async function aggregateCostByProviderDaily(
+    params: UsageQueryParams = {},
+  ): Promise<ProviderCostDailyRow[]> {
+    const Transaction = mongoose.models.Transaction;
+    const start = params.start ?? currentMonthStartUTC();
+    const end = params.end ?? new Date();
+    const buValue = buFilterValue(params.bu);
+
+    const rows = await Transaction.aggregate<{
+      date: string;
+      provider: string;
+      model: string;
+      usdProxyCredits: number;
+      completions: number;
+    }>([
+      {
+        $match: {
+          createdAt: { $gte: start, $lt: end },
+          tokenType: { $in: ['prompt', 'completion'] },
+        },
+      },
+      ...buLookupStages(buValue, 'user'),
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'UTC' } },
+            provider: providerSwitchExpr('$model'),
+            model: { $ifNull: ['$model', '(none)'] },
+          },
+          usdProxyCredits: { $sum: { $abs: { $ifNull: ['$tokenValue', 0] } } },
+          completions: { $sum: { $cond: [{ $eq: ['$tokenType', 'completion'] }, 1, 0] } },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          date: '$_id.date',
+          provider: '$_id.provider',
+          model: '$_id.model',
+          usdProxyCredits: 1,
+          completions: 1,
+        },
+      },
+      { $sort: { date: 1, provider: 1, model: 1 } },
+    ]);
+
+    return rows.map((row) => ({
+      date: row.date,
+      provider: row.provider,
+      model: row.model,
+      usd_proxy: row.usdProxyCredits / VERMEER_CREDITS_PER_USD,
+      completions: row.completions,
+    }));
+  }
+
   return {
     updateBalance,
     bulkInsertTransactions,
@@ -926,6 +1002,7 @@ export function createTransactionMethods(
     aggregateConversationStats,
     aggregateConversationsPerUser,
     countAgentsCreated,
+    aggregateCostByProviderDaily, // Vermeer: day x provider x model cost series (additive)
   };
 }
 

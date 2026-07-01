@@ -1349,6 +1349,23 @@ export const getAdminBudgets = (): Promise<q.AdminBudgetsResponse> => {
   return request.get(endpoints.adminBudgets());
 };
 
+/* Vermeer: dedicated query builder for the cost-by-provider month range (start/end + bu).
+   Kept separate from buildAnalyticsQuery on purpose (this graph drives its own month). */
+const buildProviderCostQuery = ({ bu, start, end }: q.ProviderCostQueryParams): string => {
+  const parts: string[] = [`start=${start}`, `end=${end}`];
+  if (bu !== 'all') {
+    parts.push(`bu=${encodeURIComponent(bu)}`);
+  }
+  return `?${parts.join('&')}`;
+};
+
+/* Vermeer: Admin cost-by-provider time series (day x provider x model), scoped to a month range */
+export const getAdminCostByProvider = (
+  params: q.ProviderCostQueryParams,
+): Promise<q.AdminCostByProviderResponse> => {
+  return request.get(endpoints.adminCostByProvider() + buildProviderCostQuery(params));
+};
+
 export const updateBudget = (
   userId: string,
   body: q.UpdateBudgetRequest,

@@ -79,4 +79,22 @@ describe('[Vermeer] ensureMonthlyBudgetReset', () => {
     expect(db.resetMonthBudgets).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  test('resetMonthBudgets jette : marqueur rollback (non avancé), retry re-claim au 2e appel', async () => {
+    db.resetMonthBudgets
+      .mockRejectedValueOnce(new Error('Wrong type for parameter u'))
+      .mockResolvedValueOnce(5);
+
+    // 1er appel : claim gagné puis reset échoue → le marqueur est rollback, pas avancé.
+    await ensureMonthlyBudgetReset();
+    expect(db.resetMonthBudgets).toHaveBeenCalledTimes(1);
+    const afterFail = await VermeerJobState.findById(JOB_ID).lean();
+    expect(afterFail.lastResetMonth).not.toBe(currentMonthKeyUTC());
+
+    // 2e appel : marqueur ré-armé → re-claim, reset réussit → marqueur avancé.
+    await ensureMonthlyBudgetReset();
+    expect(db.resetMonthBudgets).toHaveBeenCalledTimes(2);
+    const afterOk = await VermeerJobState.findById(JOB_ID).lean();
+    expect(afterOk.lastResetMonth).toBe(currentMonthKeyUTC());
+  });
 });

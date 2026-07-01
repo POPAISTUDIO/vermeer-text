@@ -6,6 +6,8 @@ import type {
   AnalyticsQueryParams,
   AdminUsageResponse,
   ModelUsageResponse,
+  AdminCostByProviderResponse,
+  ProviderCostQueryParams,
   AdminKpisResponse,
   AdminBudgetsResponse,
   UpdateBudgetRequest,
@@ -33,6 +35,22 @@ export const useAdminModelUsageQuery = (
   return useQuery<ModelUsageResponse>(
     [QueryKeys.adminModelUsage, params.period.key, params.bu],
     () => dataService.getAdminModelUsage(params),
+    {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: false,
+    },
+  );
+};
+
+// Vermeer: cost-by-provider time series — driven by its own month range (start/end) + page BU.
+// Vermeer: queryKey includes the month range so it refetches when the local month dropdown changes.
+export const useAdminCostByProviderQuery = (
+  params: ProviderCostQueryParams,
+): QueryObserverResult<AdminCostByProviderResponse> => {
+  return useQuery<AdminCostByProviderResponse>(
+    [QueryKeys.adminCostByProvider, params.bu, params.start, params.end],
+    () => dataService.getAdminCostByProvider(params),
     {
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
