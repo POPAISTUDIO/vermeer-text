@@ -90,6 +90,8 @@ export enum QueryKeys {
   adminPeriods = 'adminPeriods',
   /* Admin scalar KPIs (avg cost/conv, conv/active user, agents created) */
   adminKpis = 'adminKpis',
+  /* Vermeer: Admin cost-by-provider time series (day x provider x model) */
+  adminCostByProvider = 'adminCostByProvider',
   /* Cross-user conversations shared on an agent (shared-conversations panel) */
   agentSharedConversations = 'agentSharedConversations',
 }

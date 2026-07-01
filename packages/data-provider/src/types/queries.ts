@@ -286,6 +286,29 @@ export interface ModelUsageResponse {
   rows: ModelUsageRow[];
 }
 
+/* Vermeer: Admin cost-by-provider time series (day x provider x model). usd_proxy is a proxy
+   (abs(tokenValue)/1_000_000), NOT the actual provider invoice. */
+export interface ProviderCostRow {
+  date: string;
+  provider: string;
+  model: string;
+  usd_proxy: number;
+  completions: number;
+}
+
+export interface AdminCostByProviderResponse {
+  period: AnalyticsPeriod;
+  rows: ProviderCostRow[];
+}
+
+/* Vermeer: dedicated params for the cost-by-provider month range (start/end UTC, YYYY-MM-DD).
+   Decoupled from AnalyticsQueryParams so the graph drives its own month; bu follows the page. */
+export interface ProviderCostQueryParams {
+  bu: BUFilter;
+  start: string;
+  end: string;
+}
+
 /* Admin scalar KPIs over the selected window/BU (all amounts in tokenCredits). */
 export interface AdminKpisResponse {
   period: AnalyticsPeriod;

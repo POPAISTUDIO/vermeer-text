@@ -441,6 +441,9 @@ export const adminKpis = () => `${BASE_URL}/api/admin/usage/kpis`;
 
 /* Admin Budgets (monthly spend thresholds per user — ADMIN) */
 export const adminBudgets = () => `${BASE_URL}/api/admin/usage/budgets`;
+
+/* Vermeer: Admin cost-by-provider time series (day x provider x model — ADMIN) */
+export const adminCostByProvider = () => `${BASE_URL}/api/admin/usage/providers`;
 export const adminBudgetByUser = (userId: string) =>
   `${BASE_URL}/api/admin/usage/budgets/${encodeURIComponent(userId)}`;
 export const adminBudgetsResetMonth = () => `${BASE_URL}/api/admin/usage/budgets/reset-month`;

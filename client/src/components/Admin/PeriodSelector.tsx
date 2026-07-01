@@ -17,13 +17,17 @@ function formatMonthLocalized(year: number, month: number, locale: string): stri
 /**
  * Period dropdown for the Analytics tab: "Current month" + "Overall" fixed at the top,
  * then the months with activity (from useAdminPeriodsQuery), labels localized via Intl.
+ * Vermeer: `hideOverall` (default false = unchanged) drops the "Overall" option — used by the
+ * provider cost graph, where an open-ended window makes no sense for daily bars.
  */
 function PeriodSelector({
   value,
   onChange,
+  hideOverall = false,
 }: {
   value: AnalyticsPeriod;
   onChange: (period: AnalyticsPeriod) => void;
+  hideOverall?: boolean;
 }) {
   const localize = useLocalize();
   const { i18n } = useTranslation();
@@ -40,25 +44,36 @@ function PeriodSelector({
         start: null,
         end: null,
       },
-      { key: 'overall', label: localize('com_usage_period_overall'), start: null, end: null },
+      ...(hideOverall
+        ? []
+        : [
+            {
+              key: 'overall',
+              label: localize('com_usage_period_overall'),
+              start: null,
+              end: null,
+            } as AnalyticsPeriod,
+          ]),
     ];
 
+    // Vermeer: the /periods endpoint returns { year, month, label } with the 'YYYY-MM' string in
+    // `label` (no `key` field), so read p.label — reading p.key dropped every month (undefined).
     const months: AnalyticsPeriod[] = (data?.periods ?? [])
-      .filter((p) => /^\d{4}-\d{2}$/.test(p.key) && p.key !== currentKey)
+      .filter((p) => /^\d{4}-\d{2}$/.test(p.label) && p.label !== currentKey)
       .map((p) => {
-        const [year, month] = p.key.split('-').map(Number);
+        const [year, month] = p.label.split('-').map(Number);
         const nextMonth = new Date(Date.UTC(year, month, 1));
         const end = `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, '0')}-01`;
         return {
-          key: p.key,
+          key: p.label,
           label: formatMonthLocalized(year, month, i18n.language),
-          start: `${p.key}-01`,
+          start: `${p.label}-01`,
           end,
         };
       });
 
     return [...head, ...months];
-  }, [data?.periods, localize, i18n.language]);
+  }, [data?.periods, localize, i18n.language, hideOverall]);
 
   const handleChange = (key: string) => {
     const selected = options.find((option) => option.key === key);

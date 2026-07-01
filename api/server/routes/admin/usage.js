@@ -190,4 +190,20 @@ router.get('/kpis', requireReadUsage, async (req, res) => {
   }
 });
 
+// Vermeer: cost time-series at day x provider x model granularity (analytics "cost by provider").
+// Vermeer: additive, read-only; reuses parseUsageQuery. Provider filtering is done front-side on rows.
+router.get('/providers', requireReadUsage, async (req, res) => {
+  const { params, period, error } = parseUsageQuery(req);
+  if (error) {
+    return res.status(400).json({ message: error });
+  }
+  try {
+    const rows = await db.aggregateCostByProviderDaily(params);
+    res.json({ period, rows });
+  } catch (err) {
+    logger.error('[GET /api/admin/usage/providers] aggregation failed:', err);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
 module.exports = router;
