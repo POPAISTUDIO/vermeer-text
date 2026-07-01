@@ -152,12 +152,36 @@ export function createBudgetMethods(mongoose: typeof import('mongoose')) {
   /**
    * Monthly reset: restores every Balance's current budget to its baseline.
    * Returns the number of records modified.
+   *
+   * The per-document value `monthlyBudget <- monthlyBudgetBaseline` is computed
+   * application-side and applied with plain `updateOne` operations (no aggregation
+   * pipeline `$set`), so it works on datastores that reject pipeline updates
+   * (Amazon DocumentDB, MongoDB < 4.2). Volume is low (one Balance per user).
    */
   async function resetMonthBudgets(): Promise<number> {
     const Balance = mongoose.models.Balance as Model<IBalance>;
-    const result = await Balance.updateMany({}, [
-      { $set: { monthlyBudget: { $ifNull: ['$monthlyBudgetBaseline', DEFAULT_MONTHLY_BUDGET] } } },
-    ]);
+    const balances = await Balance.find({}, { _id: 1, monthlyBudgetBaseline: 1 }).lean<
+      Array<{ _id: Types.ObjectId; monthlyBudgetBaseline?: number }>
+    >();
+    if (balances.length === 0) {
+      return 0;
+    }
+
+    const operations: Parameters<typeof Balance.bulkWrite>[0] = balances.map((balance) => ({
+      updateOne: {
+        filter: { _id: balance._id },
+        update: {
+          $set: {
+            monthlyBudget:
+              balance.monthlyBudgetBaseline != null
+                ? balance.monthlyBudgetBaseline
+                : DEFAULT_MONTHLY_BUDGET,
+          },
+        },
+      },
+    }));
+
+    const result = await Balance.bulkWrite(operations, { ordered: false });
     return result.modifiedCount ?? 0;
   }
 

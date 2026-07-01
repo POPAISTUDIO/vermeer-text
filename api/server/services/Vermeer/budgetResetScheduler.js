@@ -20,19 +20,15 @@ function currentMonthKeyUTC() {
 // exécute resetMonthBudgets(). Le marqueur rend l'appel idempotent (safe multi-réplicas).
 async function ensureMonthlyBudgetReset() {
   const monthKey = currentMonthKeyUTC();
+  let prev;
   try {
     // Claim atomique : ne matche que si le mois n'a pas encore été traité.
     // Retour (new: false) : null = doc inséré par l'upsert (ce pod a gagné) ;
     // doc non-null = ancien lastResetMonth != monthKey, ce pod a gagné l'update.
-    await VermeerJobState.findOneAndUpdate(
+    prev = await VermeerJobState.findOneAndUpdate(
       { _id: JOB_ID, lastResetMonth: { $ne: monthKey } },
       { $set: { lastResetMonth: monthKey, updatedAt: new Date() } },
       { upsert: true, new: false },
-    );
-    // Claim gagné → restauration seuil <- baseline pour tous les users.
-    const modifiedCount = await db.resetMonthBudgets();
-    logger.info(
-      `[Vermeer] Monthly budget reset claimed for ${monthKey}: ${modifiedCount} balance(s) restored to baseline.`,
     );
   } catch (err) {
     if (err && err.code === 11000) {
@@ -41,6 +37,25 @@ async function ensureMonthlyBudgetReset() {
       logger.debug(`[Vermeer] Monthly budget reset already claimed for ${monthKey}, skipping.`);
       return;
     }
+    logger.error(`[Vermeer] Monthly budget reset claim failed for ${monthKey}:`, err);
+    return;
+  }
+
+  // Claim gagné → restauration seuil <- baseline pour tous les users.
+  try {
+    const modifiedCount = await db.resetMonthBudgets();
+    logger.info(
+      `[Vermeer] Monthly budget reset claimed for ${monthKey}: ${modifiedCount} balance(s) restored to baseline.`,
+    );
+  } catch (err) {
+    // Rollback du marqueur : le reset a échoué, on ré-arme le mois pour retenter au
+    // prochain tick (sinon le marqueur reste grillé → skip permanent, échec silencieux).
+    await VermeerJobState.updateOne(
+      { _id: JOB_ID },
+      { $set: { lastResetMonth: prev ? prev.lastResetMonth : null, updatedAt: new Date() } },
+    ).catch((rollbackErr) => {
+      logger.error(`[Vermeer] Monthly budget reset marker rollback failed for ${monthKey}:`, rollbackErr);
+    });
     logger.error(`[Vermeer] Monthly budget reset failed for ${monthKey}:`, err);
   }
 }
