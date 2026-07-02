@@ -114,6 +114,11 @@ const conversationByIndex = atomFamily<TConversation | null, string | number>({
 
         const convoToStore = { ...newValue };
         clearModelForNonEphemeralAgent(convoToStore);
+        // Vermeer: never carry maxContextTokens into LAST_CONVO_SETUP. It is a system-derived
+        // value ("Système" = undefined); persisting it here makes a NEW conversation inherit the
+        // previous one's window and re-emit it as if user-set (contamination loop). See anti-echo
+        // guard in packages/api/src/agents/initialize.ts.
+        delete convoToStore.maxContextTokens; // Vermeer:
         localStorage.setItem(
           `${LocalStorageKeys.LAST_CONVO_SETUP}_${index}`,
           JSON.stringify(convoToStore),
