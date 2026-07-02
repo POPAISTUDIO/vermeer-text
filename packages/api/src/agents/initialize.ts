@@ -50,6 +50,23 @@ import type { TFilterFilesByAgentAccess } from './resources';
  * manages overflow. `createRun` can further override this via `SummarizationConfig.reserveRatio`.
  */
 const DEFAULT_RESERVE_RATIO = 0.05;
+
+/**
+ * Vermeer: resolve the maxContextTokens value to PERSIST (not the runtime window).
+ * Returns the raw user value only when it is explicit (> 0) AND differs from the computed
+ * system window. A received value equal to `computed` is a client echo (conversation reloaded
+ * from DB / inherited via LAST_CONVO_SETUP), not a deliberate entry, so it is dropped
+ * (`undefined` → stripped by removeNullishValues → "Système" stays "Système"). Caveat: a user
+ * who deliberately sets exactly the computed value is treated as system — benign, the runtime
+ * window is identical either way.
+ */
+export function resolveUserMaxContextTokens(
+  received: number | null | undefined,
+  computed: number,
+): number | undefined {
+  return received != null && received > 0 && received !== computed ? received : undefined;
+}
+
 const temporalSpecialVarRegex = /{{\s*(current_date|current_datetime|iso_datetime)\s*}}/i;
 
 function hasTemporalSpecialVars(text: string): boolean {
@@ -908,6 +925,13 @@ export async function initializeAgent(
   const maxToolResultCharsResolved =
     providerMaxToolResultChars ?? endpointConfigs?.all?.maxToolResultChars;
 
+  // Vermeer: computed system window when the user leaves "Système" (no explicit value).
+  // Extracted so the runtime field and the anti-echo persistence guard share one source.
+  const computedMaxContextTokens = Math.max(
+    1024,
+    Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO)),
+  ); // Vermeer:
+
   const initializedAgent: InitializedAgent = {
     ...agent,
     resendFiles,
@@ -933,11 +957,11 @@ export async function initializeAgent(
     maxContextTokens:
       maxContextTokens != null && maxContextTokens > 0
         ? maxContextTokens
-        : Math.max(1024, Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO))),
-    // Vermeer: expose the raw user value (undefined unless explicitly set > 0) so
-    // persistence never freezes the computed fallback. Runtime keeps using maxContextTokens above.
-    userMaxContextTokens:
-      maxContextTokens != null && maxContextTokens > 0 ? maxContextTokens : undefined, // Vermeer:
+        : computedMaxContextTokens,
+    // Vermeer: persist only a deliberate user value; a value equal to the computed system
+    // window is a client echo and is dropped. See resolveUserMaxContextTokens. Runtime keeps
+    // using maxContextTokens above (unchanged).
+    userMaxContextTokens: resolveUserMaxContextTokens(maxContextTokens, computedMaxContextTokens), // Vermeer:
     primedCodeFiles,
   };
 
