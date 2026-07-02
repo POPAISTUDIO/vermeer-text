@@ -86,12 +86,16 @@ class AgentClient extends BaseClient {
       collectedUsage,
       artifactPromises,
       maxContextTokens,
+      userMaxContextTokens, // Vermeer: raw user value for persistence only
       subagentAggregatorsByToolCallId,
       ...clientOptions
     } = options;
 
     this.agentConfigs = agentConfigs;
     this.maxContextTokens = maxContextTokens;
+    // Vermeer: raw user-supplied value (undefined = "Système"). Persisted via getSaveOptions
+    // instead of the computed maxContextTokens above, so "Système" stays "Système".
+    this.userMaxContextTokens = userMaxContextTokens; // Vermeer:
     /** @type {MessageContentComplex[]} */
     this.contentParts = contentParts;
     /** @type {Array<UsageMetadata>} */
@@ -197,7 +201,9 @@ class AgentClient extends BaseClient {
           modelLabel: this.options.modelLabel,
           resendFiles: this.options.resendFiles,
           imageDetail: this.options.imageDetail,
-          maxContextTokens: this.maxContextTokens,
+          // Vermeer: persist ONLY the raw user value; undefined ("Système") is stripped by
+          // removeNullishValues so the computed fallback is never frozen onto the conversation.
+          maxContextTokens: this.userMaxContextTokens, // Vermeer:
         },
         // TODO: PARSE OPTIONS BY PROVIDER, MAY CONTAIN SENSITIVE DATA
         runOptions,

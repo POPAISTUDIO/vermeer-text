@@ -2655,3 +2655,42 @@ describe('AgentClient - finalizeSubagentContent', () => {
     ]);
   });
 });
+
+describe('AgentClient - getSaveOptions maxContextTokens persistence (Vermeer)', () => {
+  /** Regression guard: when the user leaves "Système" (no explicit
+   *  maxContextTokens), the backend still COMPUTES a runtime window and
+   *  stores it on `this.maxContextTokens`, but that computed value must
+   *  NEVER be persisted onto the conversation — otherwise "Système"
+   *  freezes into a number and the max context is replayed every turn.
+   *  Only the raw user value (`this.userMaxContextTokens`) is persisted. */
+  const makeClient = (overrides = {}) =>
+    new AgentClient({
+      req: { user: { id: 'u' }, body: {}, config: { endpoints: {} } },
+      res: {},
+      agent: {
+        id: 'agent-123',
+        endpoint: EModelEndpoint.openAI,
+        provider: EModelEndpoint.openAI,
+        model_parameters: { model: 'gpt-4' },
+      },
+      ...overrides,
+    });
+
+  it('Cas 1: "Système" (userMaxContextTokens undefined) -> maxContextTokens NOT persisted, computed value untouched for runtime', () => {
+    const client = makeClient({ maxContextTokens: 68400, userMaxContextTokens: undefined });
+
+    const saveOptions = client.getSaveOptions();
+
+    expect(saveOptions).not.toHaveProperty('maxContextTokens');
+    // Runtime window is unchanged: the computed value still lives on the client.
+    expect(client.maxContextTokens).toBe(68400);
+  });
+
+  it('Cas 2: explicit user value (32000) -> persisted as-is', () => {
+    const client = makeClient({ maxContextTokens: 32000, userMaxContextTokens: 32000 });
+
+    const saveOptions = client.getSaveOptions();
+
+    expect(saveOptions.maxContextTokens).toBe(32000);
+  });
+});
