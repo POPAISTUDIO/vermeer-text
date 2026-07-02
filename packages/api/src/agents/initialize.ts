@@ -74,6 +74,8 @@ export type InitializedAgent = Agent & {
   toolContextMap: Record<string, unknown>;
   dynamicToolContextMap?: Record<string, unknown>;
   maxContextTokens: number;
+  /** Vermeer: raw user-supplied maxContextTokens (before the computed fallback). `undefined` = "Système" (auto). Used ONLY for persistence, never for the runtime window. */
+  userMaxContextTokens?: number; // Vermeer:
   /** Pre-ratio context budget (agentMaxContextNum - maxOutputTokensNum). Used by createRun to apply a configurable reserve ratio. */
   baseContextTokens?: number;
   useLegacyContent: boolean;
@@ -932,6 +934,10 @@ export async function initializeAgent(
       maxContextTokens != null && maxContextTokens > 0
         ? maxContextTokens
         : Math.max(1024, Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO))),
+    // Vermeer: expose the raw user value (undefined unless explicitly set > 0) so
+    // persistence never freezes the computed fallback. Runtime keeps using maxContextTokens above.
+    userMaxContextTokens:
+      maxContextTokens != null && maxContextTokens > 0 ? maxContextTokens : undefined, // Vermeer:
     primedCodeFiles,
   };
 
