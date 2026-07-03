@@ -129,8 +129,12 @@ export const tokenValues: Record<string, { prompt: number; completion: number }>
     'gpt-5.2': { prompt: 1.75, completion: 14 },
     'gpt-5.3': { prompt: 1.75, completion: 14 },
     'gpt-5.4': { prompt: 2.5, completion: 15 },
-    // TODO: gpt-5.4-pro pricing not yet officially published — verify before release
-    'gpt-5.4-pro': { prompt: 5, completion: 30 },
+    // Vermeer: aligné sur upstream (pricing officiel confirmé)
+    'gpt-5.4-pro': { prompt: 30, completion: 180 },
+    // Vermeer: backport rates upstream LibreChat (juillet 2026)
+    'gpt-5.5': { prompt: 5, completion: 30 },
+    'gpt-5.4-mini': { prompt: 0.75, completion: 4.5 },
+    'gpt-5.4-nano': { prompt: 0.2, completion: 1.25 },
     'gpt-5-nano': { prompt: 0.05, completion: 0.4 },
     'gpt-5-mini': { prompt: 0.25, completion: 2 },
     'gpt-5-pro': { prompt: 15, completion: 120 },
@@ -184,6 +188,9 @@ export const tokenValues: Record<string, { prompt: number; completion: number }>
     'gemini-2.5-pro': { prompt: 1.25, completion: 10 },
     'gemini-2.5-flash-image': { prompt: 0.15, completion: 30 },
     'gemini-3': { prompt: 2, completion: 12 },
+    // Vermeer: ajout gemini-3-flash (pas de clé upstream — fallback gemini-3
+    // sur-facturait 4x). Pricing officiel Google, juillet 2026.
+    'gemini-3-flash': { prompt: 0.5, completion: 3 },
     'gemini-3-pro-image': { prompt: 2, completion: 120 },
     'gemini-3.1': { prompt: 2, completion: 12 },
     'gemini-3.1-flash-lite': { prompt: 0.25, completion: 1.5 },
@@ -305,6 +312,10 @@ export const cacheTokenValues: Record<string, { write: number; read: number }> =
   'gpt-5.2': { write: 1.75, read: 0.175 },
   'gpt-5.3': { write: 1.75, read: 0.175 },
   'gpt-5.4': { write: 2.5, read: 0.25 },
+  // Vermeer: backport rates upstream LibreChat (juillet 2026)
+  'gpt-5.5': { write: 5, read: 0.5 },
+  'gpt-5.4-mini': { write: 0.75, read: 0.075 },
+  'gpt-5.4-nano': { write: 0.2, read: 0.02 },
   'gpt-5-mini': { write: 0.25, read: 0.025 },
   'gpt-5-nano': { write: 0.05, read: 0.005 },
   o1: { write: 15, read: 7.5 },
@@ -328,6 +339,7 @@ export const cacheTokenValues: Record<string, { write: number; read: number }> =
   'kimi-k2-thinking': { write: 0.6, read: 0.15 },
   'kimi-k2-thinking-turbo': { write: 1.15, read: 0.15 },
   // Gemini 3.1 Pro - cache write: $2.00/1M, cache read: $0.20/1M
+  'gemini-3-flash': { write: 0.5, read: 0.05 },
   'gemini-3.1': { write: 2, read: 0.2 },
   // Gemini 3.1 Flash-Lite - cache write: $0.25/1M, cache read: $0.025/1M
   'gemini-3.1-flash-lite': { write: 0.25, read: 0.025 },
@@ -340,6 +352,7 @@ export const premiumTokenValues: Record<
   string,
   { threshold: number; prompt: number; completion: number }
 > = {
+  'gemini-3-flash': { threshold: 200000, prompt: 1, completion: 3 },
   'gemini-3.1': { threshold: 200000, prompt: 4, completion: 18 },
 };
 
