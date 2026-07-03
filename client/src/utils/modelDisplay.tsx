@@ -10,7 +10,7 @@ import type { TranslationKeys } from '~/hooks';
 
 type LevelKey = Extract<
   TranslationKeys,
-  `com_model_level_${'powerful' | 'balanced' | 'fast' | 'legacy' | 'fr'}`
+  `com_model_level_${'powerful' | 'balanced' | 'fast' | 'eco' | 'legacy' | 'fr'}`
 >;
 
 type EditorKey = 'openai' | 'anthropic' | 'google' | 'frenchAlpaca';
@@ -90,10 +90,14 @@ interface ModelMapping {
 }
 
 const MODEL_MAPPINGS: ModelMapping[] = [
-  { match: (m) => m === 'gpt-5.2',    level: 'com_model_level_powerful', editor: 'openai' },
-  { match: (m) => m === 'gpt-5.1',    level: 'com_model_level_balanced', editor: 'openai' },
-  { match: (m) => m === 'gpt-5-mini', level: 'com_model_level_fast',     editor: 'openai' },
-  { match: (m) => m === 'gpt-4o',     level: 'com_model_level_legacy',   editor: 'openai' },
+  // Vermeer: modèles OpenAI juillet 2026 — gpt-5.5 flagship, gpt-5.2 rétrogradé Équilibré, 5.4 mini/nano éco, gpt-5.1/5-mini passés Legacy
+  { match: (m) => m === 'gpt-5.5',      level: 'com_model_level_powerful', editor: 'openai' },
+  { match: (m) => m === 'gpt-5.2',      level: 'com_model_level_balanced', editor: 'openai' },
+  { match: (m) => m === 'gpt-5.4-mini', level: 'com_model_level_fast',     editor: 'openai' },
+  { match: (m) => m === 'gpt-5.4-nano', level: 'com_model_level_eco',      editor: 'openai' },
+  { match: (m) => m === 'gpt-5.1',      level: 'com_model_level_legacy',   editor: 'openai' },
+  { match: (m) => m === 'gpt-5-mini',   level: 'com_model_level_legacy',   editor: 'openai' },
+  { match: (m) => m === 'gpt-4o',       level: 'com_model_level_legacy',   editor: 'openai' },
 
   { match: (m) => /^claude-opus/i.test(m),   level: 'com_model_level_powerful', editor: 'anthropic' },
   { match: (m) => /^claude-sonnet/i.test(m), level: 'com_model_level_balanced', editor: 'anthropic' },
