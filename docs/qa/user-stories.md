@@ -137,7 +137,7 @@ Scenario: US-CONV-1-S3 Error - model fails mid-response
   Given the provider returns an error (invalid key or quota)
   When I send a message
   Then a readable error message is shown in the thread
-  And I can send a follow-up message that succeeds (conversation still usable)
+  And I can select another model and send successfully (conversation still usable)
 ```
 
 ### US-CONV-2 · Arrêter puis reprendre une génération
@@ -498,17 +498,17 @@ Scenario: US-BUDGET-3-S3 [Vermeer] Error - unauthorized access to thresholds
   de la table de référence ci-dessous, tolérance **±5 %**. Pricing en dur dans
   `tx.ts` (`tokenValues`).
 
-**Table de tarifs de référence** (source de vérité externe = page pricing du
-provider ; source in-app = `tokenValues` dans `tx.ts`). À renseigner par le QA au
-moment du test à partir de la page officielle du provider :
+**Table de tarifs de référence** — lignes = modèles exposés depuis la dernière
+release ; valeurs à relever sur la page pricing officielle du provider **AU
+MOMENT du test** (l'oracle doit rester **externe à `tx.ts`**, qui est justement
+la valeur in-app à vérifier) :
 
 | Modèle | Tarif input officiel ($/MTok) | Tarif output officiel ($/MTok) | Entrée `tx.ts` |
 |---|---|---|---|
-| claude-opus-4-8 | _(cf. page pricing Anthropic)_ | _(cf. page pricing Anthropic)_ | `tokenValues` |
-| claude-sonnet-4-6 | _(cf. page pricing Anthropic)_ | _(cf. page pricing Anthropic)_ | `tokenValues` |
-| claude-haiku-4-5 | _(cf. page pricing Anthropic)_ | _(cf. page pricing Anthropic)_ | `tokenValues` |
-| gpt-5.2 | _(cf. page pricing OpenAI)_ | _(cf. page pricing OpenAI)_ | `tokenValues` |
-| gpt-5-mini | _(cf. page pricing OpenAI)_ | _(cf. page pricing OpenAI)_ | `tokenValues` |
+| gpt-5.5 | _(relever sur page pricing OpenAI au test)_ | _(relever sur page pricing OpenAI au test)_ | `tokenValues` |
+| gpt-5.4-mini | _(relever sur page pricing OpenAI au test)_ | _(relever sur page pricing OpenAI au test)_ | `tokenValues` |
+| gpt-5.4-nano | _(relever sur page pricing OpenAI au test)_ | _(relever sur page pricing OpenAI au test)_ | `tokenValues` |
+| gemini-3-flash-preview | _(relever sur page pricing Google au test)_ | _(relever sur page pricing Google au test)_ | `tokenValues` |
 
 ```gherkin
 Scenario: US-BUDGET-4-S1 [Vermeer] Recorded cost matches the exact pricing entry
