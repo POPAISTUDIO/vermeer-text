@@ -31,6 +31,47 @@ des specs Playwright existantes sous [e2e/](../../e2e/).
 - **`[Vermeer]`** : préfixe un scénario spécifique au fork — divergence par
   rapport à LibreChat upstream, feature flag `SHOW_*`, ou comportement ajouté
   par Vermeer. Les scénarios non tagués correspondent à du comportement upstream.
+- **ID de scénario** : chaque scénario porte un identifiant `US-<épic>-<n>-S<k>`
+  (traçabilité vers les specs Playwright). Il est référencé dans la note
+  **Automatisable** quand une couverture existe déjà ou est à créer.
+- **Règle d'oracle** : chaque `Then` désigne un endroit **observable** — élément
+  ou texte d'**UI**, enregistrement de l'**API transactions**, ou chiffre du
+  **dashboard** admin. Pas d'assertion sans point d'observation.
+
+## Test fixtures
+
+Comptes requis (à seeder par environnement) :
+
+| Compte | Rôle / attribut | dev (email/pw) | staging (SSO) |
+|---|---|---|---|
+| `collaborateur-pop` | utilisateur standard, entité POP | oui | oui |
+| `collaborateur-betc` | utilisateur standard, entité BETC | — | oui |
+| `admin-usage` | permission `requireManageUsage` (analytics + seuils) | oui | oui |
+| `createur-assistant` | owner/editor sur un assistant partagé | oui | oui |
+
+Données seedées :
+
+- **Assistant partagé** `QA Shared Assistant` — accès `VIEW` accordé à
+  `collaborateur-betc` (tests de partage/fork cross-user et cross-BU).
+- **Doc canari RAG** `qa-canary.pdf` — contient un **fait unique** de fixture
+  (ex. code canari `VERMEER-CANARY-7X42`) absent de tout autre contenu, pour une
+  assertion positive déterministe.
+- **User avec Balance** — document Balance, `monthlyBudget > 0`, `currentMonthSpend`
+  proche du seuil (tests jauge + blocage).
+- **User sans Balance** — aucun document Balance (test de la limitation jauge V1).
+
+Matrice de capacités par environnement :
+
+| Capacité | dev | staging |
+|---|---|---|
+| Auth email / mot de passe | oui | non |
+| Auth SSO (OpenID/Keycloak) | non | oui |
+| `balance.enabled` (budgets/jauge/blocage) | non (off en local) | oui |
+| RAG API (indexation fichiers) | souvent off (`RAG_API_URL` undefined) | oui |
+| Segmentation BU via claims SSO | non | oui |
+
+Conséquence : les US de budget/blocage, RAG et rattachement BU se recettent en
+**staging** ; les parcours conversation/modèle/assistant de base passent en **dev**.
 
 ## Couverture e2e upstream existante (rappel)
 
@@ -44,12 +85,12 @@ des specs Playwright existantes sous [e2e/](../../e2e/).
 | `keys.spec.ts` | Pose et révocation de clés API |
 | `a11y.spec.ts` | Accessibilité landing / conversation / nav / formulaire de saisie |
 
-## Sommaire — 40 US sur 10 épics
+## Sommaire — 42 US sur 10 épics
 
 | Épic | US | P0 | P1 | P2 |
 |---|---|---|---|---|
-| Conversation | CONV-1 → 5 | 1 | 3 | 1 |
-| Sélecteur de modèles | MODEL-1 → 4 | 1 | 2 | 1 |
+| Conversation | CONV-1 → 6 | 1 | 4 | 1 |
+| Sélecteur de modèles | MODEL-1 → 5 | 1 | 2 | 2 |
 | Budget / seuils | BUDGET-1 → 4 | 1 | 3 | 0 |
 | Auth / SSO | AUTH-1 → 4 | 1 | 2 | 1 |
 | Assistants + fichiers | ASSIST-1 → 5 | 1 | 2 | 2 |
@@ -58,7 +99,7 @@ des specs Playwright existantes sous [e2e/](../../e2e/).
 | Admin Panel | ADMIN-1 → 5 | 0 | 3 | 2 |
 | Mémoires | MEM-1 → 4 | 1 | 3 | 0 |
 | i18n | I18N-1 → 3 | 0 | 1 | 2 |
-| **Total** | **40** | **6** | **23** | **11** |
+| **Total** | **42** | **6** | **24** | **12** |
 
 **Parcours critiques (P0)** : US-AUTH-1 (login SSO), US-CONV-1 (message + streaming),
 US-MODEL-1 (changer de modèle), US-ASSIST-1 (assistant avec fichier),
@@ -75,29 +116,28 @@ US-BUDGET-2 (seuil atteint → blocage), US-MEM-4 (étanchéité des mémoires).
   réponse s'afficher progressivement (streaming), afin d'obtenir une réponse
   fluide et de pouvoir la lire au fil de l'eau.
 - **Priorité** : **P0** · **Env** : dev, staging
-- **Automatisable** : partiel — `messages.spec.ts` couvre l'envoi et le focus
-  après génération ; l'assertion « streaming incrémental » reste à ajouter.
+- **Automatisable** : partiel — `messages.spec.ts` couvre US-CONV-1-S1 (envoi +
+  focus après génération) ; l'assertion de croissance incrémentale reste à ajouter.
 
 ```gherkin
-Scenario: Send a message and receive a streamed response
+Scenario: US-CONV-1-S1 Send a message and receive a streamed response
   Given I am authenticated on a new conversation
   When I type "Bonjour" in the composer and send it
-  Then my user message appears in the thread
-  And the assistant response renders incrementally (streaming)
-  And the composer regains focus once generation completes
+  Then my message text appears as a user row in the thread
+  And the assistant response text grows across successive render updates (streaming)
+  And the composer input regains focus once generation completes
 
-Scenario: Non-empty response and clean completion
+Scenario: US-CONV-1-S2 Non-empty response and clean completion
   Given I have sent a message
   When generation completes
-  Then the response contains non-empty text
-  And the generation indicator disappears
+  Then the assistant message row shows non-empty text
+  And the generation/stop indicator is no longer visible
 
-Scenario: Error - model fails mid-response
+Scenario: US-CONV-1-S3 Error - model fails mid-response
   Given the provider returns an error (invalid key or quota)
   When I send a message
   Then a readable error message is shown in the thread
-  And the app does not freeze and the conversation stays usable
-  And I can retry the message
+  And I can send a follow-up message that succeeds (conversation still usable)
 ```
 
 ### US-CONV-2 · Arrêter puis reprendre une génération
@@ -106,25 +146,26 @@ Scenario: Error - model fails mid-response
 - **Story** : En tant que collaborateur, je veux interrompre une réponse en cours
   puis la reprendre, afin de garder le contrôle sur des réponses longues.
 - **Priorité** : **P1** · **Env** : dev, staging
-- **Automatisable** : oui — couvert par `messages.spec.ts` (« message should
-  stop and continue »).
+- **Automatisable** : oui — US-CONV-2-S1 et S2 couverts par `messages.spec.ts`
+  (« message should stop and continue »).
 
 ```gherkin
-Scenario: Stop an in-progress generation
+Scenario: US-CONV-2-S1 Stop an in-progress generation
   Given a response is currently streaming
   When I click "Stop"
-  Then generation halts immediately
-  And the partial response received so far stays displayed
+  Then the assistant message text stops growing (no further tokens appended)
+  And the partial response text received so far stays displayed
 
-Scenario: Resume after stopping
+Scenario: US-CONV-2-S2 Resume after stopping
   Given I have stopped a generation
   When I click "Continue"
-  Then generation resumes from the partial response
+  Then the assistant message text resumes growing from the partial response
 
-Scenario: Error - stop after generation finished
+Scenario: US-CONV-2-S3 Error - stop after generation finished
   Given a generation has just completed
-  When the "Stop" button is no longer available
-  Then only "Continue" (or a new input) is offered
+  When I look at the message controls
+  Then no "Stop" control is visible
+  And only "Continue" (or a new input) is available
 ```
 
 ### US-CONV-3 · Éditer un message envoyé et relancer
@@ -133,23 +174,25 @@ Scenario: Error - stop after generation finished
 - **Story** : En tant que collaborateur, je veux modifier un message déjà envoyé
   et régénérer la réponse, afin de corriger une formulation sans repartir de zéro.
 - **Priorité** : **P1** · **Env** : dev, staging
-- **Automatisable** : oui — couvert par `messages.spec.ts` (édition de messages).
+- **Automatisable** : oui — US-CONV-3-S1 couvert par `messages.spec.ts` (édition).
 
 ```gherkin
-Scenario: Edit a user message
+Scenario: US-CONV-3-S1 Edit a user message
   Given I have an exchange (message + response) in the thread
   When I edit my message and submit
-  Then a new response is generated from the edited message
+  Then the user row shows the edited text
+  And a new assistant response row is rendered below it
 
-Scenario: Cancel an edit
+Scenario: US-CONV-3-S2 Cancel an edit
   Given I have opened the edit view of a message
   When I cancel without submitting
-  Then the original message is kept unchanged
+  Then the user row still shows the original unchanged text
 
-Scenario: Error - editing to empty content
+Scenario: US-CONV-3-S3 Error - editing to empty content
   Given I am editing a message
-  When I clear the field entirely and try to submit
-  Then submission is blocked (no empty message is sent)
+  When I clear the field entirely
+  Then the submit control is disabled
+  And no new message row is added to the thread
 ```
 
 ### US-CONV-4 · Créer une nouvelle conversation depuis l'accueil
@@ -158,20 +201,20 @@ Scenario: Error - editing to empty content
 - **Story** : En tant que collaborateur, je veux démarrer une nouvelle
   conversation depuis la landing, afin de commencer un nouveau sujet proprement.
 - **Priorité** : **P1** · **Env** : dev, staging
-- **Automatisable** : oui — couvert par `landing.spec.ts` (« Create
-  Conversation »).
+- **Automatisable** : oui — US-CONV-4-S1 couvert par `landing.spec.ts`
+  (« Create Conversation »).
 
 ```gherkin
-Scenario: Start a conversation from the landing page
+Scenario: US-CONV-4-S1 Start a conversation from the landing page
   Given I am on the landing screen
   When I send a first message
-  Then a new conversation is created and appears in the sidebar
+  Then a new conversation entry appears in the sidebar
 
-Scenario: [Vermeer] Landing suggestion cards
+Scenario: US-CONV-4-S2 [Vermeer] Landing suggestion cards
   Given I am on the landing screen
-  Then four agency-oriented suggestion cards are displayed
+  Then four agency-oriented suggestion cards are visible
   When I click a suggestion
-  Then its content pre-fills the composer
+  Then the composer input contains that suggestion's text
 ```
 
 ### US-CONV-5 · Naviguer et reprendre une conversation existante
@@ -180,20 +223,45 @@ Scenario: [Vermeer] Landing suggestion cards
 - **Story** : En tant que collaborateur, je veux retrouver et rouvrir une
   conversation passée, afin de poursuivre un travail déjà entamé.
 - **Priorité** : **P2** · **Env** : dev, staging
-- **Automatisable** : partiel — `messages.spec.ts` (« Page navigations »)
-  couvre la navigation ; l'assertion de reprise d'échange reste à préciser.
+- **Automatisable** : partiel — US-CONV-5-S1 partiellement couvert par
+  `messages.spec.ts` (« Page navigations ») ; assertion de reprise à préciser.
 
 ```gherkin
-Scenario: Reopen a conversation
+Scenario: US-CONV-5-S1 Reopen a conversation
   Given I have several conversations in the sidebar
   When I select an earlier conversation
-  Then its full message history is displayed
-  And I can send a new message that appends to the thread
+  Then the thread shows all previously exchanged message rows
+  And a new message I send is appended as the last row
 
-Scenario: Error - deleted / missing conversation
+Scenario: US-CONV-5-S2 Error - deleted / missing conversation
   Given a conversation has been deleted
-  When I access its URL directly
-  Then I am redirected cleanly (landing) without a broken screen
+  When I open its URL directly
+  Then the URL resolves to the landing route
+  And no error boundary / broken screen is shown
+```
+
+### US-CONV-6 · Génération automatique du titre de conversation
+
+- **Persona** : Collaborateur
+- **Story** : En tant que collaborateur, je veux qu'une nouvelle conversation
+  reçoive automatiquement un titre, afin de la retrouver facilement dans la barre
+  latérale.
+- **Priorité** : **P1** · **Env** : dev, staging
+- **Automatisable** : partiel — assertion sur le libellé du titre en sidebar après
+  le 1er échange (US-CONV-6-S1) ; cas d'erreur à simuler (modèle de titre invalide).
+
+```gherkin
+Scenario: US-CONV-6-S1 Title generated after first exchange
+  Given a new conversation whose sidebar entry has no title (or a placeholder)
+  When I complete the first message/response exchange
+  Then the sidebar entry for this conversation shows a non-empty generated title
+
+Scenario: US-CONV-6-S2 Error - invalid title model, conversation stays usable
+  Given the title-generation model is misconfigured/invalid
+  When I complete the first exchange
+  Then no user-facing error is surfaced (silent-404 guard)
+  And the sidebar entry keeps its placeholder (no title) rather than breaking
+  And I can still send further messages and receive responses
 ```
 
 ---
@@ -208,27 +276,27 @@ Scenario: Error - deleted / missing conversation
   provider).
 - **Priorité** : **P0** · **Env** : dev, staging
 - **Automatisable** : partiel — `popup.spec.ts` couvre la sélection
-  endpoint/preset ; l'assertion « le message suivant utilise bien le modèle
-  choisi » reste à ajouter.
+  endpoint/preset ; l'oracle « label du modèle sur le message de réponse »
+  (US-MODEL-1-S1) reste à ajouter.
 
 ```gherkin
-Scenario: Select a model
+Scenario: US-MODEL-1-S1 Select a model
   Given I am in a conversation
-  When I open the model selector and choose a model
-  Then the selected model becomes the active model of the conversation
-  And my next message is handled by that model
+  When I open the model selector, choose a model, and send a message
+  Then the response message row displays that model's label
+  And the transactions API records that model for the message
 
-Scenario: Change model mid-conversation
+Scenario: US-MODEL-1-S2 Change model mid-conversation
   Given I have already exchanged with a model
   When I switch model and send a new message
-  Then the new response is produced by the new model
-  And the previous history stays unchanged
+  Then the new response message row displays the new model's label
+  And the earlier message rows keep their original model label
 
-Scenario: Error - model unavailable (provider key/quota)
+Scenario: US-MODEL-1-S3 Error - model unavailable (provider key/quota)
   Given I select a model whose provider is misconfigured
   When I send a message
-  Then a clear error message states the unavailability
-  And I can switch to another model without reloading the page
+  Then a clear error message stating the unavailability is shown in the thread
+  And I can select another model and send successfully without reloading the page
 ```
 
 ### US-MODEL-2 · Persistance du dernier modèle et de ses réglages
@@ -237,20 +305,21 @@ Scenario: Error - model unavailable (provider key/quota)
 - **Story** : En tant que collaborateur, je veux que mon dernier modèle et ses
   réglages soient conservés, afin de ne pas les reconfigurer à chaque session.
 - **Priorité** : **P1** · **Env** : dev, staging
-- **Automatisable** : oui — couvert par `settings.spec.ts` (« Last OpenAI
-  settings »).
+- **Automatisable** : oui — US-MODEL-2-S1 couvert par `settings.spec.ts`
+  (« Last OpenAI settings »).
 
 ```gherkin
-Scenario: Reuse the last model
+Scenario: US-MODEL-2-S1 Reuse the last model
   Given I used a model with custom settings
   When I create a new conversation
-  Then the last model and its settings are pre-selected
+  Then the model selector shows that last model pre-selected
+  And its settings fields show the same custom values
 
-Scenario: [Vermeer] Do not inherit a frozen context window
-  Given a conversation whose context window is left on "System"
+Scenario: US-MODEL-2-S2 [Vermeer] Do not inherit a frozen context window
+  Given a conversation whose context window control reads "System"
   When I create a new conversation
-  Then the new conversation does not freeze an inherited numeric value
-  And it stays on "System" (maxContextTokens anti-freeze guard)
+  Then the context window control still reads "System" (not a numeric value)
+  And the new conversation record persists no numeric maxContextTokens
 ```
 
 ### US-MODEL-3 · Accès multi-providers
@@ -264,18 +333,19 @@ Scenario: [Vermeer] Do not inherit a frozen context window
   providers Vermeer ; à créer.
 
 ```gherkin
-Scenario: Expected providers are present
+Scenario: US-MODEL-3-S1 Expected providers are present
   Given I open the model selector
-  Then I see Claude (Anthropic), GPT (OpenAI) and Gemini (Google) models
+  Then the selector list contains Claude (Anthropic), GPT (OpenAI) and Gemini (Google) entries
 
-Scenario: [Vermeer] French Models endpoint is available
+Scenario: US-MODEL-3-S2 [Vermeer] French Models endpoint is available
   Given I open the model selector
   Then the custom "French Models" (Featherless) endpoint is listed
 
-Scenario: Error - provider without configured key
+Scenario: US-MODEL-3-S3 Error - provider without configured key
   Given a provider has no key configured in the environment
   When I open the selector
-  Then that provider is absent or explicitly unavailable (no crash)
+  Then that provider is absent from the list (or shown as explicitly disabled)
+  And the selector renders without error
 ```
 
 ### US-MODEL-4 · Comparer plusieurs modèles en parallèle
@@ -287,16 +357,43 @@ Scenario: Error - provider without configured key
 - **Automatisable** : partiel — pas de spec upstream ; à créer (`multiConvo`).
 
 ```gherkin
-Scenario: Compare two models
+Scenario: US-MODEL-4-S1 Compare two models
   Given I enable comparison mode with two models
   When I send a question
-  Then both responses render side by side in parallel
+  Then two response columns each show a non-empty response
 
-Scenario: Error - one of the models fails
+Scenario: US-MODEL-4-S2 Error - one of the models fails
   Given a comparison mode with two models
   When one provider returns an error (e.g. invalid key)
-  Then the valid model response renders normally
-  And the failing model error is isolated to its column
+  Then the valid model column shows a non-empty response
+  And the failing model column shows an error message scoped to that column only
+```
+
+### US-MODEL-5 · Libellés humanisés du sélecteur
+
+- **Persona** : Collaborateur
+- **Story** : En tant que collaborateur, je veux des libellés de modèles lisibles
+  (« Niveau · Éditeur »), afin de choisir un modèle sans connaître les
+  identifiants techniques.
+- **Priorité** : **P2** · **Env** : dev, staging
+- **Automatisable** : partiel — assertions de libellés/tooltip dans le sélecteur ;
+  à créer.
+
+```gherkin
+Scenario: US-MODEL-5-S1 [Vermeer] Mapped models show humanized labels
+  Given I open the model selector
+  Then mapped models display a "[Level] · Editor" label
+  And the "Éco" level is shown for the models mapped to it
+
+Scenario: US-MODEL-5-S2 [Vermeer] Unmapped models fall back to the raw name
+  Given a model that has no mapping entry
+  When I open the selector
+  Then that model is listed with its raw technical name
+
+Scenario: US-MODEL-5-S3 [Vermeer] Tooltip exposes the exact model id
+  Given a model shown with a humanized label
+  When I hover its entry
+  Then a tooltip displays the exact technical model id
 ```
 
 ---
@@ -310,25 +407,25 @@ Scenario: Error - one of the models fails
   rapport à mon budget sous la barre de saisie, afin de suivre où j'en suis.
 - **Priorité** : **P1** · **Env** : staging
 - **Automatisable** : partiel — pas de spec upstream ; à créer. Dépend d'un
-  environnement avec `balance.enabled` (staging/prod).
+  environnement avec `balance.enabled` (staging).
 
 ```gherkin
-Scenario: [Vermeer] Display the BudgetCard gauge
-  Given I have a Balance document with a monthly budget > 0
+Scenario: US-BUDGET-1-S1 [Vermeer] Display the BudgetCard gauge
+  Given I am the seeded user with a Balance document and monthly budget > 0
   When I open a conversation
-  Then a gauge under the composer shows my month spend vs my budget
-  And the gauge color reflects the spend/budget ratio
+  Then a gauge under the composer shows my month spend and my budget values
+  And the gauge color matches budgetColor() for the current spend/budget ratio
 
-Scenario: [Vermeer] Gauge updates after a message
-  Given the gauge shows my current spend
+Scenario: US-BUDGET-1-S2 [Vermeer] Gauge updates after a message
+  Given the gauge shows my current spend value
   When I send a message that consumes tokens
-  Then the gauge refetches and reflects the new spend
+  Then the gauge spend value increases (refetch after generation)
 
-Scenario: [Vermeer] Limitation - no Balance document
-  Given I have no Balance document in the database
+Scenario: US-BUDGET-1-S3 [Vermeer] Limitation - no Balance document
+  Given I am the seeded user with no Balance document
   When I open a conversation
-  Then the gauge is not displayed (documented V1 limitation)
-  And the app stays fully usable
+  Then no gauge is rendered under the composer
+  And I can still send a message and receive a response
 ```
 
 ### US-BUDGET-2 · Blocage propre au seuil budgétaire atteint
@@ -342,21 +439,23 @@ Scenario: [Vermeer] Limitation - no Balance document
   `currentMonthSpend + tokenCost <= monthlyBudget` (`checkBalance.ts`).
 
 ```gherkin
-Scenario: [Vermeer] Send refused when budget is reached
-  Given my month spend meets or exceeds my monthly budget
+Scenario: US-BUDGET-2-S1 [Vermeer] Send refused when budget is reached
+  Given my current-month spend meets or exceeds my monthly budget
   When I try to send a message
-  Then the send is refused before any call to the model
-  And an explicit error states the budget overrun
+  Then an explicit budget-overrun error is shown in the composer/thread
+  And no new transaction is recorded in the transactions API for this attempt
 
-Scenario: [Vermeer] Send allowed below the threshold
-  Given my month spend is below my monthly budget
+Scenario: US-BUDGET-2-S2 [Vermeer] Send allowed below the threshold
+  Given my current-month spend is below my monthly budget
   When I send a message whose estimated cost stays under the threshold
-  Then the message is processed normally
+  Then an assistant response is received
+  And a new transaction is recorded in the transactions API
 
-Scenario: [Vermeer] Edge - message cost would exceed the budget
+Scenario: US-BUDGET-2-S3 [Vermeer] Edge - message cost would exceed the budget
   Given I am just below my monthly budget
   When the estimated cost of the next message would exceed the budget
-  Then the send is refused cleanly (no partial overrun)
+  Then the budget-overrun error is shown
+  And no new transaction is recorded (no partial overrun)
 ```
 
 ### US-BUDGET-3 · Administrer les seuils par utilisateur
@@ -369,22 +468,22 @@ Scenario: [Vermeer] Edge - message cost would exceed the budget
   `admin/budgets`, onglet « Seuils & gestion » (gating `requireManageUsage`).
 
 ```gherkin
-Scenario: [Vermeer] Edit a user threshold
-  Given I am an administrator on the "Seuils & gestion" tab
+Scenario: US-BUDGET-3-S1 [Vermeer] Edit a user threshold
+  Given I am admin-usage on the "Seuils & gestion" tab
   When I change a user's monthly budget and save
-  Then the new threshold is persisted
-  And that user's gauge reflects this budget
+  Then the tab shows the new budget value for that user after reload
+  And that user's BudgetCard gauge shows the new budget
 
-Scenario: [Vermeer] Unlock the gauge display (V1 workaround)
+Scenario: US-BUDGET-3-S2 [Vermeer] Unlock the gauge display (V1 workaround)
   Given a user has no Balance document yet
-  When I edit their threshold for the first time
-  Then a Balance document is created
-  And the gauge becomes visible for that user
+  When I edit their threshold for the first time and save
+  Then a Balance document exists for that user (visible in the tab)
+  And that user's BudgetCard gauge becomes rendered
 
-Scenario: [Vermeer] Error - unauthorized access to thresholds
-  Given I am a collaborateur without management rights
-  When I try to access the "Seuils & gestion" tab
-  Then access is denied (requireManageUsage gating)
+Scenario: US-BUDGET-3-S3 [Vermeer] Error - unauthorized access to thresholds
+  Given I am collaborateur-pop without management rights
+  When I request the "Seuils & gestion" route
+  Then the request is rejected (HTTP 403 / tab not available)
 ```
 
 ### US-BUDGET-4 · Intégrité du pricing à l'ajout d'un modèle
@@ -394,22 +493,35 @@ Scenario: [Vermeer] Error - unauthorized access to thresholds
   exposé soit comptabilisé avec son tarif exact, afin que la consommation et les
   budgets restent fiables et sans sous- ou sur-facturation silencieuse.
 - **Priorité** : **P1** · **Env** : staging
-- **Automatisable** : partiel — vérifiable via l'API transactions / le dashboard
-  de consommation (comparaison de l'ordre de grandeur du coût enregistré au tarif
-  officiel du provider). Pricing en dur dans `tx.ts` (`tokenValues`).
+- **Automatisable** : partiel — vérifiable via l'**API transactions** / le
+  **dashboard** de consommation. Oracle : `recorded cost` comparé au tarif attendu
+  de la table de référence ci-dessous, tolérance **±5 %**. Pricing en dur dans
+  `tx.ts` (`tokenValues`).
+
+**Table de tarifs de référence** (source de vérité externe = page pricing du
+provider ; source in-app = `tokenValues` dans `tx.ts`). À renseigner par le QA au
+moment du test à partir de la page officielle du provider :
+
+| Modèle | Tarif input officiel ($/MTok) | Tarif output officiel ($/MTok) | Entrée `tx.ts` |
+|---|---|---|---|
+| claude-opus-4-8 | _(cf. page pricing Anthropic)_ | _(cf. page pricing Anthropic)_ | `tokenValues` |
+| claude-sonnet-4-6 | _(cf. page pricing Anthropic)_ | _(cf. page pricing Anthropic)_ | `tokenValues` |
+| claude-haiku-4-5 | _(cf. page pricing Anthropic)_ | _(cf. page pricing Anthropic)_ | `tokenValues` |
+| gpt-5.2 | _(cf. page pricing OpenAI)_ | _(cf. page pricing OpenAI)_ | `tokenValues` |
+| gpt-5-mini | _(cf. page pricing OpenAI)_ | _(cf. page pricing OpenAI)_ | `tokenValues` |
 
 ```gherkin
-Scenario: [Vermeer] Recorded cost uses the model's exact pricing entry
-  Given a newly exposed model
-  When a message is sent with it
-  Then the recorded transaction uses the model's exact pricing entry (not a pattern-match fallback)
-  And the cost order of magnitude matches the provider's official rate
+Scenario: US-BUDGET-4-S1 [Vermeer] Recorded cost matches the exact pricing entry
+  Given a newly exposed model with a known expected rate (reference table)
+  When a message with a known token count is sent with it
+  Then the transactions API records this model's exact pricing entry (not a pattern-match fallback)
+  And the recorded cost equals expected_tokens x expected_rate within +/-5%
 
-Scenario: [Vermeer] Error - model without a defined rate
-  Given a model exposed without a matching pricing entry in tx.ts
+Scenario: US-BUDGET-4-S2 [Vermeer] Error - model without a defined rate
+  Given a model exposed without a matching pricing entry in tx.ts tokenValues
   When a message is sent with it
-  Then the gap is detectable (no cost or fallback cost recorded)
-  And it is caught before relying on it for monthly budgets
+  Then the transactions API shows either no cost or a cost diverging from the expected rate by more than +/-5%
+  And this divergence is caught before the model is relied on for monthly budgets
 ```
 
 ---
@@ -428,21 +540,21 @@ Scenario: [Vermeer] Error - model without a defined rate
   callback.
 
 ```gherkin
-Scenario: [Vermeer] Successful SSO login
-  Given I am on the login page in a SSO environment
+Scenario: US-AUTH-1-S1 [Vermeer] Successful SSO login
+  Given I am on the login page in a SSO environment (staging)
   When I authenticate through the organization identity provider
-  Then I am redirected back and land authenticated on the home screen
+  Then I am redirected back and the home screen is shown authenticated
 
-Scenario: [Vermeer] Password/social login disabled in production
-  Given I am on the login page in production
-  Then only the SSO (OpenID) sign-in path is offered
-  And email/password registration is not available
+Scenario: US-AUTH-1-S2 [Vermeer] Password/social login disabled in SSO environments
+  Given I am on the login page in a SSO environment (staging)
+  Then only the SSO (OpenID) sign-in path is displayed
+  And no email/password registration form is available
 
-Scenario: [Vermeer] Error - SSO authentication fails
+Scenario: US-AUTH-1-S3 [Vermeer] Error - SSO authentication fails
   Given the identity provider rejects or cancels authentication
   When I return to the app
-  Then I remain unauthenticated with a clear error
-  And no partial session is created
+  Then the login page is shown with a clear error
+  And accessing a protected route still redirects me to login (no partial session)
 ```
 
 ### US-AUTH-2 · Se connecter en email / mot de passe (dev)
@@ -452,20 +564,20 @@ Scenario: [Vermeer] Error - SSO authentication fails
   connecter en email/mot de passe, afin de tester l'application sans dépendre du
   SSO.
 - **Priorité** : **P1** · **Env** : dev
-- **Automatisable** : oui — la fixture d'authentification e2e
-  (`setup/authenticate.ts`) utilise déjà ce flux.
+- **Automatisable** : oui — US-AUTH-2-S1 utilisé par la fixture d'authentification
+  e2e (`setup/authenticate.ts`).
 
 ```gherkin
-Scenario: Login with valid credentials
+Scenario: US-AUTH-2-S1 Login with valid credentials
   Given I am on the dev login page
   When I submit a valid email and password
-  Then I am authenticated and reach the home screen
+  Then the home screen is shown authenticated
 
-Scenario: Error - invalid credentials
+Scenario: US-AUTH-2-S2 Error - invalid credentials
   Given I am on the dev login page
   When I submit an incorrect password
-  Then login is refused with a clear error
-  And I stay on the login page
+  Then a clear error is shown
+  And the URL stays on the login page
 ```
 
 ### US-AUTH-3 · Rattachement automatique à l'entité (BU)
@@ -475,20 +587,19 @@ Scenario: Error - invalid credentials
   mon entité (POP, BETC, BETC Fullsix…) à la connexion, afin que ma consommation
   soit suivie par entité sans action de ma part.
 - **Priorité** : **P1** · **Env** : staging
-- **Automatisable** : partiel — dépend des claims SSO ; vérifiable via l'effet
-  (filtre BU côté admin) plutôt qu'en pur e2e.
+- **Automatisable** : partiel — dépend des claims SSO ; oracle observable via le
+  **dashboard** admin (filtre BU) plutôt qu'en pur e2e.
 
 ```gherkin
-Scenario: [Vermeer] BU derived from SSO claims
+Scenario: US-AUTH-3-S1 [Vermeer] BU derived from SSO claims
   Given I sign in via SSO with a company/department claim
-  When my session is created
-  Then I am attached to the matching entity (buExpression)
-  And my usage is attributed to that entity in the admin analytics
+  When I then consume tokens (send a message)
+  Then in the admin analytics my usage appears under the matching entity (buExpression)
 
-Scenario: [Vermeer] Error - missing/ambiguous claim
+Scenario: US-AUTH-3-S2 [Vermeer] Error - missing/ambiguous claim
   Given my SSO profile has no resolvable entity claim
-  When my session is created
-  Then I am attached to a safe fallback bucket ("Other")
+  When I sign in and consume tokens
+  Then in the admin analytics my usage appears under the "Other" bucket
   And no crash occurs on login
 ```
 
@@ -501,13 +612,12 @@ Scenario: [Vermeer] Error - missing/ambiguous claim
 - **Automatisable** : oui — action UI simple.
 
 ```gherkin
-Scenario: Logout
+Scenario: US-AUTH-4-S1 Logout
   Given I am authenticated
   When I trigger logout from the account menu
-  Then my session is cleared
-  And I am redirected to the login page
+  Then the login page is shown
 
-Scenario: Error - access protected route after logout
+Scenario: US-AUTH-4-S2 Error - access protected route after logout
   Given I have logged out
   When I navigate to a protected route directly
   Then I am redirected to the login page
@@ -527,21 +637,22 @@ Scenario: Error - access protected route after logout
 - **Automatisable** : partiel — pas de spec upstream ; à créer.
 
 ```gherkin
-Scenario: Create an assistant with a reference file
+Scenario: US-ASSIST-1-S1 Create an assistant with a reference file
   Given I open the assistant builder ("Mes assistants")
   When I set a name, instructions and attach a reference file, then save
-  Then the assistant is created and appears in my assistants list
-  And I can start a conversation with it
+  Then the assistant appears by name in my assistants list
+  And selecting it opens a conversation targeting that assistant
 
-Scenario: [Vermeer] Unified upload zone under Instructions
+Scenario: US-ASSIST-1-S2 [Vermeer] Unified upload zone under Instructions
   Given I am in the assistant builder
-  Then a single "Glissez vos fichiers ici" upload zone is shown under Instructions
-  And no separate legacy upload-mode menus are displayed
+  Then a single "Glissez vos fichiers ici" upload zone is visible under Instructions
+  And no separate legacy upload-mode menus are visible
 
-Scenario: Error - save without required fields
-  Given I am in the assistant builder
-  When I try to save without a name
-  Then saving is blocked with a clear validation message
+Scenario: US-ASSIST-1-S3 Error - save without required fields
+  Given I am in the assistant builder with no name set
+  When I try to save
+  Then a validation message is shown
+  And no new assistant is added to the list
 ```
 
 ### US-ASSIST-2 · Mode d'attachement des fichiers et impact sur la consommation
@@ -551,28 +662,30 @@ Scenario: Error - save without required fields
   sont attachés (contexte permanent vs recherche) et l'effet sur ma
   consommation, afin d'éviter une facturation élevée non anticipée.
 - **Priorité** : **P1** · **Env** : staging
-- **Automatisable** : partiel — vérifiable via l'évolution de la conso après
-  messages successifs ; à créer. Cas utilisateur réel : fichiers en mode
-  contexte réinjectés à chaque message.
+- **Automatisable** : partiel — oracle via l'**API transactions** (prompt tokens
+  par message), protocole **comparatif** avec/sans fichier ; à créer. Cas
+  utilisateur réel : fichiers en mode contexte réinjectés à chaque message.
 
 ```gherkin
-Scenario: [Vermeer] Context-mode files are re-injected each message
-  Given I have attached a large file as permanent context to a conversation
-  When I send several successive messages
-  Then the file content is re-injected into the prompt on each message
-  And my monthly spend increases faster than for a plain text exchange
+Scenario: US-ASSIST-2-S1 [Vermeer] Context-mode files are re-injected each message
+  Given a conversation A with a large file attached as permanent context
+  And a control conversation B with no file attached
+  When I send the same three successive messages in A and in B
+  Then in the transactions API the prompt token count per message in A stays elevated and roughly proportional to the file size on every message
+  And it does not decrease across the three messages (file re-injected each turn)
+  And per-message prompt tokens in B are substantially lower than in A
 
-Scenario: File-search mode retrieves only relevant excerpts
+Scenario: US-ASSIST-2-S2 File-search mode keeps per-message tokens bounded
   Given a file attached to an assistant for file search (RAG)
-  When I ask a question about it
-  Then only relevant excerpts are retrieved rather than the whole file
-  And the per-message token cost stays bounded
+  When I ask three successive questions about it
+  Then in the transactions API the prompt token count per message stays bounded
+  And it stays far below the full file token size
 
-Scenario: [Vermeer] Error - user hits their budget from context re-injection
-  Given repeated messages with a heavy file in permanent context
-  When my month spend reaches my monthly budget
-  Then the send is refused with the budget-overrun message (US-BUDGET-2)
-  And the message helps me understand the file re-injection cost driver
+Scenario: US-ASSIST-2-S3 [Vermeer] Error - user hits budget from context re-injection
+  Given repeated messages with a heavy file in permanent context (staging, balance on)
+  When my current-month spend reaches my monthly budget
+  Then the budget-overrun error is shown (as in US-BUDGET-2-S1)
+  And no new transaction is recorded for the refused message
 ```
 
 ### US-ASSIST-3 · Partager un assistant et reprendre une conversation
@@ -582,18 +695,19 @@ Scenario: [Vermeer] Error - user hits their budget from context re-injection
   permettre de reprendre les conversations associées, afin de collaborer sur un
   même travail.
 - **Priorité** : **P1** · **Env** : staging
-- **Automatisable** : partiel — nécessite deux comptes ; à créer.
+- **Automatisable** : partiel — nécessite `createur-assistant` + `collaborateur-betc` ;
+  à créer.
 
 ```gherkin
-Scenario: [Vermeer] Fork a shared conversation cross-user
-  Given an assistant shared with me (VIEW permission)
-  When I open a conversation shared on that assistant
-  Then I can fork it and continue the work under my account
+Scenario: US-ASSIST-3-S1 [Vermeer] Fork a shared conversation cross-user
+  Given the seeded "QA Shared Assistant" shared with me (VIEW permission)
+  When I open a conversation shared on that assistant and fork it
+  Then a new conversation owned by my account is created with the copied thread
 
-Scenario: [Vermeer] Error - access without permission (IDOR guard)
+Scenario: US-ASSIST-3-S2 [Vermeer] Error - access without permission (IDOR guard)
   Given an assistant I have not been granted access to
-  When I try to reach one of its conversations by id
-  Then access is denied (PermissionBits.VIEW gating)
+  When I request one of its conversations by id
+  Then the request is rejected (HTTP 403/404, PermissionBits.VIEW gating)
 ```
 
 ### US-ASSIST-4 · Afficher le contact support d'un assistant
@@ -605,15 +719,15 @@ Scenario: [Vermeer] Error - access without permission (IDOR guard)
 - **Automatisable** : oui — rendu conditionnel simple.
 
 ```gherkin
-Scenario: Support contact displayed
+Scenario: US-ASSIST-4-S1 Support contact displayed
   Given an assistant configured with a support name and email
   When I view the assistant
-  Then its support contact (name + email) is displayed
+  Then the support contact name and email are visible
 
-Scenario: No contact configured
+Scenario: US-ASSIST-4-S2 No contact configured
   Given an assistant without support contact
   When I view the assistant
-  Then no empty contact block is displayed
+  Then no contact block is rendered
 ```
 
 ### US-ASSIST-5 · Éléments techniques du builder masqués
@@ -625,14 +739,14 @@ Scenario: No contact configured
 - **Automatisable** : oui — assertions de présence/absence d'éléments UI.
 
 ```gherkin
-Scenario: [Vermeer] Technical builder elements are hidden
+Scenario: US-ASSIST-5-S1 [Vermeer] Technical builder elements are hidden
   Given I open the assistant builder
-  Then the technical assistant ID is not shown (SHOW_AGENT_ID=false)
-  And the instructions variables button is not shown (SHOW_AGENT_VARIABLES_BUTTON=false)
+  Then the technical assistant ID field is not visible (SHOW_AGENT_ID=false)
+  And the instructions variables button is not visible (SHOW_AGENT_VARIABLES_BUTTON=false)
 
-Scenario: [Vermeer] Marketplace hidden
+Scenario: US-ASSIST-5-S2 [Vermeer] Marketplace hidden
   Given I browse the assistants area
-  Then the assistants marketplace/gallery is not accessible (marketplace.use=false)
+  Then no marketplace/gallery entry point is present (marketplace.use=false)
 ```
 
 ---
@@ -646,20 +760,21 @@ Scenario: [Vermeer] Marketplace hidden
   documents joints pour répondre, afin d'obtenir des réponses ancrées dans mes
   contenus.
 - **Priorité** : **P1** · **Env** : staging
-- **Automatisable** : partiel — dépend de la RAG API opérationnelle (staging/prod) ;
-  à créer.
+- **Automatisable** : partiel — US-RAG-1-S1 automatisable via le **doc canari**
+  (fait unique de fixture) ; US-RAG-1-S2 **manuel/exploratoire** (l'absence de
+  fabrication n'a pas d'oracle déterministe). Dépend de la RAG API (staging).
 
 ```gherkin
-Scenario: Answer grounded in attached files
-  Given an assistant with an indexed reference document
-  When I ask a question whose answer is in the document
-  Then the response uses the document content
-  And it does not hallucinate content absent from the file
+Scenario: US-RAG-1-S1 Answer grounded in the canary document
+  Given an assistant with the seeded canary document indexed (unique fact: the canary code)
+  When I ask "What is the QA canary code?"
+  Then the response contains the exact canary code from the fixture
+  And a file citation points to the canary document
 
-Scenario: Error - no relevant content in files
-  Given an assistant with indexed documents
-  When I ask about a topic absent from the documents
-  Then the assistant indicates it found nothing relevant rather than inventing
+Scenario: US-RAG-1-S2 Manual/exploratory - no fabrication when absent
+  Given an assistant whose indexed documents do NOT contain a given fact
+  When I ask about that absent fact
+  Then (manual/exploratory) the assistant states it found nothing relevant rather than inventing content
 ```
 
 ### US-RAG-2 · Afficher les citations de fichiers
@@ -671,15 +786,15 @@ Scenario: Error - no relevant content in files
 - **Automatisable** : partiel — à créer.
 
 ```gherkin
-Scenario: File citations shown
+Scenario: US-RAG-2-S1 File citations shown
   Given a response grounded in an indexed file
   When the answer is displayed
-  Then a citation referencing the source file is shown
+  Then a citation referencing the source file name is visible on the response
 
-Scenario: Error - citation source unavailable
+Scenario: US-RAG-2-S2 Error - citation source unavailable
   Given a cited file has been removed
   When I open the citation
-  Then a graceful "source unavailable" state is shown (no broken link)
+  Then a "source unavailable" state is shown (no broken link, no crash)
 ```
 
 ### US-RAG-3 · Zone d'upload unifiée et activation de la recherche de fichiers
@@ -689,26 +804,25 @@ Scenario: Error - citation source unavailable
   fichiers soit activée dès que je joins un document, afin de ne pas avoir à
   cocher une option technique.
 - **Priorité** : **P1** · **Env** : dev, staging
-- **Automatisable** : partiel — assertion sur l'état d'upload à la re-sélection
-  d'assistant ; à créer.
+- **Automatisable** : partiel — US-RAG-3-S2 (état d'upload à la re-sélection
+  d'assistant) est l'assertion de non-régression clé ; à créer.
 
 ```gherkin
-Scenario: [Vermeer] File search auto-enabled in the builder
+Scenario: US-RAG-3-S1 [Vermeer] File search auto-enabled in the builder
   Given I open the assistant builder
-  Then the file-search capability is forced on (no visible checkbox)
-  And the upload zone is enabled
+  Then no file-search checkbox is visible
+  And the file upload zone is enabled (not greyed out)
 
-Scenario: [Vermeer] Capability re-armed on assistant re-selection
+Scenario: US-RAG-3-S2 [Vermeer] Capability re-armed on assistant re-selection
   Given I switch between assistants in the builder
   When I re-open a previously saved assistant
-  Then the upload zone stays enabled (file_search re-armed on agent change)
-  And the button is not greyed out (regression guard)
+  Then its upload zone is still enabled (file_search re-armed on agent change)
 
-Scenario: [Vermeer] Limitation - RAG API not configured (dev)
+Scenario: US-RAG-3-S3 [Vermeer] Limitation - RAG API not configured (dev)
   Given RAG_API_URL is undefined in the environment
   When I attach a file for file search
-  Then indexing fails silently with a backend warning (documented V1 limitation)
-  And the UI does not crash
+  Then the UI shows no crash and the upload control stays usable
+  And the backend logs an indexing warning (documented V1 limitation)
 ```
 
 ---
@@ -722,18 +836,18 @@ Scenario: [Vermeer] Limitation - RAG API not configured (dev)
   active par défaut sur les modèles compatibles, afin d'obtenir des réponses à
   jour sans configuration.
 - **Priorité** : **P1** · **Env** : dev, staging
-- **Automatisable** : partiel — assertion sur l'état par défaut du toggle ;
-  à créer.
+- **Automatisable** : partiel — US-WEB-1-S1 (état du toggle) ; oracle de
+  US-WEB-1-S2 = présence de citations/sources ; à créer.
 
 ```gherkin
-Scenario: [Vermeer] Web search on by default for native endpoints
+Scenario: US-WEB-1-S1 [Vermeer] Web search on by default for native endpoints
   Given I start a conversation with Claude, GPT or Gemini
-  Then the web search toggle is enabled by default (applyWebSearchDefault)
+  Then the web search toggle is shown enabled by default (applyWebSearchDefault)
 
-Scenario: Web search returns fresh information
+Scenario: US-WEB-1-S2 Web search returns fresh information with sources
   Given web search is enabled
   When I ask about a recent event
-  Then the assistant consults the web and grounds its answer
+  Then the response includes web citations/sources
 ```
 
 ### US-WEB-2 · Désactiver la recherche web
@@ -746,15 +860,17 @@ Scenario: Web search returns fresh information
 - **Automatisable** : oui — toggle UI dans le panel Paramètres.
 
 ```gherkin
-Scenario: Disable web search for the conversation
+Scenario: US-WEB-2-S1 Disable web search for the conversation
   Given web search is enabled
-  When I turn it off in the conversation settings
-  Then subsequent messages do not trigger web search
+  When I turn it off in the conversation settings and send a message
+  Then the response contains no web citations/sources
+  And the request payload does not include an active web_search parameter
 
-Scenario: Preference persists within the conversation
+Scenario: US-WEB-2-S2 Preference persists within the conversation
   Given I disabled web search
   When I send another message in the same conversation
-  Then web search stays disabled
+  Then the web search toggle still reads off
+  And the response again contains no web citations/sources
 ```
 
 ### US-WEB-3 · Robustesse web search (endpoints custom et garde-fous)
@@ -764,22 +880,25 @@ Scenario: Preference persists within the conversation
   jamais une conversation, afin d'avoir une expérience fiable quel que soit le
   modèle.
 - **Priorité** : **P2** · **Env** : dev, staging
-- **Automatisable** : partiel — assertions techniques ; à créer.
+- **Automatisable** : partiel — assertions techniques (statut HTTP, réponse) ;
+  à créer.
 
 ```gherkin
-Scenario: [Vermeer] web_search stripped on custom endpoints
+Scenario: US-WEB-3-S1 [Vermeer] web_search stripped on custom endpoints
   Given I use a custom endpoint that does not support native web search
   When I send a message
-  Then the web_search param is stripped (400 guard) and the message succeeds
+  Then the request succeeds (HTTP 200) and a response is received
+  And no 400 web_search error is returned
 
-Scenario: [Vermeer] No 400 with prompt cache active (langchain patch)
+Scenario: US-WEB-3-S2 [Vermeer] No 400 with prompt cache active (langchain patch)
   Given prompt cache is active with web search enabled
   When I send a message
-  Then no "web_search extras" 400 error occurs and the response streams
+  Then no "web_search extras" 400 error occurs
+  And the assistant response is received
 
-Scenario: [Vermeer] Third-party pipeline hidden from users
-  Given I browse the tools menu
-  Then the third-party web search tool is not offered (SHOW_WEB_SEARCH_TOOL=false)
+Scenario: US-WEB-3-S3 [Vermeer] Third-party pipeline hidden from users
+  Given I open the tools menu
+  Then no third-party web search tool entry is present (SHOW_WEB_SEARCH_TOOL=false)
 ```
 
 ---
@@ -795,15 +914,14 @@ Scenario: [Vermeer] Third-party pipeline hidden from users
 - **Automatisable** : partiel — pas de spec upstream ; à créer.
 
 ```gherkin
-Scenario: [Vermeer] View consumption KPI cards
-  Given I am an administrator on the "Consommation" page
-  Then I see the KPI cards (spend, users, intensity segmentation)
-  And the figures reflect the current period
+Scenario: US-ADMIN-1-S1 [Vermeer] View consumption KPI cards
+  Given I am admin-usage on the "Consommation" page
+  Then the KPI cards (spend, users, intensity segmentation) are visible with numeric values
 
-Scenario: [Vermeer] Error - no data for the period
+Scenario: US-ADMIN-1-S2 [Vermeer] Error - no data for the period
   Given a period with no transactions
   When I open the analytics page
-  Then empty states are shown gracefully (no crash, no NaN)
+  Then the KPI cards render empty-state values (no NaN, no crash)
 ```
 
 ### US-ADMIN-2 · Filtrer par entité (BU)
@@ -815,15 +933,15 @@ Scenario: [Vermeer] Error - no data for the period
 - **Automatisable** : partiel — à créer.
 
 ```gherkin
-Scenario: [Vermeer] Filter analytics by BU
+Scenario: US-ADMIN-2-S1 [Vermeer] Filter analytics by BU
   Given I am on the analytics page
   When I select a BU filter (POP, BETC, Other...)
-  Then the figures are recomputed for that entity (matchesBuFilter)
+  Then the displayed figures change to that entity's values (matchesBuFilter)
 
-Scenario: [Vermeer] "All" restores the full scope
+Scenario: US-ADMIN-2-S2 [Vermeer] "All" restores the full scope
   Given a BU filter is applied
   When I select "all"
-  Then the analytics show the full cross-BU scope again
+  Then the displayed figures return to the full cross-BU totals
 ```
 
 ### US-ADMIN-3 · Répartition par modèle (Model Mix)
@@ -835,13 +953,13 @@ Scenario: [Vermeer] "All" restores the full scope
 - **Automatisable** : partiel — à créer.
 
 ```gherkin
-Scenario: [Vermeer] Model Mix donut and table
+Scenario: US-ADMIN-3-S1 [Vermeer] Model Mix donut and table
   Given I am on the analytics page
-  Then a donut chart and a table show spend split by model
+  Then a donut chart and a table showing spend split by model are visible
 
-Scenario: [Vermeer] Model Mix follows the BU filter
+Scenario: US-ADMIN-3-S2 [Vermeer] Model Mix follows the BU filter
   Given a BU filter is applied
-  Then the Model Mix reflects only that entity's consumption
+  Then the Model Mix figures show only that entity's per-model spend
 ```
 
 ### US-ADMIN-4 · Exporter le détail par utilisateur
@@ -853,15 +971,15 @@ Scenario: [Vermeer] Model Mix follows the BU filter
 - **Automatisable** : partiel — à créer.
 
 ```gherkin
-Scenario: [Vermeer] Export user details to CSV
+Scenario: US-ADMIN-4-S1 [Vermeer] Export user details to CSV
   Given the user details section is expanded
   When I click export CSV
-  Then a CSV file is downloaded with the per-user consumption rows
+  Then a CSV file is downloaded containing one row per user with consumption columns
 
-Scenario: [Vermeer] Export honors the active BU filter
+Scenario: US-ADMIN-4-S2 [Vermeer] Export honors the active BU filter
   Given a BU filter is applied
   When I export CSV
-  Then only the filtered users are included
+  Then the downloaded CSV contains only the filtered users' rows
 ```
 
 ### US-ADMIN-5 · Restreindre l'accès à l'administration
@@ -874,15 +992,15 @@ Scenario: [Vermeer] Export honors the active BU filter
 - **Automatisable** : oui — assertion de gating.
 
 ```gherkin
-Scenario: [Vermeer] Admin access granted with the right permission
-  Given I have the manage-usage permission
+Scenario: US-ADMIN-5-S1 [Vermeer] Admin access granted with the right permission
+  Given I am admin-usage (manage-usage permission)
   When I open the admin area
-  Then the analytics and thresholds tabs are available
+  Then the analytics and thresholds tabs are visible and reachable
 
-Scenario: [Vermeer] Error - non-admin blocked
-  Given I am a collaborateur without manage-usage permission
-  When I try to reach the admin analytics
-  Then access is denied (requireManageUsage gating)
+Scenario: US-ADMIN-5-S2 [Vermeer] Error - non-admin blocked
+  Given I am collaborateur-pop without manage-usage permission
+  When I request the admin analytics route
+  Then the request is rejected (HTTP 403, requireManageUsage gating)
 ```
 
 ---
@@ -895,18 +1013,19 @@ Scenario: [Vermeer] Error - non-admin blocked
 - **Story** : En tant que collaborateur, je veux que l'assistant retienne des
   informations me concernant, afin d'avoir des échanges plus pertinents.
 - **Priorité** : **P1** · **Env** : dev, staging
-- **Automatisable** : partiel — à créer.
+- **Automatisable** : partiel — US-MEM-1-S2 automatisable (CRUD dans le panneau) ;
+  la réutilisation en réponse (S1) est manuelle/exploratoire ; à créer.
 
 ```gherkin
-Scenario: Personal memory is remembered
+Scenario: US-MEM-1-S1 Personal memory is captured
   Given memory is enabled for my account
   When I share a durable fact about myself
-  Then it is stored and reused to personalize later responses
+  Then a matching entry appears in the memory panel
 
-Scenario: Create/edit a memory entry manually
+Scenario: US-MEM-1-S2 Create/edit a memory entry manually
   Given I open the memory panel
   When I create or edit a memory entry
-  Then the entry is saved and listed
+  Then the entry appears in the list with the saved content
 ```
 
 ### US-MEM-2 · Mémoire personnelle scopée par assistant
@@ -915,24 +1034,25 @@ Scenario: Create/edit a memory entry manually
 - **Story** : En tant que collaborateur, je veux distinguer ce que retient un
   assistant donné de ce qui est global, afin de garder des mémoires bien rangées.
 - **Priorité** : **P1** · **Env** : dev, staging
-- **Automatisable** : partiel — à créer.
+- **Automatisable** : partiel — oracle observable via l'API memories (`agentId`)
+  et les badges du panneau ; à créer.
 
 ```gherkin
-Scenario: [Vermeer] Memory scoped to the current assistant
+Scenario: US-MEM-2-S1 [Vermeer] Memory scoped to the current assistant
   Given I converse with a real assistant
   When a memory is captured
-  Then it is tagged with that assistant's id
-  And reading shows global entries plus the current assistant's entries
+  Then the memories API returns that entry tagged with the assistant's agentId
+  And the memory panel lists both global entries and the current assistant's entries
 
-Scenario: [Vermeer] Global entries read-only in the assistant builder
+Scenario: US-MEM-2-S2 [Vermeer] Global entries read-only in the assistant builder
   Given I open the memory section in an assistant
-  Then global entries are read-only with a "Global" badge
-  And only this assistant's entries are editable/deletable ("Cet assistant")
+  Then global entries show a "Global" badge and no edit/delete controls
+  And this assistant's entries show a "Cet assistant" badge with edit/delete controls
 
-Scenario: [Vermeer] Default (ephemeral) chat writes global memory
+Scenario: US-MEM-2-S3 [Vermeer] Default (ephemeral) chat writes global memory
   Given I use the default chat (no real assistant)
   When a memory is captured
-  Then it is stored as global (agentId null)
+  Then the memories API returns that entry with agentId null (global)
 ```
 
 ### US-MEM-3 · Mémoire partagée d'un assistant
@@ -942,25 +1062,26 @@ Scenario: [Vermeer] Default (ephemeral) chat writes global memory
   métier curée qui accompagne l'assistant lorsqu'il est partagé, afin de diffuser
   un savoir commun.
 - **Priorité** : **P1** · **Env** : staging
-- **Automatisable** : partiel — à créer.
+- **Automatisable** : partiel — oracle via le record d'agent (`shared_memory`) et
+  l'absence de PATCH réseau avant Save ; à créer.
 
 ```gherkin
-Scenario: [Vermeer] Curated shared memory travels with the assistant
+Scenario: US-MEM-3-S1 [Vermeer] Curated shared memory travels with the assistant
   Given I am owner/editor of an assistant
   When I add a shared memory entry and save the assistant
-  Then the entry is persisted in the assistant definition (shared_memory)
-  And a viewer of the shared assistant sees that curated memory
+  Then the agent record contains that entry under shared_memory
+  And a VIEW-only recipient sees that curated memory on the shared assistant
 
-Scenario: [Vermeer] Shared memory is form-based (saved with the assistant)
+Scenario: US-MEM-3-S2 [Vermeer] Shared memory is form-based (saved with the assistant)
   Given I add/edit/delete a shared memory entry
-  When I have not yet saved the assistant
-  Then no immediate PATCH occurs
-  And the change persists only when I save the assistant
+  When I have not yet clicked Save on the assistant
+  Then no PATCH request is sent
+  And the change is persisted only after I click Save
 
-Scenario: [Vermeer] Error - viewer cannot edit shared memory
+Scenario: US-MEM-3-S3 [Vermeer] Error - viewer cannot edit shared memory
   Given I only have VIEW permission on an assistant
   When I open its shared memory
-  Then it is read-only (no edit/delete controls)
+  Then no edit/delete controls are shown (read-only)
 ```
 
 ### US-MEM-4 · Étanchéité des mémoires
@@ -970,23 +1091,24 @@ Scenario: [Vermeer] Error - viewer cannot edit shared memory
   personnelle ne circule jamais vers d'autres utilisateurs ni d'autres entités,
   afin de préserver la confidentialité.
 - **Priorité** : **P0** · **Env** : staging
-- **Automatisable** : partiel — nécessite deux comptes/BU ; à créer.
+- **Automatisable** : partiel — nécessite `collaborateur-pop` + `collaborateur-betc` ;
+  à créer.
 
 ```gherkin
-Scenario: [Vermeer] Personal memory never crosses users
-  Given user A has personal memory entries
-  When user B converses (even with the same assistant)
-  Then user B never sees user A's personal memory
+Scenario: US-MEM-4-S1 [Vermeer] Personal memory never crosses users
+  Given collaborateur-pop has personal memory entries
+  When collaborateur-betc opens their memory panel (even with the same assistant)
+  Then collaborateur-pop's entries are absent from collaborateur-betc's memories API response
 
-Scenario: [Vermeer] Personal memory never crosses BU
+Scenario: US-MEM-4-S2 [Vermeer] Personal memory never crosses BU
   Given a personal memory belongs to a POP user
-  When a BETC user uses the app
-  Then that personal memory is never surfaced cross-BU
+  When a BETC user's session reads memories
+  Then that personal memory is absent from the BETC user's memories API response
 
-Scenario: [Vermeer] Shared memory may cross BU by design
-  Given an assistant with curated shared memory is shared POP -> BETC
-  When a BETC viewer uses the assistant
-  Then the curated shared memory is available (by-design, via assistant ACL)
+Scenario: US-MEM-4-S3 [Vermeer] Shared memory may cross BU by design
+  Given the "QA Shared Assistant" with curated shared memory is shared POP -> BETC
+  When collaborateur-betc opens the assistant
+  Then the curated shared memory is visible (by-design, via assistant ACL)
 ```
 
 ---
@@ -1002,15 +1124,16 @@ Scenario: [Vermeer] Shared memory may cross BU by design
 - **Automatisable** : partiel — assertions de libellés localisés ; à créer.
 
 ```gherkin
-Scenario: French UI labels
+Scenario: US-I18N-1-S1 French UI labels
   Given my language is set to French
-  When I browse the main screens (composer, settings, assistants)
-  Then user-facing labels are displayed in French
+  When I open the main screens (composer, settings, assistants)
+  Then the visible labels display their French translations
 
-Scenario: Interpolations and business acronyms preserved
+Scenario: US-I18N-1-S2 Interpolations and business acronyms preserved
   Given a localized string with an interpolation and acronyms (POP, BETC, USD)
   When it is displayed in French
-  Then the interpolation is filled correctly and acronyms are not translated
+  Then the rendered text shows the interpolated value filled in
+  And the acronyms appear untranslated
 ```
 
 ### US-I18N-2 · Basculer la langue FR / EN
@@ -1022,15 +1145,15 @@ Scenario: Interpolations and business acronyms preserved
 - **Automatisable** : oui — action de réglage.
 
 ```gherkin
-Scenario: Switch language
+Scenario: US-I18N-2-S1 Switch language
   Given the UI is in French
   When I switch the language to English in settings
-  Then user-facing labels update to English without reload issues
+  Then the visible labels display their English text
 
-Scenario: Language preference persists
+Scenario: US-I18N-2-S2 Language preference persists
   Given I selected English
   When I reload the app
-  Then the UI stays in English
+  Then the visible labels are still in English
 ```
 
 ### US-I18N-3 · Repli propre sur clés non traduites
@@ -1042,13 +1165,13 @@ Scenario: Language preference persists
 - **Automatisable** : partiel — à créer.
 
 ```gherkin
-Scenario: [Vermeer] Untranslated key falls back to English
+Scenario: US-I18N-3-S1 [Vermeer] Untranslated key falls back to English
   Given the French coverage is partial (~77% of EN keys)
   When I open a recent area whose key has no FR translation
-  Then the English text is shown as fallback (no raw key, no blank)
+  Then the English text is displayed (no raw key string, no blank label)
 
-Scenario: [Vermeer] No missing-interpolation artifacts
+Scenario: US-I18N-3-S2 [Vermeer] No missing-interpolation artifacts
   Given a fallback English string with interpolations
   When it is displayed in a French session
-  Then interpolations still render (no "{{var}}" leaking to the user)
+  Then the rendered text shows filled interpolations (no literal "{{var}}" visible)
 ```
