@@ -1,5 +1,4 @@
 import { memo, lazy, Suspense, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Skeleton } from '@librechat/client';
 import type { NavLink } from '~/common';
 import { useActivePanel, resolveActivePanel } from '~/Providers';
@@ -15,12 +14,13 @@ import { NewChatButton, NavIconButton, SidebarToggleButton } from './buttons';
 const AccountSettings = lazy(() => import('~/components/Nav/AccountSettings'));
 
 // Vermeer: mono-colonne (réf. UI Claude.ai) — nav en haut, liste des conversations
-// inline directement dessous. Sections migrées : Skills/Usage → route, Fichiers/
-// Mémoires → modale, Signets retiré. Assistants + Paramètres gardent un panneau
+// inline directement dessous. Sections migrées : Usage → route, Fichiers/Mémoires
+// → modale, Signets retiré. Assistants, Skills + Paramètres gardent un panneau
 // latéral PROVISOIRE via le mécanisme ActivePanel.
 const MONO_COLLAPSED_WIDTH = 52;
 const MONO_COLUMN_WIDTH = 300;
-const MONO_PANEL_WIDTH = 360;
+// Vermeer: panneau provisoire élargi (560) — la config du builder Assistants était coupée à 360.
+const MONO_PANEL_WIDTH = 560;
 const TRANSITION_MS = 300;
 const EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
@@ -40,23 +40,19 @@ function MonoSidebar({
   onExpand?: () => void;
 }) {
   const localize = useLocalize();
-  const navigate = useNavigate();
   const { active, setActive } = useActivePanel();
   const [modal, setModal] = useState<ModalSection>(null);
   const effectiveActive = resolveActivePanel(active, links);
 
   // La liste des conversations vit inline dans la colonne (retirée des rangées de
-  // nav), et les Signets sont retirés du rail. Skills/Usage naviguent vers leur
-  // route, Fichiers/Mémoires ouvrent une modale ; les autres (Assistants,
-  // Paramètres) gardent le panneau latéral via setActive.
+  // nav), et les Signets sont retirés du rail. Fichiers/Mémoires ouvrent une
+  // modale ; les autres (Assistants, Skills, Paramètres) gardent le panneau
+  // latéral via setActive.
   const navLinks = useMemo(
     () =>
       links
         .filter((link) => link.id !== 'conversations' && link.id !== 'bookmarks')
         .map((link) => {
-          if (link.id === 'skills') {
-            return { ...link, onClick: () => navigate('/skills') };
-          }
           if (link.id === 'files') {
             return { ...link, onClick: () => setModal('files') };
           }
@@ -65,7 +61,7 @@ function MonoSidebar({
           }
           return link;
         }),
-    [links, navigate],
+    [links],
   );
 
   // Seules les sections qui utilisent encore setActive (Component sans onClick)
