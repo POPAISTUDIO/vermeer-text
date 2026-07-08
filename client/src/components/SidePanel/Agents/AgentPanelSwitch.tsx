@@ -33,15 +33,20 @@ function AgentPanelSwitchWithContext({
 }) {
   const { activePanel, setCurrentAgentId } = useAgentPanelContext();
   const convoAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
-  // Vermeer: l'override (carte Marketplace) prime sur l'agent de la conversation.
-  const agentId = agentIdOverride ?? convoAgentId;
+  // Vermeer: '' = « nouvel assistant » (form vierge, pas de présélection) ; un id non
+  // vide présélectionne cet assistant (carte) ; sinon fallback agent de la conversation.
+  const isNew = agentIdOverride === '';
+  const agentId = isNew ? undefined : (agentIdOverride ?? convoAgentId);
 
   useEffect(() => {
+    if (isNew) {
+      return;
+    }
     const agent_id = agentId ?? '';
     if (!isEphemeralAgent(agent_id)) {
       setCurrentAgentId(agent_id);
     }
-  }, [setCurrentAgentId, agentId]);
+  }, [isNew, setCurrentAgentId, agentId]);
 
   if (activePanel === Panel.actions) {
     return <ActionsPanel />;

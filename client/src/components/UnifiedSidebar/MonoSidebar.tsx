@@ -55,7 +55,7 @@ function MonoSidebar({
         .filter((link) => link.id !== 'conversations' && link.id !== 'bookmarks')
         .map((link) =>
           link.id === EModelEndpoint.agents
-            ? { ...link, onClick: () => navigate('/agents') }
+            ? { ...link, onClick: () => navigate('/assistants') }
             : link,
         ),
     [links, navigate],

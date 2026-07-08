@@ -467,77 +467,79 @@ export default function AgentPanel({ hideHeader = false }: { hideHeader?: boolea
         aria-label="Agent configuration form"
       >
         <div className="flex-1">
-          {/* Vermeer: header de nav masqué en modale (hideHeader) */}
-          {!hideHeader && (
-            <div className="flex w-full flex-wrap gap-2">
-              <div className="flex w-full gap-2">
-                <Button
-                  type="button"
-                  variant="submit"
-                  className="w-full justify-center"
-                  onClick={() => {
-                    reset(getDefaultAgentFormValues());
-                    setCurrentAgentId(undefined);
-                    setShowAgentList(false);
-                  }}
-                  disabled={agentQuery.isInitialLoading}
-                  aria-label={localize('com_ui_create_new_agent')}
-                >
-                  <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
-                  {localize('com_ui_create_new_agent')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full justify-center"
-                  onClick={() => setShowAgentList((v) => !v)}
-                  disabled={agentQuery.isInitialLoading}
-                  aria-label={localize('com_ui_my_agents')}
-                >
-                  {localize('com_ui_my_agents')}
-                </Button>
-              </div>
-              {showAgentMarketplace && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full justify-center"
-                  onClick={() => navigate('/agents')}
-                  aria-label={localize('com_agents_marketplace')}
-                >
-                  <LayoutGrid className="mr-1 h-4 w-4" aria-hidden="true" />
-                  {localize('com_agents_marketplace')}
-                </Button>
-              )}
-              {showAgentList && (
-                <div className="w-full">
-                  <AgentSelect
-                    createMutation={create}
-                    agentQuery={agentQuery}
-                    setCurrentAgentId={setCurrentAgentId}
-                    selectedAgentId={
-                      agentQuery.isInitialLoading ? null : (current_agent_id ?? null)
-                    }
-                  />
-                </div>
-              )}
-              {agent_id && (
-                <div className="flex w-full justify-end">
+          {/* Vermeer: en modale (hideHeader) on masque les boutons de nav (Créer/Mes
+              assistants/Marketplace/Sélectionner) MAIS on garde AgentSelect monté —
+              son effet d'hydratation remplit le formulaire depuis l'agent présélectionné. */}
+          <div className="flex w-full flex-wrap gap-2">
+            {!hideHeader && (
+              <>
+                <div className="flex w-full gap-2">
                   <Button
+                    type="button"
                     variant="submit"
-                    disabled={isEphemeralAgent(agent_id) || agentQuery.isInitialLoading}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleSelectAgent();
+                    className="w-full justify-center"
+                    onClick={() => {
+                      reset(getDefaultAgentFormValues());
+                      setCurrentAgentId(undefined);
+                      setShowAgentList(false);
                     }}
-                    aria-label={localize('com_ui_select_agent')}
+                    disabled={agentQuery.isInitialLoading}
+                    aria-label={localize('com_ui_create_new_agent')}
                   >
-                    {localize('com_ui_select')}
+                    <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+                    {localize('com_ui_create_new_agent')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-center"
+                    onClick={() => setShowAgentList((v) => !v)}
+                    disabled={agentQuery.isInitialLoading}
+                    aria-label={localize('com_ui_my_agents')}
+                  >
+                    {localize('com_ui_my_agents')}
                   </Button>
                 </div>
-              )}
-            </div>
-          )}
+                {showAgentMarketplace && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-center"
+                    onClick={() => navigate('/agents')}
+                    aria-label={localize('com_agents_marketplace')}
+                  >
+                    <LayoutGrid className="mr-1 h-4 w-4" aria-hidden="true" />
+                    {localize('com_agents_marketplace')}
+                  </Button>
+                )}
+              </>
+            )}
+            {(hideHeader || showAgentList) && (
+              <div className="w-full">
+                <AgentSelect
+                  createMutation={create}
+                  agentQuery={agentQuery}
+                  setCurrentAgentId={setCurrentAgentId}
+                  selectedAgentId={agentQuery.isInitialLoading ? null : (current_agent_id ?? null)}
+                />
+              </div>
+            )}
+            {!hideHeader && agent_id && (
+              <div className="flex w-full justify-end">
+                <Button
+                  variant="submit"
+                  disabled={isEphemeralAgent(agent_id) || agentQuery.isInitialLoading}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleSelectAgent();
+                  }}
+                  aria-label={localize('com_ui_select_agent')}
+                >
+                  {localize('com_ui_select')}
+                </Button>
+              </div>
+            )}
+          </div>
           {agentQuery.isInitialLoading && <AgentPanelSkeleton />}
           {!canEditAgent && !agentQuery.isInitialLoading && (
             <div className="flex h-[30vh] w-full items-center justify-center">
