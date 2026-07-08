@@ -1,28 +1,18 @@
-import { lazy, Suspense } from 'react';
-import { Spinner } from '@librechat/client';
+import { useLocalize } from '~/hooks';
 
-// Vermeer: page pleine « Assistants » rendue DANS le layout principal (sidebar
-// mono-colonne à gauche via Root, contenu ici dans l'Outlet). AgentPanelSwitch est
-// autonome (wrappe son AgentPanelProvider + son propre FormProvider) et n'utilise
-// PAS ChatContext (ses composants fichiers passent par les variantes NoChatContext),
-// donc montable en page. Il embarque déjà le sélecteur d'assistants (AgentSelect =
-// « Mes assistants ») et l'accès Marketplace ; on le rend simplement en pleine page.
-const AgentPanelSwitch = lazy(() => import('~/components/SidePanel/Agents/AgentPanelSwitch'));
-
+// Vermeer: page pleine « Assistants » — REPORTÉE. Le builder (AgentPanelSwitch →
+// AgentConfig) rend les paramètres modèle via le sous-système Parameters
+// (componentMapping → widgets Dynamic*), qui consomment `useChatContext` et écrivent
+// via `useSetIndexOptions`. Hors du panneau (qui vit sous SidebarChatProvider), ça
+// crashe « useChatContext must be used within a ChatContext.Provider ». Aucune
+// variante NoChatContext n'existe pour ces widgets, et un provider inerte casserait
+// la persistance des params. Décision : l'entrée nav Assistants reste au panneau
+// latéral provisoire ; cette page reste un shell inerte jusqu'à traitement dédié.
 export default function AssistantsPage() {
+  const localize = useLocalize();
   return (
-    <div className="flex h-full flex-col overflow-hidden text-text-primary">
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-2xl flex-col px-4 py-4">
-        <Suspense
-          fallback={
-            <div className="flex h-full items-center justify-center">
-              <Spinner className="text-text-primary" />
-            </div>
-          }
-        >
-          <AgentPanelSwitch />
-        </Suspense>
-      </div>
+    <div className="flex h-full flex-col overflow-y-auto p-6 text-text-primary">
+      <h1 className="text-xl font-semibold">{localize('com_vermeer_nav_assistants')}</h1>
     </div>
   );
 }
