@@ -1,4 +1,6 @@
 import { memo, lazy, Suspense, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { EModelEndpoint } from 'librechat-data-provider';
 import { Skeleton } from '@librechat/client';
 import type { NavLink } from '~/common';
 import { useActivePanel, resolveActivePanel } from '~/Providers';
@@ -14,9 +16,9 @@ import { NewChatButton, NavIconButton, SidebarToggleButton } from './buttons';
 const AccountSettings = lazy(() => import('~/components/Nav/AccountSettings'));
 
 // Vermeer: mono-colonne (réf. UI Claude.ai) — nav en haut, liste des conversations
-// inline directement dessous. Sections migrées : Usage → route, Fichiers/Mémoires
-// → modale, Signets retiré. Assistants, Skills + Paramètres gardent un panneau
-// latéral PROVISOIRE via le mécanisme ActivePanel.
+// inline directement dessous. Sections migrées : Assistants + Usage → route (page/
+// dashboard dans le layout), Fichiers/Mémoires → modale, Signets retiré. Skills +
+// Paramètres gardent un panneau latéral PROVISOIRE via le mécanisme ActivePanel.
 const MONO_COLLAPSED_WIDTH = 52;
 const MONO_COLUMN_WIDTH = 300;
 // Vermeer: panneau provisoire élargi (560) — la config du builder Assistants était coupée à 360.
@@ -40,19 +42,23 @@ function MonoSidebar({
   onExpand?: () => void;
 }) {
   const localize = useLocalize();
+  const navigate = useNavigate();
   const { active, setActive } = useActivePanel();
   const [modal, setModal] = useState<ModalSection>(null);
   const effectiveActive = resolveActivePanel(active, links);
 
   // La liste des conversations vit inline dans la colonne (retirée des rangées de
-  // nav), et les Signets sont retirés du rail. Fichiers/Mémoires ouvrent une
-  // modale ; les autres (Assistants, Skills, Paramètres) gardent le panneau
+  // nav), et les Signets sont retirés du rail. Assistants → page /assistants,
+  // Fichiers/Mémoires → modale ; les autres (Skills, Paramètres) gardent le panneau
   // latéral via setActive.
   const navLinks = useMemo(
     () =>
       links
         .filter((link) => link.id !== 'conversations' && link.id !== 'bookmarks')
         .map((link) => {
+          if (link.id === EModelEndpoint.agents) {
+            return { ...link, onClick: () => navigate('/assistants') };
+          }
           if (link.id === 'files') {
             return { ...link, onClick: () => setModal('files') };
           }
@@ -61,7 +67,7 @@ function MonoSidebar({
           }
           return link;
         }),
-    [links],
+    [links, navigate],
   );
 
   // Seules les sections qui utilisent encore setActive (Component sans onClick)
