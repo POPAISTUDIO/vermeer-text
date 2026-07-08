@@ -110,7 +110,8 @@ export default function useSideNavLinks({
       endpointsConfig[EModelEndpoint.agents].disableBuilder !== true
     ) {
       links.push({
-        title: 'com_sidepanel_agent_builder',
+        // Vermeer: rail « Assistants » (clé dédiée ; com_sidepanel_agent_builder reste intacte)
+        title: 'com_vermeer_nav_assistants',
         label: '',
         icon: Bot,
         id: EModelEndpoint.agents,
@@ -178,7 +179,8 @@ export default function useSideNavLinks({
     }
 
     links.push({
-      title: 'com_sidepanel_attach_files',
+      // Vermeer: rail « Historique des fichiers » (clé dédiée ; com_sidepanel_attach_files reste au composer)
+      title: 'com_vermeer_nav_file_history',
       label: '',
       icon: AttachmentIcon,
       id: 'files',

@@ -1449,5 +1449,7 @@
   "com_usage_thresholds_placeholder": "Gestion des seuils mensuels par utilisateur.",
   "com_usage_title": "Consommation",
   "com_usage_user_details": "Détails utilisateur ({{count}})",
-  "com_user_message": "Vous"
+  "com_user_message": "Vous",
+  "com_vermeer_nav_assistants": "Assistants",
+  "com_vermeer_nav_file_history": "Historique des fichiers"
 }
