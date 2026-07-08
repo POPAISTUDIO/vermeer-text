@@ -80,6 +80,8 @@ export enum QueryKeys {
   skillStates = 'skillStates',
   /* General user favorites */
   favorites = 'favorites',
+  /* Vermeer: conversations épinglées (user-scopé, miroir favorites) */
+  pinnedConversations = 'pinnedConversations',
   /* Admin Usage (V1 MVP — monthly consumption table) */
   adminUsage = 'adminUsage',
   /* Admin Budgets (monthly spend thresholds per user) */

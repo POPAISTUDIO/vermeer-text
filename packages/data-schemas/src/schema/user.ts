@@ -148,6 +148,12 @@ const userSchema = new Schema<IUser>(
       ],
       default: [],
     },
+    // Vermeer: liste user-scopée d'ids de conversations épinglées (miroir de `favorites`).
+    // Le schéma Conversation reste intouché ; l'épinglage vit côté User.
+    pinnedConversations: {
+      type: [String],
+      default: [],
+    },
     skillStates: {
       type: Map,
       of: Boolean,
