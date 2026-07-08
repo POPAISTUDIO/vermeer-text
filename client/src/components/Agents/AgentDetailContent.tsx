@@ -1,20 +1,23 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link, Pin, PinOff, MessagesSquare } from 'lucide-react';
+import { useSetRecoilState } from 'recoil';
+import { Link, Pin, PinOff, MessagesSquare, SlidersHorizontal } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { OGDialogContent, Button, useToastContext } from '@librechat/client';
 import {
   QueryKeys,
   Constants,
+  SystemRoles,
   EModelEndpoint,
   PermissionBits,
   LocalStorageKeys,
   AgentListResponse,
 } from 'librechat-data-provider';
 import type t from 'librechat-data-provider';
-import { useLocalize, useDefaultConvo, useFavorites } from '~/hooks';
+import { useLocalize, useDefaultConvo, useFavorites, useAuthContext } from '~/hooks';
 import { renderAgentAvatar, clearMessagesCache } from '~/utils';
 import { useChatContext } from '~/Providers';
+import store from '~/store';
 
 interface SupportContact {
   name?: string;
@@ -42,6 +45,11 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
   const { conversation, newConversation } = useChatContext();
   const { isFavoriteAgent, toggleFavoriteAgent } = useFavorites();
   const isFavorite = isFavoriteAgent(agent?.id);
+  // Vermeer: propriété (mêmes règles qu'AgentFooter) → « Paramètres de l'assistant »
+  // n'est proposé que pour MES assistants ; ouvre la modale builder via le pont Recoil.
+  const { user } = useAuthContext();
+  const setOpenBuilder = useSetRecoilState(store.openBuilderModal);
+  const isMine = agent?.author === user?.id || user?.role === SystemRoles.ADMIN;
 
   const handleFavoriteClick = () => {
     if (agent) {
@@ -192,6 +200,18 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
         >
           <MessagesSquare className="h-4 w-4" aria-hidden="true" />
         </Button>
+        {/* Vermeer: « Paramètres de l'assistant » (MES assistants) → modale builder via le pont */}
+        {isMine && agent?.id && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setOpenBuilder(agent.id)}
+            title={localize('com_vermeer_configure')}
+            aria-label={localize('com_vermeer_configure')}
+          >
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        )}
         <Button
           variant="submit"
           className="w-full max-w-xs"

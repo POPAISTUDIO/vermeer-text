@@ -7,17 +7,34 @@ import ActionsPanel from './ActionsPanel';
 import AgentPanel from './AgentPanel';
 import store from '~/store';
 
-export default function AgentPanelSwitch() {
+// Vermeer: props additives — hideHeader (masque le chrome de nav quand rendu dans la
+// modale Vermeer) + agentId (présélection de l'assistant à configurer depuis une carte
+// Marketplace, sinon fallback sur l'agent de la conversation courante).
+export default function AgentPanelSwitch({
+  hideHeader = false,
+  agentId,
+}: {
+  hideHeader?: boolean;
+  agentId?: string;
+} = {}) {
   return (
     <AgentPanelProvider>
-      <AgentPanelSwitchWithContext />
+      <AgentPanelSwitchWithContext hideHeader={hideHeader} agentIdOverride={agentId} />
     </AgentPanelProvider>
   );
 }
 
-function AgentPanelSwitchWithContext() {
+function AgentPanelSwitchWithContext({
+  hideHeader = false,
+  agentIdOverride,
+}: {
+  hideHeader?: boolean;
+  agentIdOverride?: string;
+}) {
   const { activePanel, setCurrentAgentId } = useAgentPanelContext();
-  const agentId = useRecoilValue(store.conversationAgentIdByIndex(0));
+  const convoAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
+  // Vermeer: l'override (carte Marketplace) prime sur l'agent de la conversation.
+  const agentId = agentIdOverride ?? convoAgentId;
 
   useEffect(() => {
     const agent_id = agentId ?? '';
@@ -32,5 +49,5 @@ function AgentPanelSwitchWithContext() {
   if (activePanel === Panel.version) {
     return <VersionPanel />;
   }
-  return <AgentPanel />;
+  return <AgentPanel hideHeader={hideHeader} />;
 }

@@ -20,8 +20,7 @@ import ShareRoute from './ShareRoute';
 import ChatRoute from './ChatRoute';
 import Search from './Search';
 import Root from './Root';
-// Vermeer: pages pleines rendues dans le layout principal (LOT C)
-import AssistantsPage from './AssistantsPage';
+// Vermeer: page pleine rendue dans le layout principal (LOT C)
 import ConsumptionPage from './ConsumptionPage';
 
 const AuthLayout = () => (
@@ -130,12 +129,8 @@ export const router = createBrowserRouter(
               element: <Search />,
             },
             {
-              // Vermeer: page pleine Assistants dans le layout (sidebar persistante)
-              path: 'assistants',
-              element: <AssistantsPage />,
-            },
-            {
-              // Vermeer: page pleine Consommation dans le layout (sidebar persistante)
+              // Vermeer: page pleine Consommation dans le layout (sidebar persistante).
+              // Assistants n'a plus de page custom : le Marketplace (/agents) EST la page.
               path: 'consommation',
               element: <ConsumptionPage />,
             },

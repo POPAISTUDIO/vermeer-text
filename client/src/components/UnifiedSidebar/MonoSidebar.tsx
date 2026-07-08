@@ -55,7 +55,7 @@ function MonoSidebar({
         .filter((link) => link.id !== 'conversations' && link.id !== 'bookmarks')
         .map((link) =>
           link.id === EModelEndpoint.agents
-            ? { ...link, onClick: () => navigate('/assistants') }
+            ? { ...link, onClick: () => navigate('/agents') }
             : link,
         ),
     [links, navigate],
@@ -83,19 +83,21 @@ function MonoSidebar({
     </SectionModal>
   );
 
-  // Vermeer: modale builder Assistants dédiée, ouverte par le pont depuis /assistants.
-  // Montée ici (sous SidebarChatProvider) → AgentPanelSwitch a bien ChatContext.
+  // Vermeer: modale builder Assistants dédiée, ouverte par le pont depuis les cartes
+  // Marketplace (openBuilderModal = agentId à configurer). Montée ici (sous
+  // SidebarChatProvider) → AgentPanelSwitch a bien ChatContext. hideHeader masque le
+  // chrome de navigation redondant ; agentId présélectionne l'assistant de la carte.
   const builderModal = (
     <SectionModal
-      open={builderOpen}
+      open={builderOpen != null}
       onOpenChange={(open) => {
         if (!open) {
-          setBuilderOpen(false);
+          setBuilderOpen(null);
         }
       }}
-      title={localize('com_vermeer_nav_assistants')}
+      title={localize('com_vermeer_configure')}
     >
-      {builderOpen ? (
+      {builderOpen != null ? (
         <Suspense
           fallback={
             <div className="flex h-full items-center justify-center">
@@ -103,7 +105,7 @@ function MonoSidebar({
             </div>
           }
         >
-          <AgentPanelSwitch />
+          <AgentPanelSwitch hideHeader agentId={builderOpen} />
         </Suspense>
       ) : null}
     </SectionModal>
