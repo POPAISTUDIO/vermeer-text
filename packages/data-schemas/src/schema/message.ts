@@ -179,6 +179,11 @@ messageSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
 messageSchema.index({ createdAt: 1 });
 messageSchema.index({ messageId: 1, user: 1, tenantId: 1 }, { unique: true });
 
+// Vermeer: couvre le chemin de chargement de conversation (filtre + tri).
+// autoIndex étant false en prod/staging, créer aussi l'index manuellement
+// sur les environnements existants (cf. config/vermeer-diag-messages-perf.js)
+messageSchema.index({ conversationId: 1, createdAt: 1 });
+
 // index for MeiliSearch sync operations
 messageSchema.index({ _meiliIndex: 1, expiredAt: 1 });
 
