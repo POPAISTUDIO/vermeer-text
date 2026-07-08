@@ -2,9 +2,10 @@ import { memo } from 'react';
 import type { ReactNode } from 'react';
 import { OGDialog, OGDialogContent, OGDialogHeader, OGDialogTitle } from '@librechat/client';
 
-// Vermeer: mono-colonne — wrapper de modale pour les sections déplacées hors du
-// panneau latéral (Fichiers, Mémoires). Enrobe le panneau upstream tel quel, sans
-// le modifier.
+// Vermeer: mono-colonne — wrapper de modale générique pour les sections déplacées
+// hors du panneau latéral (Assistants, Skills, Paramètres, Fichiers, Mémoires).
+// Enrobe le panneau upstream tel quel, sans le modifier. Large (max-w-4xl) pour que
+// la config du builder Assistants ne soit pas coupée.
 function SectionModal({
   open,
   onOpenChange,
@@ -18,7 +19,7 @@ function SectionModal({
 }) {
   return (
     <OGDialog open={open} onOpenChange={onOpenChange}>
-      <OGDialogContent className="flex max-h-[85vh] w-11/12 max-w-3xl flex-col overflow-hidden">
+      <OGDialogContent className="flex h-[85vh] max-h-[85vh] w-11/12 max-w-4xl flex-col overflow-hidden">
         <OGDialogHeader>
           <OGDialogTitle>{title}</OGDialogTitle>
         </OGDialogHeader>
