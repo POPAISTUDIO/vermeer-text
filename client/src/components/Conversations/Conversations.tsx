@@ -34,6 +34,10 @@ interface ConversationsProps {
   setIsChatsExpanded: (expanded: boolean) => void;
   // Vermeer: masque la row favoris/Marketplace (sidebar mono-colonne). Défaut false → comportement upstream inchangé ailleurs.
   hideFavorites?: boolean;
+  // Vermeer: contenu du groupe « Épinglés », rendu comme une row juste après le titre de section (sous « Discussions »).
+  pinnedSlot?: React.ReactNode;
+  // Vermeer: clé de contenu du groupe épinglé (ids joints) → re-mesure de la row virtualisée quand la liste change.
+  pinnedKey?: string;
 }
 
 interface MeasuredRowProps {
@@ -118,6 +122,8 @@ DateLabel.displayName = 'DateLabel';
 type FlattenedItem =
   | { type: 'favorites' }
   | { type: 'chats-header' }
+  // Vermeer: groupe « Épinglés » rendu comme une row de la liste, juste après le titre de section
+  | { type: 'pinned' }
   | { type: 'header'; groupName: string }
   | { type: 'convo'; convo: TConversation }
   | { type: 'loading' };
@@ -164,6 +170,8 @@ const Conversations: FC<ConversationsProps> = ({
   isChatsExpanded,
   setIsChatsExpanded,
   hideFavorites = false,
+  pinnedSlot,
+  pinnedKey = '',
 }) => {
   const localize = useLocalize();
   const search = useRecoilValue(store.search);
@@ -173,6 +181,9 @@ const Conversations: FC<ConversationsProps> = ({
   const showAgentMarketplace = useShowMarketplace();
 
   const favoritesContentKeyRef = useRef('');
+  // Vermeer: clé de contenu du groupe épinglé pour le keyMapper de la row virtualisée
+  const pinnedKeyRef = useRef(pinnedKey);
+  pinnedKeyRef.current = pinnedKey;
 
   // Fetch active job IDs for showing generation indicators
   const { data: activeJobsData } = useActiveJobs();
@@ -208,6 +219,10 @@ const Conversations: FC<ConversationsProps> = ({
     items.push({ type: 'chats-header' });
 
     if (isChatsExpanded) {
+      // Vermeer: groupe « Épinglés » en premier, sous le titre de section « Discussions »
+      if (pinnedSlot) {
+        items.push({ type: 'pinned' });
+      }
       groupedConversations.forEach(([groupName, convos]) => {
         items.push({ type: 'header', groupName });
         items.push(...convos.map((convo) => ({ type: 'convo' as const, convo })));
@@ -218,7 +233,7 @@ const Conversations: FC<ConversationsProps> = ({
       }
     }
     return items;
-  }, [groupedConversations, isLoading, isChatsExpanded, shouldShowFavorites]);
+  }, [groupedConversations, isLoading, isChatsExpanded, shouldShowFavorites, pinnedSlot]);
 
   // Store flattenedItems in a ref for keyMapper to access without recreating cache
   const flattenedItemsRef = useRef(flattenedItems);
@@ -240,6 +255,9 @@ const Conversations: FC<ConversationsProps> = ({
           }
           if (item.type === 'chats-header') {
             return 'chats-header';
+          }
+          if (item.type === 'pinned') {
+            return `pinned-${pinnedKeyRef.current}`;
           }
           if (item.type === 'header') {
             return `header-${item.groupName}`;
@@ -271,6 +289,17 @@ const Conversations: FC<ConversationsProps> = ({
     });
     return () => cancelAnimationFrame(frameId);
   }, [favorites.length, isFavoritesLoading, showAgentMarketplace, clearFavoritesCache]);
+
+  // Vermeer: re-mesure la row « Épinglés » quand la liste des épinglés change
+  useEffect(() => {
+    const frameId = requestAnimationFrame(() => {
+      cache.clearAll();
+      if (containerRef.current && 'recomputeRowHeights' in containerRef.current) {
+        containerRef.current.recomputeRowHeights(0);
+      }
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [pinnedKey, cache, containerRef]);
 
   useEffect(() => {
     const frameId = requestAnimationFrame(() => {
@@ -314,11 +343,19 @@ const Conversations: FC<ConversationsProps> = ({
         );
       }
 
+      if (item.type === 'pinned') {
+        // Vermeer: groupe « Épinglés » rendu comme une row, juste après le titre de section
+        return (
+          <MeasuredRow key={key} {...rowProps}>
+            {pinnedSlot}
+          </MeasuredRow>
+        );
+      }
+
       if (item.type === 'header') {
-        // First date header index depends on whether favorites row is included
-        // With favorites: [favorites, chats-header, first-header] → index 2
-        // Without favorites: [chats-header, first-header] → index 1
-        const firstHeaderIndex = shouldShowFavorites ? 2 : 1;
+        // First date header index depends on rows preceding it (favorites, chats-header, pinned).
+        // Vermeer: la row « Épinglés » décale d'un cran l'index du premier en-tête de date.
+        const firstHeaderIndex = (shouldShowFavorites ? 1 : 0) + 1 + (pinnedSlot ? 1 : 0);
         return (
           <MeasuredRow key={key} {...rowProps}>
             <DateLabel groupName={item.groupName} isFirst={index === firstHeaderIndex} />
@@ -352,6 +389,7 @@ const Conversations: FC<ConversationsProps> = ({
       setIsChatsExpanded,
       shouldShowFavorites,
       activeJobIds,
+      pinnedSlot,
     ],
   );
 

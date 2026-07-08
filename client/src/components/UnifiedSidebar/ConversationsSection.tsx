@@ -114,10 +114,6 @@ const ConversationsSection = memo(() => {
       <div className="flex items-center gap-0.5 px-3">
         {search.enabled && <SearchBar isSmallScreen={isSmallScreen} />}
       </div>
-      {/* Vermeer: groupe « Épinglés » au-dessus des groupes de date */}
-      {showPinned && (
-        <PinnedGroup pinnedIds={pinnedIds} retainView={moveToTop} toggleNav={toggleNav} />
-      )}
       <div className="flex min-h-0 flex-grow flex-col overflow-hidden">
         <Conversations
           conversations={conversations}
@@ -130,6 +126,13 @@ const ConversationsSection = memo(() => {
           isChatsExpanded={isChatsExpanded}
           setIsChatsExpanded={setIsChatsExpanded}
           hideFavorites
+          // Vermeer: groupe « Épinglés » injecté DANS la liste, sous le titre « Discussions »
+          pinnedSlot={
+            showPinned ? (
+              <PinnedGroup pinnedIds={pinnedIds} retainView={moveToTop} toggleNav={toggleNav} />
+            ) : undefined
+          }
+          pinnedKey={pinnedIds.join(',')}
         />
       </div>
     </div>

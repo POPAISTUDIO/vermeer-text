@@ -40,8 +40,10 @@ function PinnedGroup({
   }
 
   return (
-    <div className="flex max-h-64 flex-shrink-0 flex-col overflow-y-auto px-2">
-      <div className="flex items-center gap-1.5 px-1 py-2 text-xs font-bold text-text-secondary">
+    // Vermeer: rendu comme une row de la liste (sous « Discussions ») → hérite de
+    // text-text-primary du conteneur de la liste, couleur de titre standard.
+    <div className="flex flex-col">
+      <div className="flex items-center gap-1.5 px-2 py-2 text-xs font-bold text-text-secondary">
         <Pin className="h-3 w-3" aria-hidden="true" />
         <span className="select-none">{localize('com_vermeer_pinned')}</span>
       </div>
