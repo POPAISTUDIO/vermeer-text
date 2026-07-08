@@ -32,6 +32,8 @@ interface ConversationsProps {
   isSearchLoading: boolean;
   isChatsExpanded: boolean;
   setIsChatsExpanded: (expanded: boolean) => void;
+  // Vermeer: masque la row favoris/Marketplace (sidebar mono-colonne). Défaut false → comportement upstream inchangé ailleurs.
+  hideFavorites?: boolean;
 }
 
 interface MeasuredRowProps {
@@ -85,7 +87,8 @@ const ChatsHeader: FC<ChatsHeaderProps> = memo(({ isExpanded, onToggle }) => {
       className="group flex w-full items-center justify-between rounded-lg px-1 py-2 text-xs font-bold text-text-secondary outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white"
       type="button"
     >
-      <span className="select-none">{localize('com_ui_chats')}</span>
+      {/* Vermeer: titre section via clé dédiée (FR « Discussions » / EN « Chats ») */}
+      <span className="select-none">{localize('com_vermeer_nav_chats')}</span>
       <ChevronDown
         className={cn('h-3 w-3 transition-transform duration-200', isExpanded ? 'rotate-180' : '')}
       />
@@ -160,6 +163,7 @@ const Conversations: FC<ConversationsProps> = ({
   isSearchLoading,
   isChatsExpanded,
   setIsChatsExpanded,
+  hideFavorites = false,
 }) => {
   const localize = useLocalize();
   const search = useRecoilValue(store.search);
@@ -179,7 +183,9 @@ const Conversations: FC<ConversationsProps> = ({
 
   // Determine if FavoritesList will render content
   const shouldShowFavorites =
-    !search.query && (isFavoritesLoading || favorites.length > 0 || showAgentMarketplace);
+    !hideFavorites &&
+    !search.query &&
+    (isFavoritesLoading || favorites.length > 0 || showAgentMarketplace);
 
   favoritesContentKeyRef.current = `${favorites.length}-${showAgentMarketplace ? 1 : 0}-${isFavoritesLoading ? 1 : 0}`;
 

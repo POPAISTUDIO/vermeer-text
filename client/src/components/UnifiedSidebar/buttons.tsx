@@ -51,21 +51,25 @@ export const SidebarToggleButton = memo(function SidebarToggleButton({
   const toggleText = localize(toggleLabel);
 
   return (
-    <RailTooltip expanded={expanded} label={toggleText}>
-      <Button
-        id={expanded ? CLOSE_SIDEBAR_ID : undefined}
-        data-testid={expanded ? 'close-sidebar-button' : 'open-sidebar-button'}
-        size="icon"
-        variant="ghost"
-        aria-label={toggleText}
-        aria-expanded={expanded}
-        className={cn(rowBase, rowLayout(expanded), 'text-text-primary')}
-        onClick={toggleClick}
-      >
-        <Sidebar aria-hidden="true" className="h-5 w-5 flex-shrink-0 text-text-primary" />
-        {expanded && <span className="truncate text-sm">{toggleText}</span>}
-      </Button>
-    </RailTooltip>
+    // Vermeer: toggle toujours en icône seule (libellé retiré — trop long, tronquait) ; tooltip conservé.
+    <TooltipAnchor
+      side="right"
+      description={toggleText}
+      render={
+        <Button
+          id={expanded ? CLOSE_SIDEBAR_ID : undefined}
+          data-testid={expanded ? 'close-sidebar-button' : 'open-sidebar-button'}
+          size="icon"
+          variant="ghost"
+          aria-label={toggleText}
+          aria-expanded={expanded}
+          className={cn(rowBase, 'w-9 justify-center text-text-primary')}
+          onClick={toggleClick}
+        >
+          <Sidebar aria-hidden="true" className="h-5 w-5 flex-shrink-0 text-text-primary" />
+        </Button>
+      }
+    />
   );
 });
 
