@@ -12,6 +12,9 @@ const staticAtoms = {
     default: SettingsViews.default,
   }),
   showPopover: atom<boolean>({ key: 'showPopover', default: false }),
+  // Vermeer: pont page → sidebar. La page /assistants (hors ActivePanelProvider) écrit
+  // ce signal ; MonoSidebar le lit et ouvre la modale builder (sous SidebarChatProvider).
+  openBuilderModal: atom<boolean>({ key: 'vermeerOpenBuilderModal', default: false }),
 };
 
 const localStorageAtoms = {

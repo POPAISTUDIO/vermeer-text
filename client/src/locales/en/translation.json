@@ -1887,11 +1887,14 @@
   "com_usage_title": "Consumption",
   "com_usage_user_details": "User details ({{count}})",
   "com_user_message": "You",
+  "com_vermeer_configure": "Configure",
+  "com_vermeer_create_assistant": "Create an assistant",
   "com_vermeer_nav_assistants": "Assistants",
   "com_vermeer_nav_chats": "Chats",
   "com_vermeer_nav_file_history": "File history",
   "com_vermeer_nav_usage": "Usage",
   "com_vermeer_pin": "Pin",
   "com_vermeer_pinned": "Pinned",
+  "com_vermeer_shared_conversations": "Shared conversations",
   "com_vermeer_unpin": "Unpin"
 }

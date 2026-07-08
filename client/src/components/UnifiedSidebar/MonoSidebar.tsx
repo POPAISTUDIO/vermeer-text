@@ -1,4 +1,7 @@
 import { memo, lazy, Suspense, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useRecoilState } from 'recoil';
+import { EModelEndpoint } from 'librechat-data-provider';
 import { Skeleton } from '@librechat/client';
 import type { NavLink } from '~/common';
 import { useActivePanel, resolveActivePanel, DEFAULT_PANEL } from '~/Providers';
@@ -6,9 +9,12 @@ import ConversationsSection from '~/components/UnifiedSidebar/ConversationsSecti
 import SectionModal from '~/components/UnifiedSidebar/SectionModal';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
+import store from '~/store';
 import { NewChatButton, NavIconButton, SidebarToggleButton } from './buttons';
 
 const AccountSettings = lazy(() => import('~/components/Nav/AccountSettings'));
+// Vermeer: builder Assistants ouvert en modale dédiée (pont depuis la page /assistants)
+const AgentPanelSwitch = lazy(() => import('~/components/SidePanel/Agents/AgentPanelSwitch'));
 
 // Vermeer: mono-colonne (réf. UI Claude.ai) — nav en haut, liste des conversations
 // inline directement dessous. PLUS AUCUN panneau latéral : toute section à Component
@@ -36,13 +42,23 @@ function MonoSidebar({
   onExpand?: () => void;
 }) {
   const localize = useLocalize();
+  const navigate = useNavigate();
   const { active, setActive } = useActivePanel();
+  const [builderOpen, setBuilderOpen] = useRecoilState(store.openBuilderModal);
   const effectiveActive = resolveActivePanel(active, links);
 
-  // Rangées de nav = tout sauf la liste des conversations (inline) et les Signets (retirés).
+  // Rangées de nav = tout sauf conversations (inline) et Signets (retirés). Assistants
+  // → page /assistants (le builder s'ouvre en modale depuis cette page via le pont Recoil).
   const navLinks = useMemo(
-    () => links.filter((link) => link.id !== 'conversations' && link.id !== 'bookmarks'),
-    [links],
+    () =>
+      links
+        .filter((link) => link.id !== 'conversations' && link.id !== 'bookmarks')
+        .map((link) =>
+          link.id === EModelEndpoint.agents
+            ? { ...link, onClick: () => navigate('/assistants') }
+            : link,
+        ),
+    [links, navigate],
   );
 
   // Une section « ouvre une modale » ssi elle a un Component et pas d'onClick (route).
@@ -56,7 +72,7 @@ function MonoSidebar({
     }
   };
 
-  // Modale de section (Assistants, Skills, Paramètres, Fichiers, Mémoires) — large.
+  // Modale de section générique (Skills, Paramètres, Fichiers, Mémoires) — large.
   const sectionModal = (
     <SectionModal
       open={modalActive}
@@ -64,6 +80,32 @@ function MonoSidebar({
       title={activeNav ? localize(activeNav.title) : ''}
     >
       {ActiveComponent ? <ActiveComponent /> : null}
+    </SectionModal>
+  );
+
+  // Vermeer: modale builder Assistants dédiée, ouverte par le pont depuis /assistants.
+  // Montée ici (sous SidebarChatProvider) → AgentPanelSwitch a bien ChatContext.
+  const builderModal = (
+    <SectionModal
+      open={builderOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          setBuilderOpen(false);
+        }
+      }}
+      title={localize('com_vermeer_nav_assistants')}
+    >
+      {builderOpen ? (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center">
+              <Skeleton className="h-8 w-8 rounded-lg" />
+            </div>
+          }
+        >
+          <AgentPanelSwitch />
+        </Suspense>
+      ) : null}
     </SectionModal>
   );
 
@@ -103,6 +145,7 @@ function MonoSidebar({
       <>
         {column}
         {sectionModal}
+        {builderModal}
       </>
     );
   }
@@ -119,6 +162,7 @@ function MonoSidebar({
         <div className="h-full w-full">{column}</div>
       </aside>
       {sectionModal}
+      {builderModal}
     </>
   );
 }
