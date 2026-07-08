@@ -1,13 +1,23 @@
-import { useLocalize } from '~/hooks';
+import { lazy, Suspense } from 'react';
+import { Spinner } from '@librechat/client';
 
 // Vermeer: page pleine « Consommation » rendue DANS le layout principal (sidebar
-// mono-colonne à gauche via Root, contenu ici dans l'Outlet). Le dashboard Usage
-// arrive au commit 7 ; ceci est le shell d'infrastructure.
+// mono-colonne à gauche via Root, contenu ici dans l'Outlet). Usage est déjà une page
+// routée autonome (/d/usage sous DashboardRoute, qui ne fournit qu'un garde d'auth) —
+// aucun couplage ChatContext ni provider Dashboard —, donc réutilisable directement.
+// Il porte son propre header (« Consommation »), sa hauteur, son scroll et son fond.
+const Usage = lazy(() => import('~/components/Admin/Usage'));
+
 export default function ConsumptionPage() {
-  const localize = useLocalize();
   return (
-    <div className="flex h-full flex-col overflow-y-auto p-6 text-text-primary">
-      <h1 className="text-xl font-semibold">{localize('com_vermeer_nav_usage')}</h1>
-    </div>
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center">
+          <Spinner className="text-text-primary" />
+        </div>
+      }
+    >
+      <Usage />
+    </Suspense>
   );
 }

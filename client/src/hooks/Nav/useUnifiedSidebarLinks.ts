@@ -70,7 +70,8 @@ export default function useUnifiedSidebarLinks() {
         label: '',
         icon: BarChart3,
         id: 'admin-usage',
-        onClick: () => navigate('/d/usage'),
+        // Vermeer: page pleine Consommation dans le layout (au lieu de /d/usage hors layout)
+        onClick: () => navigate('/consommation'),
       });
     }
 
