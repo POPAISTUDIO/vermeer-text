@@ -1,23 +1,21 @@
-import { useCallback, useEffect, useState, useMemo, memo, lazy, Suspense, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, memo, useRef } from 'react';
 import { useSetRecoilState, useRecoilValue } from 'recoil';
 import { useMediaQuery } from '@librechat/client';
-import { PermissionTypes, Permissions } from 'librechat-data-provider';
 import type { InfiniteQueryObserverResult } from '@tanstack/react-query';
 import type { ConversationListResponse } from 'librechat-data-provider';
 import type { List } from 'react-virtualized';
 import {
   useLocalize,
-  useHasAccess,
   useAuthContext,
   useLocalStorage,
   useNavScrolling,
+  usePinnedConversations,
 } from '~/hooks';
 import { useConversationsInfiniteQuery, useTitleGeneration } from '~/data-provider';
 import { Conversations } from '~/components/Conversations';
+import PinnedGroup from '~/components/UnifiedSidebar/PinnedGroup';
 import SearchBar from '~/components/Nav/SearchBar';
 import store from '~/store';
-
-const BookmarkNav = lazy(() => import('~/components/Nav/Bookmarks/BookmarkNav'));
 
 const ConversationsSection = memo(() => {
   const localize = useLocalize();
@@ -28,19 +26,18 @@ const ConversationsSection = memo(() => {
 
   const [isChatsExpanded, setIsChatsExpanded] = useLocalStorage('chatsExpanded', true);
   const [showLoading, setShowLoading] = useState(false);
-  const [tags, setTags] = useState<string[]>([]);
-
-  const hasAccessToBookmarks = useHasAccess({
-    permissionType: PermissionTypes.BOOKMARKS,
-    permission: Permissions.USE,
-  });
 
   const search = useRecoilValue(store.search);
+  // Vermeer: conversations épinglées (user-scopé). Sorties des groupes de date et
+  // regroupées au-dessus ; masquées pendant une recherche pour ne pas amputer les résultats.
+  const { pinnedIds } = usePinnedConversations();
+  const showPinned = !search.query && pinnedIds.length > 0;
+  const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
 
   const { data, fetchNextPage, isFetchingNextPage, isLoading, isFetching } =
     useConversationsInfiniteQuery(
       {
-        tags: tags.length === 0 ? undefined : tags,
+        tags: undefined,
         search: search.debouncedQuery || undefined,
       },
       {
@@ -72,8 +69,13 @@ const ConversationsSection = memo(() => {
   });
 
   const conversations = useMemo(() => {
-    return data ? data.pages.flatMap((page) => page.conversations) : [];
-  }, [data]);
+    const all = data ? data.pages.flatMap((page) => page.conversations) : [];
+    // Vermeer: retire les épinglées des groupes de date (elles vivent dans le groupe Épinglés).
+    if (!showPinned) {
+      return all;
+    }
+    return all.filter((convo) => !(convo && pinnedSet.has(convo.conversationId ?? '')));
+  }, [data, showPinned, pinnedSet]);
 
   const toggleNav = useCallback(() => {
     if (isSmallScreen) {
@@ -108,12 +110,8 @@ const ConversationsSection = memo(() => {
       role="region"
       aria-label={localize('com_ui_chat_history')}
     >
+      {/* Vermeer: header hérité épuré — BookmarkNav orphelin retiré (Signets hors rail) */}
       <div className="flex items-center gap-0.5 px-3">
-        {hasAccessToBookmarks && (
-          <Suspense fallback={null}>
-            <BookmarkNav tags={tags} setTags={setTags} />
-          </Suspense>
-        )}
         {search.enabled && <SearchBar isSmallScreen={isSmallScreen} />}
       </div>
       <div className="flex min-h-0 flex-grow flex-col overflow-hidden">
@@ -127,6 +125,14 @@ const ConversationsSection = memo(() => {
           isSearchLoading={isSearchLoading}
           isChatsExpanded={isChatsExpanded}
           setIsChatsExpanded={setIsChatsExpanded}
+          hideFavorites
+          // Vermeer: groupe « Épinglés » injecté DANS la liste, sous le titre « Discussions »
+          pinnedSlot={
+            showPinned ? (
+              <PinnedGroup pinnedIds={pinnedIds} retainView={moveToTop} toggleNav={toggleNav} />
+            ) : undefined
+          }
+          pinnedKey={pinnedIds.join(',')}
         />
       </div>
     </div>

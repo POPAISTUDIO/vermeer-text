@@ -34,6 +34,17 @@ export function updateFavorites(favorites: q.TUserFavorite[]): Promise<q.TUserFa
   return request.post(`${endpoints.apiBaseUrl()}/api/user/settings/favorites`, { favorites });
 }
 
+// Vermeer: conversations épinglées (miroir de getFavorites/updateFavorites)
+export function getPinnedConversations(): Promise<string[]> {
+  return request.get(`${endpoints.apiBaseUrl()}/api/user/settings/pinned-conversations`);
+}
+
+export function updatePinnedConversations(pinnedConversations: string[]): Promise<string[]> {
+  return request.post(`${endpoints.apiBaseUrl()}/api/user/settings/pinned-conversations`, {
+    pinnedConversations,
+  });
+}
+
 /**
  * Skill favorites (star-a-skill). The backend route is phase 2 — see the
  * original UI PR for the client surface. Until then, these resolve with

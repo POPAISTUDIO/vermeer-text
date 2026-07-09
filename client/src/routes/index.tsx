@@ -20,6 +20,9 @@ import ShareRoute from './ShareRoute';
 import ChatRoute from './ChatRoute';
 import Search from './Search';
 import Root from './Root';
+// Vermeer: pages pleines rendues dans le layout principal (LOT C)
+import AssistantsPage from './AssistantsPage';
+import ConsumptionPage from './ConsumptionPage';
 
 const AuthLayout = () => (
   <AuthContextProvider>
@@ -125,6 +128,16 @@ export const router = createBrowserRouter(
             {
               path: 'search',
               element: <Search />,
+            },
+            {
+              // Vermeer: page pleine Assistants dans le layout (liste MES assistants + catégories)
+              path: 'assistants',
+              element: <AssistantsPage />,
+            },
+            {
+              // Vermeer: page pleine Consommation dans le layout (sidebar persistante)
+              path: 'consommation',
+              element: <ConsumptionPage />,
             },
             {
               path: 'prompts',

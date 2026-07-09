@@ -12,6 +12,10 @@ const staticAtoms = {
     default: SettingsViews.default,
   }),
   showPopover: atom<boolean>({ key: 'showPopover', default: false }),
+  // Vermeer: pont carte Marketplace → sidebar. La carte (hors ActivePanelProvider) écrit
+  // l'agentId à configurer ; MonoSidebar le lit et ouvre la modale builder (sous
+  // SidebarChatProvider) présélectionnée sur cet assistant. null = fermée.
+  openBuilderModal: atom<string | null>({ key: 'vermeerOpenBuilderModal', default: null }),
 };
 
 const localStorageAtoms = {

@@ -1246,7 +1246,7 @@
   "com_ui_share_qr_code_description": "QR code pour partager ce lien de conversation",
   "com_ui_share_update_message": "Votre nom, les instructions personnalisées et tout message que vous ajoutez après le partage restent privés.",
   "com_ui_share_var": "Partager {{0}}",
-  "com_ui_share_with_agent": "Partager avec les utilisateurs de l'agent",
+  "com_ui_share_with_agent": "Partager avec les utilisateurs de l'assistant",
   "com_ui_share_with_agent_error": "Erreur lors de la mise à jour du partage",
   "com_ui_shared_conversations": "Conversations partagées",
   "com_ui_shared_conversations_empty": "Aucune conversation partagée pour le moment",
@@ -1450,6 +1450,14 @@
   "com_usage_title": "Consommation",
   "com_usage_user_details": "Détails utilisateur ({{count}})",
   "com_user_message": "Vous",
+  "com_vermeer_configure": "Paramètres de l'assistant",
+  "com_vermeer_create_assistant": "Créer un assistant",
   "com_vermeer_nav_assistants": "Assistants",
-  "com_vermeer_nav_file_history": "Historique des fichiers"
+  "com_vermeer_nav_chats": "Discussions",
+  "com_vermeer_nav_file_history": "Historique des fichiers",
+  "com_vermeer_nav_usage": "Consommation",
+  "com_vermeer_pin": "Épingler",
+  "com_vermeer_pinned": "Épinglés",
+  "com_vermeer_shared_conversations": "Conversations partagées",
+  "com_vermeer_unpin": "Détacher"
 }

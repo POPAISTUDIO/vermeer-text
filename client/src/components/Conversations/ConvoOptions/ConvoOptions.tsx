@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { QueryKeys } from 'librechat-data-provider';
 import { useQueryClient } from '@tanstack/react-query';
 import { DropdownPopup, Spinner, useToastContext } from '@librechat/client';
-import { Ellipsis, Share2, CopyPlus, Archive, Users, Pen, Trash } from 'lucide-react';
+import { Ellipsis, Share2, CopyPlus, Archive, Users, Pen, Trash, Pin, PinOff } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import type { TMessage, TConversation } from 'librechat-data-provider';
 import {
@@ -14,7 +14,7 @@ import {
   useArchiveConvoMutation,
   useShareWithAgentMutation,
 } from '~/data-provider';
-import { useLocalize, useNavigateToConvo, useNewConvo } from '~/hooks';
+import { useLocalize, useNavigateToConvo, useNewConvo, usePinnedConversations } from '~/hooks';
 import { NotificationSeverity } from '~/common';
 import { useChatContext } from '~/Providers';
 import DeleteButton from './DeleteButton';
@@ -50,6 +50,9 @@ function ConvoOptions({
   const navigate = useNavigate();
   const { conversationId: currentConvoId } = useParams();
   const { newConversation } = useNewConvo();
+  // Vermeer: épinglage de conversation (user-scopé)
+  const { isPinned, togglePin } = usePinnedConversations();
+  const convoPinned = isPinned(conversationId);
 
   const menuId = useId();
   const shareButtonRef = useRef<HTMLButtonElement>(null);
@@ -225,8 +228,26 @@ function ConvoOptions({
     });
   }, [conversationId, duplicateConversation]);
 
+  // Vermeer: pin/unpin de la conversation
+  const handlePinToggle = useCallback(() => {
+    if (conversationId) {
+      togglePin(conversationId);
+    }
+    setIsPopoverActive(false);
+  }, [conversationId, togglePin, setIsPopoverActive]);
+
   const dropdownItems = useMemo(
     () => [
+      {
+        // Vermeer: épingler/détacher la conversation
+        label: localize(convoPinned ? 'com_vermeer_unpin' : 'com_vermeer_pin'),
+        onClick: handlePinToggle,
+        icon: convoPinned ? (
+          <PinOff className="icon-sm mr-2 text-text-primary" aria-hidden="true" />
+        ) : (
+          <Pin className="icon-sm mr-2 text-text-primary" aria-hidden="true" />
+        ),
+      },
       {
         label: localize('com_ui_share'),
         onClick: shareHandler,
@@ -301,6 +322,8 @@ function ConvoOptions({
       isShareWithAgentLoading,
       isSharedWithAgentMembers,
       handleShareWithAgentClick,
+      convoPinned,
+      handlePinToggle,
     ],
   );
 

@@ -1,4 +1,5 @@
-import { Feather } from 'lucide-react';
+// Vermeer: icône robot (assistants) au lieu de la plume par défaut
+import { Bot } from 'lucide-react';
 import { EModelEndpoint } from 'librechat-data-provider';
 import {
   Sparkles,
@@ -54,7 +55,7 @@ const AgentAvatar = ({ className = '', avatar = '', agentName, size }: AgentIcon
     );
   }
 
-  return <Feather className={cn(agentName === '' ? 'icon-2xl' : '', className)} size={size} />;
+  return <Bot className={cn(agentName === '' ? 'icon-2xl' : '', className)} size={size} />;
 };
 
 const Bedrock = ({ className = '' }: IconMapProps) => {

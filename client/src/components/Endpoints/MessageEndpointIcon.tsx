@@ -1,12 +1,8 @@
 import { memo } from 'react';
-import { Feather } from 'lucide-react';
+// Vermeer: icône robot (assistants) au lieu de la plume par défaut
+import { Bot } from 'lucide-react';
 import { EModelEndpoint, isAssistantsEndpoint, alternateName } from 'librechat-data-provider';
-import {
-  BedrockIcon,
-  AssistantIcon,
-  AzureMinimalIcon,
-  CustomMinimalIcon,
-} from '@librechat/client';
+import { BedrockIcon, AssistantIcon, AzureMinimalIcon, CustomMinimalIcon } from '@librechat/client';
 import {
   OpenAIEditorIcon,
   AnthropicEditorIcon,
@@ -100,7 +96,7 @@ const MessageEndpointIcon: React.FC<IconProps> = (props) => {
     ) : (
       <div className="h-6 w-6">
         <div className="shadow-stroke flex h-6 w-6 items-center justify-center overflow-hidden rounded-full">
-          <Feather className="h-2/3 w-2/3 text-gray-400" aria-hidden="true" />
+          <Bot className="h-2/3 w-2/3 text-gray-400" aria-hidden="true" />
         </div>
       </div>
     ),
@@ -149,7 +145,11 @@ const MessageEndpointIcon: React.FC<IconProps> = (props) => {
       icon: <FrenchAlpacaEditorIcon size={size * 0.7} />,
       name: 'French-Alpaca',
     },
-    null: { icon: <OpenAIEditorIcon size={size * 0.7} forceColor={false} />, bg: 'grey', name: 'N/A' },
+    null: {
+      icon: <OpenAIEditorIcon size={size * 0.7} forceColor={false} />,
+      bg: 'grey',
+      name: 'N/A',
+    },
     default: {
       icon: (
         <div className="h-6 w-6">

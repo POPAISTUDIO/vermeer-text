@@ -1,20 +1,23 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link, Pin, PinOff, MessagesSquare } from 'lucide-react';
+import { useSetRecoilState } from 'recoil';
+import { Link, Pin, PinOff, MessagesSquare, SlidersHorizontal } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { OGDialogContent, Button, useToastContext } from '@librechat/client';
 import {
   QueryKeys,
   Constants,
+  SystemRoles,
   EModelEndpoint,
   PermissionBits,
   LocalStorageKeys,
   AgentListResponse,
 } from 'librechat-data-provider';
 import type t from 'librechat-data-provider';
-import { useLocalize, useDefaultConvo, useFavorites } from '~/hooks';
+import { useLocalize, useDefaultConvo, useFavorites, useAuthContext } from '~/hooks';
 import { renderAgentAvatar, clearMessagesCache } from '~/utils';
 import { useChatContext } from '~/Providers';
+import store from '~/store';
 
 interface SupportContact {
   name?: string;
@@ -27,13 +30,16 @@ interface AgentWithSupport extends t.Agent {
 
 interface AgentDetailContentProps {
   agent: AgentWithSupport;
+  // Vermeer: ferme le dialogue de détail (évite les modales empilées + conflit de
+  // scroll-lock quand on ouvre la modale builder par-dessus).
+  onRequestClose?: () => void;
 }
 
 /**
  * Dialog content for displaying agent details
  * Used inside OGDialog with OGDialogTrigger for proper focus management
  */
-const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
+const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent, onRequestClose }) => {
   const localize = useLocalize();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -42,6 +48,33 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
   const { conversation, newConversation } = useChatContext();
   const { isFavoriteAgent, toggleFavoriteAgent } = useFavorites();
   const isFavorite = isFavoriteAgent(agent?.id);
+  // Vermeer: propriété (mêmes règles qu'AgentFooter) → « Paramètres de l'assistant »
+  // n'est proposé que pour MES assistants ; ouvre la modale builder via le pont Recoil.
+  const { user } = useAuthContext();
+  const setOpenBuilder = useSetRecoilState(store.openBuilderModal);
+  const isMine = agent?.author === user?.id || user?.role === SystemRoles.ADMIN;
+
+  // Vermeer: ouverture du builder DIFFÉRÉE à la fermeture effective du détail
+  // (onCloseAutoFocus) pour éviter la race de focus : sinon la restauration du focus au
+  // trigger du détail — après l'ouverture du builder — déclenche son onFocusOutside et le referme.
+  const pendingBuilderAgentId = React.useRef<string | null>(null);
+  const openBuilderForThisAgent = () => {
+    if (!agent?.id) {
+      return;
+    }
+    pendingBuilderAgentId.current = agent.id;
+    onRequestClose?.();
+  };
+  const handleDetailCloseAutoFocus = (event: Event) => {
+    if (pendingBuilderAgentId.current == null) {
+      return;
+    }
+    // Ne pas restaurer le focus sur le trigger du détail (il perturberait la modale builder).
+    event.preventDefault();
+    const agentId = pendingBuilderAgentId.current;
+    pendingBuilderAgentId.current = null;
+    setOpenBuilder(agentId);
+  };
 
   const handleFavoriteClick = () => {
     if (agent) {
@@ -140,7 +173,10 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
   };
 
   return (
-    <OGDialogContent className="max-h-[90vh] w-11/12 max-w-lg overflow-y-auto">
+    <OGDialogContent
+      className="max-h-[90vh] w-11/12 max-w-lg overflow-y-auto"
+      onCloseAutoFocus={handleDetailCloseAutoFocus}
+    >
       {/* Agent avatar */}
       <div className="mt-6 flex justify-center">{renderAgentAvatar(agent, { size: 'xl' })}</div>
 
@@ -186,12 +222,27 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => navigate(`/agents/${agent.id}/shared-conversations`)}
+          onClick={() => {
+            onRequestClose?.();
+            navigate(`/agents/${agent.id}/shared-conversations`);
+          }}
           title={localize('com_ui_shared_conversations')}
           aria-label={localize('com_ui_shared_conversations')}
         >
           <MessagesSquare className="h-4 w-4" aria-hidden="true" />
         </Button>
+        {/* Vermeer: « Paramètres de l'assistant » (MES assistants) → modale builder via le pont */}
+        {isMine && agent?.id && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={openBuilderForThisAgent}
+            title={localize('com_vermeer_configure')}
+            aria-label={localize('com_vermeer_configure')}
+          >
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        )}
         <Button
           variant="submit"
           className="w-full max-w-xs"

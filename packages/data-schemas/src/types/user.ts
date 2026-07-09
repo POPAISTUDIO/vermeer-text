@@ -52,6 +52,8 @@ export interface IUser extends Document {
     memories?: boolean;
   };
   favorites?: TUserFavorite[];
+  /** Vermeer: user-scoped list of pinned conversationIds (mirror of `favorites`). */
+  pinnedConversations?: string[];
   /** Per-skill active/inactive overrides. Key = skillId, value = active state. */
   skillStates?: Record<string, boolean>;
   createdAt?: Date;

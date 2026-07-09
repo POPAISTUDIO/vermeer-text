@@ -65,11 +65,13 @@ export default function useUnifiedSidebarLinks() {
     const adminLinks: NavLink[] = [];
     if (user?.role === SystemRoles.ADMIN) {
       adminLinks.push({
-        title: 'com_nav_usage',
+        // Vermeer: libellé rail dédié (« Consommation » / « Usage »)
+        title: 'com_vermeer_nav_usage',
         label: '',
         icon: BarChart3,
         id: 'admin-usage',
-        onClick: () => navigate('/d/usage'),
+        // Vermeer: page pleine Consommation dans le layout (au lieu de /d/usage hors layout)
+        onClick: () => navigate('/consommation'),
       });
     }
 
