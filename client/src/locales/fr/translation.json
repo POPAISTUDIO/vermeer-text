@@ -1246,7 +1246,7 @@
   "com_ui_share_qr_code_description": "QR code pour partager ce lien de conversation",
   "com_ui_share_update_message": "Votre nom, les instructions personnalisées et tout message que vous ajoutez après le partage restent privés.",
   "com_ui_share_var": "Partager {{0}}",
-  "com_ui_share_with_agent": "Partager avec les utilisateurs de l'agent",
+  "com_ui_share_with_agent": "Partager avec les utilisateurs de l'assistant",
   "com_ui_share_with_agent_error": "Erreur lors de la mise à jour du partage",
   "com_ui_shared_conversations": "Conversations partagées",
   "com_ui_shared_conversations_empty": "Aucune conversation partagée pour le moment",
