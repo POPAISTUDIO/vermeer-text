@@ -64,6 +64,31 @@ const MeasuredRow: FC<MeasuredRowProps> = memo(
 
 MeasuredRow.displayName = 'MeasuredRow';
 
+// Vermeer: signale les changements de taille de son contenu via ResizeObserver, pour
+// re-mesurer une row virtualisée à HAUTEUR DYNAMIQUE (groupe « Épinglés » : 0→N épingles,
+// et titre arrivant après le fetch par id). CellMeasurer ne mesure qu'au montage → sans
+// ça, la row garde sa hauteur initiale et chevauche le groupe de date suivant.
+const ResizeReporter: FC<{ onResize: () => void; children: React.ReactNode }> = ({
+  onResize,
+  children,
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(() => onResizeRef.current());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={ref}>{children}</div>;
+};
+
+ResizeReporter.displayName = 'ResizeReporter';
+
 const LoadingSpinner = memo(() => {
   const localize = useLocalize();
 
@@ -344,11 +369,21 @@ const Conversations: FC<ConversationsProps> = ({
       }
 
       if (item.type === 'pinned') {
-        // Vermeer: groupe « Épinglés » rendu comme une row, juste après le titre de section
+        // Vermeer: groupe « Épinglés » (row à hauteur dynamique) — juste après le titre de
+        // section. On re-mesure via measure() à chaque changement de taille (ResizeReporter)
+        // pour éviter le chevauchement avec le groupe de date suivant.
         return (
-          <MeasuredRow key={key} {...rowProps}>
-            {pinnedSlot}
-          </MeasuredRow>
+          <CellMeasurer cache={cache} columnIndex={0} key={key} parent={parent} rowIndex={index}>
+            {({ measure, registerChild }) => (
+              <div
+                ref={registerChild as React.LegacyRef<HTMLDivElement>}
+                style={style}
+                className="px-3"
+              >
+                <ResizeReporter onResize={measure}>{pinnedSlot}</ResizeReporter>
+              </div>
+            )}
+          </CellMeasurer>
         );
       }
 
