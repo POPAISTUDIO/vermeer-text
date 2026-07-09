@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Feather } from 'lucide-react';
+// Vermeer: icône robot (assistants) au lieu de la plume par défaut, quand l'agent n'a pas d'avatar custom
+import { Bot } from 'lucide-react';
 import { Skeleton } from '@librechat/client';
 import type t from 'librechat-data-provider';
 
@@ -116,7 +117,7 @@ export const renderAgentAvatar = (
 
   return (
     <div className={`relative flex items-center justify-center ${sizeClasses[size]} ${className}`}>
-      <Feather className={`text-text-primary ${iconSizeClasses[size]}`} strokeWidth={1.5} />
+      <Bot className={`text-text-primary ${iconSizeClasses[size]}`} strokeWidth={1.5} />
     </div>
   );
 };

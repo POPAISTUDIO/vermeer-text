@@ -29,10 +29,18 @@ function SectionModal({
 }) {
   const keepOpenOnPopover = (event: OutsideEvent) => {
     const target = event.detail?.originalEvent?.target;
-    if (
+    const inPopover =
       target instanceof Element &&
-      target.closest('.animate-popover, .animate-popover-top, [role="listbox"], [role="menu"]')
-    ) {
+      target.closest(
+        '.animate-popover, .animate-popover-top, [role="listbox"], [role="option"], [role="combobox"], [role="menu"]',
+      ) != null;
+    // Ouvrir un dropdown déplace le focus dans le popover Ariakit portalisé (hors du DOM
+    // du dialogue) → sans ce garde, onFocusOutside/onPointerDownOutside fermeraient la
+    // modale. Fallback : si un popover est ouvert ([data-enter]), l'interaction lui appartient.
+    const popoverOpen =
+      document.querySelector('.animate-popover[data-enter], .animate-popover-top[data-enter]') !=
+      null;
+    if (inPopover || popoverOpen) {
       event.preventDefault();
     }
   };
@@ -42,7 +50,11 @@ function SectionModal({
       <OGDialogContent
         className="flex h-[85vh] max-h-[85vh] w-11/12 max-w-4xl flex-col overflow-hidden"
         {...(nonModal
-          ? { onPointerDownOutside: keepOpenOnPopover, onInteractOutside: keepOpenOnPopover }
+          ? {
+              onPointerDownOutside: keepOpenOnPopover,
+              onFocusOutside: keepOpenOnPopover,
+              onInteractOutside: keepOpenOnPopover,
+            }
           : {})}
       >
         <OGDialogHeader>
