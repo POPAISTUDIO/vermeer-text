@@ -105,7 +105,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onSelect, className = '' }
         </div>
       </OGDialogTrigger>
 
-      <AgentDetailContent agent={agent} />
+      {/* Vermeer: onRequestClose ferme le détail avant d'ouvrir la modale builder (pas de modales empilées) */}
+      <AgentDetailContent agent={agent} onRequestClose={() => setIsOpen(false)} />
     </OGDialog>
   );
 };

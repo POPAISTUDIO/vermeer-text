@@ -30,13 +30,16 @@ interface AgentWithSupport extends t.Agent {
 
 interface AgentDetailContentProps {
   agent: AgentWithSupport;
+  // Vermeer: ferme le dialogue de détail (évite les modales empilées + conflit de
+  // scroll-lock quand on ouvre la modale builder par-dessus).
+  onRequestClose?: () => void;
 }
 
 /**
  * Dialog content for displaying agent details
  * Used inside OGDialog with OGDialogTrigger for proper focus management
  */
-const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
+const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent, onRequestClose }) => {
   const localize = useLocalize();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -194,7 +197,10 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => navigate(`/agents/${agent.id}/shared-conversations`)}
+          onClick={() => {
+            onRequestClose?.();
+            navigate(`/agents/${agent.id}/shared-conversations`);
+          }}
           title={localize('com_ui_shared_conversations')}
           aria-label={localize('com_ui_shared_conversations')}
         >
@@ -205,7 +211,10 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent }) => {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setOpenBuilder(agent.id)}
+            onClick={() => {
+              onRequestClose?.();
+              setOpenBuilder(agent.id);
+            }}
             title={localize('com_vermeer_configure')}
             aria-label={localize('com_vermeer_configure')}
           >
