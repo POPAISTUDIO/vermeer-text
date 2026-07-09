@@ -927,6 +927,87 @@ describe('Conversation Operations', () => {
     });
   });
 
+  describe('getConvosByCursor agent_id filter (Vermeer)', () => {
+    const insertConvo = async (user: string, agentId: string | null, updatedAt: Date) => {
+      const conversationId = uuidv4();
+      await Conversation.collection.insertOne({
+        conversationId,
+        user,
+        agent_id: agentId ?? undefined,
+        title: `Convo ${conversationId}`,
+        endpoint: EModelEndpoint.openAI,
+        expiredAt: null,
+        isArchived: false,
+        createdAt: updatedAt,
+        updatedAt,
+      });
+      return conversationId;
+    };
+
+    it('returns only the caller conversations tied to the given agent', async () => {
+      const base = new Date('2026-02-01T00:00:00.000Z');
+      const a1 = await insertConvo('user123', 'agent-A', new Date(base.getTime()));
+      const a2 = await insertConvo('user123', 'agent-A', new Date(base.getTime() - 60000));
+      await insertConvo('user123', 'agent-B', new Date(base.getTime() - 120000));
+      await insertConvo('user123', null, new Date(base.getTime() - 180000));
+
+      const result = await getConvosByCursor('user123', { agentId: 'agent-A' });
+
+      const ids = result.conversations.map((c: IConversation) => c.conversationId);
+      expect(ids).toHaveLength(2);
+      expect(ids).toEqual(expect.arrayContaining([a1, a2]));
+    });
+
+    it('never leaks another user conversations for the same agent (user-scoped)', async () => {
+      const base = new Date('2026-02-01T00:00:00.000Z');
+      const mine = await insertConvo('user123', 'agent-A', new Date(base.getTime()));
+      await insertConvo('other-user', 'agent-A', new Date(base.getTime() - 60000));
+
+      const result = await getConvosByCursor('user123', { agentId: 'agent-A' });
+
+      const ids = result.conversations.map((c: IConversation) => c.conversationId);
+      expect(ids).toEqual([mine]);
+    });
+
+    it('returns all of the caller conversations when no agentId is passed (unchanged behavior)', async () => {
+      const base = new Date('2026-02-01T00:00:00.000Z');
+      await insertConvo('user123', 'agent-A', new Date(base.getTime()));
+      await insertConvo('user123', 'agent-B', new Date(base.getTime() - 60000));
+      await insertConvo('user123', null, new Date(base.getTime() - 120000));
+
+      const result = await getConvosByCursor('user123');
+
+      expect(result.conversations).toHaveLength(3);
+    });
+
+    it('preserves cursor pagination while filtering by agent', async () => {
+      const base = new Date('2026-02-01T00:00:00.000Z');
+      for (let i = 0; i < 30; i++) {
+        await insertConvo('user123', 'agent-A', new Date(base.getTime() - i * 60000));
+      }
+      // Noise the same user has under other agents — must not appear.
+      await insertConvo('user123', 'agent-B', new Date(base.getTime()));
+
+      const page1 = await getConvosByCursor('user123', { agentId: 'agent-A', limit: 25 });
+      expect(page1.conversations).toHaveLength(25);
+      expect(page1.nextCursor).toBeTruthy();
+
+      const page2 = await getConvosByCursor('user123', {
+        agentId: 'agent-A',
+        limit: 25,
+        cursor: page1.nextCursor,
+      });
+      expect(page2.conversations).toHaveLength(5);
+      expect(page2.nextCursor).toBeNull();
+
+      const allIds = [
+        ...page1.conversations.map((c: IConversation) => c.conversationId),
+        ...page2.conversations.map((c: IConversation) => c.conversationId),
+      ];
+      expect(new Set(allIds).size).toBe(30);
+    });
+  });
+
   describe('tenantId stripping', () => {
     it('saveConvo should not write caller-supplied tenantId to the document', async () => {
       const conversationId = uuidv4();

@@ -796,6 +796,14 @@ export function getConversations(cursor: string): Promise<t.TGetConversationsRes
   return request.get(endpoints.conversations({ cursor }));
 }
 
+/** Vermeer: list the caller's own conversations tied to a given agent (user-scoped, cursor-paginated). */
+export const getConversationsByAgent = (
+  agentId: string,
+  cursor?: string,
+): Promise<q.ConversationListResponse> => {
+  return request.get(endpoints.conversations({ agent_id: agentId, cursor }));
+};
+
 export function getConversationById(id: string): Promise<s.TConversation> {
   return request.get(endpoints.conversationById(id));
 }

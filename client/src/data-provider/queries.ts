@@ -110,6 +110,27 @@ export const useConversationsInfiniteQuery = (
   });
 };
 
+/**
+ * Vermeer: lists the caller's own conversations tied to a given agent (user-scoped, cursor-paginated).
+ * No UI yet — consumed by the Assistants page "Mes conversations" per-agent view.
+ */
+export const useConversationsByAgent = (
+  agentId: string | null | undefined,
+  config?: UseInfiniteQueryOptions<ConversationListResponse, unknown>,
+) => {
+  return useInfiniteQuery<ConversationListResponse>({
+    queryKey: [QueryKeys.conversationsByAgent, agentId],
+    queryFn: ({ pageParam }) =>
+      dataService.getConversationsByAgent(agentId as string, pageParam?.toString()),
+    getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
+    keepPreviousData: true,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    cacheTime: 30 * 60 * 1000, // 30 minutes
+    enabled: !!agentId && (config?.enabled ?? true),
+    ...config,
+  });
+};
+
 export const useMessagesInfiniteQuery = (
   params: MessagesListParams,
   config?: UseInfiniteQueryOptions<MessagesListResponse, unknown>,

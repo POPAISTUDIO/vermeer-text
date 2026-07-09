@@ -34,6 +34,8 @@ export interface ConversationMethods {
       search?: string;
       sortBy?: string;
       sortDirection?: string;
+      // Vermeer: optional user-scoped filter — list only the caller's conversations tied to this agent.
+      agentId?: string | null;
     },
   ): Promise<{ conversations: IConversation[]; nextCursor: string | null }>;
   getSharedConvosByAgent(
@@ -283,6 +285,7 @@ export function createConversationMethods(
       search,
       sortBy = 'updatedAt',
       sortDirection = 'desc',
+      agentId,
     }: {
       cursor?: string | null;
       limit?: number;
@@ -291,6 +294,7 @@ export function createConversationMethods(
       search?: string;
       sortBy?: string;
       sortDirection?: string;
+      agentId?: string | null;
     } = {},
   ) {
     const Conversation = mongoose.models.Conversation as Model<IConversation>;
@@ -305,6 +309,11 @@ export function createConversationMethods(
 
     if (Array.isArray(tags) && tags.length > 0) {
       filters.push({ tags: { $in: tags } } as FilterQuery<IConversation>);
+    }
+
+    // Vermeer: user-scoped "my conversations for this agent" filter (stays within the { user } scope above).
+    if (agentId) {
+      filters.push({ agent_id: agentId } as FilterQuery<IConversation>);
     }
 
     filters.push({

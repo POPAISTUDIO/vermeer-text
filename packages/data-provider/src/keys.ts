@@ -4,6 +4,8 @@ export enum QueryKeys {
   sharedLinks = 'sharedLinks',
   allConversations = 'allConversations',
   archivedConversations = 'archivedConversations',
+  /* Vermeer: the caller's own conversations filtered by agent */
+  conversationsByAgent = 'conversationsByAgent',
   searchConversations = 'searchConversations',
   conversation = 'conversation',
   searchEnabled = 'searchEnabled',
