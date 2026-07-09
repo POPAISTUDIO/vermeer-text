@@ -54,6 +54,28 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent, onReques
   const setOpenBuilder = useSetRecoilState(store.openBuilderModal);
   const isMine = agent?.author === user?.id || user?.role === SystemRoles.ADMIN;
 
+  // Vermeer: ouverture du builder DIFFÉRÉE à la fermeture effective du détail
+  // (onCloseAutoFocus) pour éviter la race de focus : sinon la restauration du focus au
+  // trigger du détail — après l'ouverture du builder — déclenche son onFocusOutside et le referme.
+  const pendingBuilderAgentId = React.useRef<string | null>(null);
+  const openBuilderForThisAgent = () => {
+    if (!agent?.id) {
+      return;
+    }
+    pendingBuilderAgentId.current = agent.id;
+    onRequestClose?.();
+  };
+  const handleDetailCloseAutoFocus = (event: Event) => {
+    if (pendingBuilderAgentId.current == null) {
+      return;
+    }
+    // Ne pas restaurer le focus sur le trigger du détail (il perturberait la modale builder).
+    event.preventDefault();
+    const agentId = pendingBuilderAgentId.current;
+    pendingBuilderAgentId.current = null;
+    setOpenBuilder(agentId);
+  };
+
   const handleFavoriteClick = () => {
     if (agent) {
       toggleFavoriteAgent(agent.id);
@@ -151,7 +173,10 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent, onReques
   };
 
   return (
-    <OGDialogContent className="max-h-[90vh] w-11/12 max-w-lg overflow-y-auto">
+    <OGDialogContent
+      className="max-h-[90vh] w-11/12 max-w-lg overflow-y-auto"
+      onCloseAutoFocus={handleDetailCloseAutoFocus}
+    >
       {/* Agent avatar */}
       <div className="mt-6 flex justify-center">{renderAgentAvatar(agent, { size: 'xl' })}</div>
 
@@ -211,10 +236,7 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent, onReques
           <Button
             variant="outline"
             size="icon"
-            onClick={() => {
-              onRequestClose?.();
-              setOpenBuilder(agent.id);
-            }}
+            onClick={openBuilderForThisAgent}
             title={localize('com_vermeer_configure')}
             aria-label={localize('com_vermeer_configure')}
           >
