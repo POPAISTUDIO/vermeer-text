@@ -78,6 +78,7 @@ function MonoSidebar({
       open={modalActive}
       onOpenChange={handleModalOpenChange}
       title={activeNav ? localize(activeNav.title) : ''}
+      nonModal
     >
       {ActiveComponent ? <ActiveComponent /> : null}
     </SectionModal>
@@ -96,6 +97,7 @@ function MonoSidebar({
         }
       }}
       title={localize('com_vermeer_configure')}
+      nonModal
     >
       {builderOpen != null ? (
         <Suspense

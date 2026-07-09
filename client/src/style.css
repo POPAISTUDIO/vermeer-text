@@ -2988,3 +2988,11 @@ html {
 .sharepoint-picker-bg {
   background-color: #f5f5f5;
 }
+
+/* Vermeer: les popovers ControlCombobox (Ariakit, z-40 par défaut) doivent passer
+   au-dessus des modales Radix (contenu z-140) — sinon les Select du builder rendu
+   en modale (Catégorie/Fournisseur/Modèle) sont masqués derrière l'overlay. */
+.animate-popover,
+.animate-popover-top {
+  z-index: 200;
+}
