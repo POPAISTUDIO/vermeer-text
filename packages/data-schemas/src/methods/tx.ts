@@ -277,6 +277,13 @@ export const tokenValues: Record<string, { prompt: number; completion: number }>
     'qwen3-coder-plus': { prompt: 1, completion: 5 },
     'qwen3-coder-flash': { prompt: 0.3, completion: 1.5 },
     'qwen3-next-80b-a3b': { prompt: 0.1, completion: 0.8 },
+    // Vermeer (2026-07-10): Featherless = abonnement forfaitaire, coût marginal nul —
+    // valorisation à 0, coût réel porté par l'abonnement mensuel. Entrée nommée exacte
+    // qui court-circuite le match substring 'llama3-8b' (tarifs AWS Bedrock, faux ici) :
+    // le nom du modèle == la clé → match de longueur égale, retour immédiat dans
+    // findMatchingPattern (cf. en-tête). Tout nouveau modèle Featherless (ou bump de
+    // version du nom) doit recevoir sa propre entrée 0/0.
+    'jpacifico/French-Alpaca-Llama3-8B-Instruct-v1.0': { prompt: 0, completion: 0 },
   },
   bedrockValues,
 );
@@ -343,6 +350,12 @@ export const cacheTokenValues: Record<string, { write: number; read: number }> =
   'gemini-3.1': { write: 2, read: 0.2 },
   // Gemini 3.1 Flash-Lite - cache write: $0.25/1M, cache read: $0.025/1M
   'gemini-3.1-flash-lite': { write: 0.25, read: 0.025 },
+  // Vermeer (2026-07-10, ai.google.dev): comble le cache manquant des Gemini 2.5
+  // (avant : fallback = tarif input plein sur les cache-read). Convention Gemini de
+  // la table : cache write = tarif input, cache read = tarif remisé.
+  'gemini-2.5-pro': { write: 1.25, read: 0.125 },
+  'gemini-2.5-flash': { write: 0.3, read: 0.03 },
+  'gemini-2.5-flash-lite': { write: 0.1, read: 0.01 },
 };
 
 /**
