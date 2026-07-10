@@ -1,6 +1,7 @@
 const { nanoid } = require('nanoid');
 const { v4: uuidv4 } = require('uuid');
 const { logger } = require('@librechat/data-schemas');
+const cacheDebug = require('~/server/services/Vermeer/cacheDebug'); // Vermeer: debug cache Anthropic (flag VERMEER_CACHE_DEBUG)
 const { Callback, ToolEndHandler, formatAgentMessages } = require('@librechat/agents');
 const {
   EModelEndpoint,
@@ -664,6 +665,7 @@ const createResponse = async (req, res) => {
             if (usage) {
               const taggedUsage = markSummarizationUsage(usage, metadata);
               collectedUsage.push(taggedUsage);
+              cacheDebug.logUsage(usage, metadata); // Vermeer: niveau 1 — split d'usage par appel LLM
             }
           },
         },
@@ -683,6 +685,9 @@ const createResponse = async (req, res) => {
       // Create and run the agent
       const userId = req.user?.id ?? 'api-user';
       const userMCPAuthMap = mergedMCPAuthMap;
+
+      // Vermeer: niveau 2 — empreintes de préfixe (juste avant l'appel SDK)
+      cacheDebug.logPrefix({ conversationId, agent: runAgents[0], messages: formattedMessages });
 
       const run = await createRun({
         agents: runAgents,
@@ -839,6 +844,7 @@ const createResponse = async (req, res) => {
             if (usage) {
               const taggedUsage = markSummarizationUsage(usage, metadata);
               collectedUsage.push(taggedUsage);
+              cacheDebug.logUsage(usage, metadata); // Vermeer: niveau 1 — split d'usage par appel LLM
             }
           },
         },
@@ -857,6 +863,9 @@ const createResponse = async (req, res) => {
 
       const userId = req.user?.id ?? 'api-user';
       const userMCPAuthMap = mergedMCPAuthMap;
+
+      // Vermeer: niveau 2 — empreintes de préfixe (juste avant l'appel SDK)
+      cacheDebug.logPrefix({ conversationId, agent: runAgents[0], messages: formattedMessages });
 
       const run = await createRun({
         agents: runAgents,
