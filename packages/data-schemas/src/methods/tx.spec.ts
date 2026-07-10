@@ -2480,3 +2480,44 @@ describe('Premium Token Pricing', () => {
 
 // Cross-package sync validation tests (tokens.ts ↔ tx.ts) moved to
 // packages/api tests since they require maxTokensMap from @librechat/api.
+
+describe('Vermeer pricing audit (2026-07-10)', () => {
+  describe('French Models (Featherless) — substring guard', () => {
+    const frenchModel = 'jpacifico/French-Alpaca-Llama3-8B-Instruct-v1.0';
+
+    it('should resolve to its own named key, never the "llama3-8b" substring', () => {
+      expect(getValueKey(frenchModel)).toBe(frenchModel);
+      expect(getValueKey(frenchModel)).not.toBe('llama3-8b');
+    });
+
+    it('should value prompt and completion at 0 (forfait Featherless)', () => {
+      expect(getMultiplier({ model: frenchModel, tokenType: 'prompt' })).toBe(0);
+      expect(getMultiplier({ model: frenchModel, tokenType: 'completion' })).toBe(0);
+      expect(tokenValues[frenchModel]).toEqual({ prompt: 0, completion: 0 });
+    });
+  });
+
+  describe('gpt-5.2 — tarifs OpenAI post-02/07/2026', () => {
+    it('should resolve gpt-5.2 (and dated/prefixed variants) to the "gpt-5.2" key', () => {
+      expect(getValueKey('gpt-5.2')).toBe('gpt-5.2');
+      expect(getValueKey('gpt-5.2-2026-07-02')).toBe('gpt-5.2');
+      expect(getValueKey('openai/gpt-5.2')).toBe('gpt-5.2');
+    });
+
+    it('should apply the July-2026 rates 1.75 / 14.00 with cache read 0.175', () => {
+      // Value-regression guard: pins the post-02/07 tariff (was 2/8 before).
+      expect(tokenValues['gpt-5.2']).toEqual({ prompt: 1.75, completion: 14 });
+      expect(cacheTokenValues['gpt-5.2'].read).toBe(0.175);
+      expect(getMultiplier({ model: 'gpt-5.2', tokenType: 'prompt' })).toBe(1.75);
+      expect(getMultiplier({ model: 'gpt-5.2', tokenType: 'completion' })).toBe(14);
+    });
+  });
+
+  describe('Gemini 2.5 — cache read comblé', () => {
+    it('should return the discounted cache-read rate instead of falling back to the input rate', () => {
+      expect(getCacheMultiplier({ model: 'gemini-2.5-flash', cacheType: 'read' })).toBe(0.03);
+      expect(getCacheMultiplier({ model: 'gemini-2.5-flash-lite', cacheType: 'read' })).toBe(0.01);
+      expect(getCacheMultiplier({ model: 'gemini-2.5-pro', cacheType: 'read' })).toBe(0.125);
+    });
+  });
+});
