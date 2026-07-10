@@ -56,6 +56,7 @@ const {
   isEphemeralAgentId,
   removeNullishValues,
 } = require('librechat-data-provider');
+const cacheDebug = require('~/server/services/Vermeer/cacheDebug'); // Vermeer: debug cache Anthropic (flag VERMEER_CACHE_DEBUG)
 const { filterFilesByAgentAccess } = require('~/server/services/Files/permissions');
 const { encodeAndFormat } = require('~/server/services/Files/images/encode');
 const { createContextHandlers } = require('~/app/clients/prompts');
@@ -1026,6 +1027,13 @@ class AgentClient extends BaseClient {
             `[AgentClient] contextMeta from parent: ratio=${prevMeta.calibrationRatio}, encoding=${prevMeta.encoding}, current=${currentEncoding}, seeded=${calibrationRatio ?? 'none'}`,
           );
         }
+
+        // Vermeer: niveau 2 — empreintes de préfixe (juste avant l'appel SDK)
+        cacheDebug.logPrefix({
+          conversationId: config.configurable?.thread_id ?? this.conversationId,
+          agent: this.options.agent,
+          messages,
+        });
 
         run = await createRun({
           agents,

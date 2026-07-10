@@ -14,6 +14,7 @@ const {
   writeAttachmentEvent,
   createToolExecuteHandler,
 } = require('@librechat/api');
+const cacheDebug = require('~/server/services/Vermeer/cacheDebug'); // Vermeer: debug cache Anthropic (flag VERMEER_CACHE_DEBUG)
 const { processFileCitations } = require('~/server/services/Files/Citations');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
 const { saveBase64Image } = require('~/server/services/Files/process');
@@ -82,6 +83,7 @@ class ModelEndHandler {
       const taggedUsage = markSummarizationUsage(usage, metadata);
 
       this.collectedUsage.push(taggedUsage);
+      cacheDebug.logUsage(usage, metadata); // Vermeer: niveau 1 — split d'usage par appel LLM
     } catch (error) {
       logger.error('Error handling model end event:', error);
       return this.finalize(errorMessage);
