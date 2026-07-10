@@ -32,6 +32,8 @@ router.get('/', async (req, res) => {
   const search = req.query.search ? decodeURIComponent(req.query.search) : undefined;
   const sortBy = req.query.sortBy || 'updatedAt';
   const sortDirection = req.query.sortDirection || 'desc';
+  // Vermeer: optional user-scoped filter — list only the caller's conversations for a given agent.
+  const agentId = req.query.agent_id || undefined;
 
   let tags;
   if (req.query.tags) {
@@ -47,6 +49,7 @@ router.get('/', async (req, res) => {
       search,
       sortBy,
       sortDirection,
+      agentId,
     });
     res.status(200).json(result);
   } catch (error) {

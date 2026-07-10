@@ -17,6 +17,8 @@ import type t from 'librechat-data-provider';
 import { useLocalize, useDefaultConvo, useFavorites, useAuthContext } from '~/hooks';
 import { renderAgentAvatar, clearMessagesCache } from '~/utils';
 import { useChatContext } from '~/Providers';
+// Vermeer: section « Mes conversations » listee sous les boutons d'action.
+import AgentConversations from './AgentConversations';
 import store from '~/store';
 
 interface SupportContact {
@@ -252,6 +254,9 @@ const AgentDetailContent: React.FC<AgentDetailContentProps> = ({ agent, onReques
           {localize('com_agents_start_chat')}
         </Button>
       </div>
+
+      {/* Vermeer: mes conversations avec cet assistant (user-scope, visible pour tous les assistants) */}
+      <AgentConversations agentId={agent?.id} onRequestClose={onRequestClose} />
     </OGDialogContent>
   );
 };

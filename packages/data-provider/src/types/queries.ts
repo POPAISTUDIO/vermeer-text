@@ -19,6 +19,8 @@ export type ConversationListParams = {
   sortDirection?: 'asc' | 'desc';
   tags?: string[];
   search?: string;
+  /** Vermeer: user-scoped filter — list only the caller's conversations for this agent. */
+  agent_id?: string;
 };
 
 export type MinimalConversation = Pick<
