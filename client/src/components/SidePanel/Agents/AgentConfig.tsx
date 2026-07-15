@@ -63,6 +63,21 @@ import MCPTools from './MCPTools';
 // champ id reste dans le formulaire et le data model côté backend.
 const SHOW_AGENT_ID = false;
 
+// Vermeer: masquage des « Réglages avancés » du builder (wagon B v0.10.21) —
+// demande sponsor : simplifier le builder V1. Ce flag gate DEUX surfaces
+// toutes deux intitulées « Réglages avancés » (com_ui_advanced_settings) :
+//  - ici, l'accordéon des paramètres avancés du modèle (tout param non essentiel :
+//    top_p, max tokens, penalties, resendFiles, region, maxContextTokens…) ;
+//  - dans AgentFooter.tsx, le bouton « Réglages avancés » ouvrant l'AdvancedPanel
+//    (chaînage d'agents / sous-agents / handoffs / MaxAgentSteps), gaté par le
+//    meme flag local.
+// Les 3 params essentiels (Créativité/temperature, Réflexion approfondie/thinking,
+// Recherche web/web_search) et les « capacités de base » (accordéon « Outils
+// avancés ») restent visibles. Masquage UI seul : les valeurs déjà configurées
+// restent dans model_parameters et s'appliquent au runtime. Réversible en
+// passant a `true`.
+const SHOW_ADVANCED_SETTINGS = false;
+
 // V1 UX (POP/BETC) : paramètres essentiels du modèle visibles inline dans
 // le builder agent (Créativité, Thinking, Recherche web — selon provider).
 // Reste des params en accordéon « Paramètres avancés », incluant resendFiles
@@ -574,7 +589,7 @@ export default function AgentConfig() {
           </div>
         )}
         {/* Paramètres avancés du modèle (accordéon replié) */}
-        {advancedParams.length > 0 && (
+        {SHOW_ADVANCED_SETTINGS && advancedParams.length > 0 && (
           <Accordion type="single" collapsible className="mb-4 w-full">
             <AccordionItem value="model-advanced-params" className="border-b-0">
               <AccordionTrigger className="text-sm font-medium text-text-primary hover:no-underline">
