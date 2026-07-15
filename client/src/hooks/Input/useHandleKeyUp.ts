@@ -6,6 +6,12 @@ import useGetAgentsConfig from '~/hooks/Agents/useGetAgentsConfig';
 import useHasAccess from '~/hooks/Roles/useHasAccess';
 import store from '~/store';
 
+// Vermeer: masquage de la fonction Comparaison (side-by-side) — demande sponsor.
+// Neutralise le raccourci `+` qui ouvre la popover multi-convo. Meme flag que
+// le bouton Header (Header.tsx) et le toggle Commandes (Commands.tsx).
+// Reversible en passant a `true` ; aucune logique multi-convo supprimee.
+const SHOW_COMPARISON_BUTTON = false;
+
 /** Event keys that shouldn't trigger a command */
 const invalidKeys = {
   Escape: true,
@@ -95,7 +101,12 @@ const useHandleKeyUp = ({
   }, [textAreaRef, setShowMentionPopover, atCommandEnabled]);
 
   const handlePlusCommand = useCallback(() => {
-    if (!hasMultiConvoAccess || !plusCommandEnabled || isAssistantsEndpoint(endpoint)) {
+    if (
+      !SHOW_COMPARISON_BUTTON ||
+      !hasMultiConvoAccess ||
+      !plusCommandEnabled ||
+      isAssistantsEndpoint(endpoint)
+    ) {
       return;
     }
     if (shouldTriggerCommand(textAreaRef, '+')) {
