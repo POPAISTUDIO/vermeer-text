@@ -15,6 +15,7 @@ import MarketplaceAdminSettings from './MarketplaceAdminSettings';
 import OpenSidebar from '~/components/Chat/Menus/OpenSidebar';
 import { SidePanelGroup } from '~/components/SidePanel';
 import CategoryTabs from './CategoryTabs';
+import OwnershipFilterTabs, { OwnershipFilter } from './OwnershipFilter';
 import SearchBar from './SearchBar';
 import AgentGrid from './AgentGrid';
 import { cn } from '~/utils';
@@ -48,6 +49,9 @@ const AgentMarketplace: React.FC<AgentMarketplaceProps> = ({ className = '' }) =
   const [nextCategory, setNextCategory] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
   const [animationDirection, setAnimationDirection] = useState<Direction>('right');
+
+  // Vermeer: filtre de propriété (Tous / Partagés / Mes assistants), état local non persisté.
+  const [ownership, setOwnership] = useState<OwnershipFilter>('all');
 
   // Ref for the scrollable container to enable infinite scroll
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -237,6 +241,11 @@ const AgentMarketplace: React.FC<AgentMarketplaceProps> = ({ className = '' }) =
                   isLoading={false}
                   onChange={handleTabChange}
                 />
+
+                {/* Vermeer: filtre de propriété, se combine avec les onglets catégories */}
+                <div className="mt-3">
+                  <OwnershipFilterTabs value={ownership} onChange={setOwnership} />
+                </div>
               </div>
             </div>
             {/* Scrollable content area */}
@@ -314,6 +323,7 @@ const AgentMarketplace: React.FC<AgentMarketplaceProps> = ({ className = '' }) =
                     key={`grid-${displayCategory}`}
                     category={displayCategory}
                     searchQuery={searchQuery}
+                    ownership={ownership}
                     onSelectAgent={handleAgentSelect}
                     scrollElementRef={scrollContainerRef}
                   />
@@ -394,6 +404,7 @@ const AgentMarketplace: React.FC<AgentMarketplaceProps> = ({ className = '' }) =
                       key={`grid-${nextCategory}`}
                       category={nextCategory}
                       searchQuery={searchQuery}
+                      ownership={ownership}
                       onSelectAgent={handleAgentSelect}
                       scrollElementRef={scrollContainerRef}
                     />

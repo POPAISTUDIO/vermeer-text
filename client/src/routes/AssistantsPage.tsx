@@ -6,6 +6,7 @@ import { useGetEndpointsQuery } from '~/data-provider';
 import { useLocalize, useAgentCategories } from '~/hooks';
 import { MarketplaceProvider } from '~/components/Agents/MarketplaceContext';
 import CategoryTabs from '~/components/Agents/CategoryTabs';
+import OwnershipFilterTabs, { OwnershipFilter } from '~/components/Agents/OwnershipFilter';
 import AgentGrid from '~/components/Agents/AgentGrid';
 import store from '~/store';
 
@@ -22,6 +23,8 @@ function AssistantsPageContent() {
   const setOpenBuilder = useSetRecoilState(store.openBuilderModal);
   const { categories: vermeerCategories } = useAgentCategories();
   const [activeTab, setActiveTab] = useState('all');
+  // Vermeer: filtre de propriété (Tous / Partagés / Mes assistants), état local non persisté.
+  const [ownership, setOwnership] = useState<OwnershipFilter>('all');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // AgentGrid dépend de la config endpoints (queries agents) — s'assurer qu'elle charge.
@@ -65,11 +68,17 @@ function AssistantsPageContent() {
             isLoading={false}
             onChange={setActiveTab}
           />
+
+          {/* Vermeer: filtre de propriété, se combine avec les onglets catégories */}
+          <div className="mt-3">
+            <OwnershipFilterTabs value={ownership} onChange={setOwnership} />
+          </div>
         </div>
 
         <AgentGrid
           category={activeTab}
           searchQuery=""
+          ownership={ownership}
           onSelectAgent={() => undefined}
           scrollElementRef={scrollRef}
         />
