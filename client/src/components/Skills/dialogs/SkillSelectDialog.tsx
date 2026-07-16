@@ -32,6 +32,22 @@ const SKILL_MY = '__skill_filter_my__';
 const SKILL_FAVORITES = '__skill_filter_favorites__';
 const LIST_QUERY_OPTIONS = { limit: 100 } as const;
 
+// Vermeer: masquage de la liste de catégories dans la sidebar du picker
+// « Ajouter des skills » (wagon B v0.10.21). Ces catégories proviennent de la
+// taxonomie générique des prompts (useCategories → useGetCategories : Idées,
+// Voyage, Code, Divers…) et ne correspondent à rien côté skills Vermeer. On
+// garde « Mes Skills », « Favoris », « Tout » + la recherche. Masquage seul,
+// réversible en passant a `true` ; le hook useCategories reste appelé.
+const SHOW_SKILL_PICKER_CATEGORIES = false;
+
+// Vermeer: masquage du bouton « Créer un skill » dans le picker (wagon B
+// v0.10.21). Repli pragmatique : le clic navigue vers /skills/new (et le
+// dialogue de création navigue vers /skills/:id au succès), ce qui démonte la
+// modale du builder → flux cassé. Dans le builder, l'utilisateur ne fait
+// qu'ATTACHER des skills existants ; la création se fait depuis la section
+// Skills de la sidebar. Réversible en passant a `true`.
+const SHOW_SKILL_PICKER_CREATE = false;
+
 interface SidebarItemProps {
   value: string;
   label: string;
@@ -251,7 +267,7 @@ function SkillSelectDialog({ isOpen, setIsOpen }: SkillSelectDialogProps) {
             <h2 className="px-2.5 pb-1.5 pt-1 text-base font-bold text-text-primary">
               {localize('com_ui_add_skills')}
             </h2>
-            {hasCreateAccess && (
+            {SHOW_SKILL_PICKER_CREATE && hasCreateAccess && (
               <button
                 type="button"
                 onClick={handleCreate}
@@ -284,21 +300,22 @@ function SkillSelectDialog({ isOpen, setIsOpen }: SkillSelectDialogProps) {
               active={activeFilter === SystemCategories.ALL}
               onSelect={setActiveFilter}
             />
-            {typedCategories?.map((category) => {
-              if (!category.value) {
-                return null;
-              }
-              return (
-                <SidebarItem
-                  key={category.value}
-                  value={category.value}
-                  label={category.label}
-                  icon={category.icon ?? <ListFilter className="size-4 text-text-secondary" />}
-                  active={activeFilter === category.value}
-                  onSelect={setActiveFilter}
-                />
-              );
-            })}
+            {SHOW_SKILL_PICKER_CATEGORIES &&
+              typedCategories?.map((category) => {
+                if (!category.value) {
+                  return null;
+                }
+                return (
+                  <SidebarItem
+                    key={category.value}
+                    value={category.value}
+                    label={category.label}
+                    icon={category.icon ?? <ListFilter className="size-4 text-text-secondary" />}
+                    active={activeFilter === category.value}
+                    onSelect={setActiveFilter}
+                  />
+                );
+              })}
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col">

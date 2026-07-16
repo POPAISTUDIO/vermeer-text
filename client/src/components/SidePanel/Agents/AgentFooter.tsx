@@ -20,6 +20,15 @@ import DuplicateAgent from './DuplicateAgent';
 import DeleteButton from './DeleteButton';
 import { Panel } from '~/common';
 
+// Vermeer: masquage des « Réglages avancés » du builder (wagon B v0.10.21) —
+// pendant du flag homonyme dans AgentConfig.tsx. Gate le bouton
+// « Réglages avancés » (AdvancedButton) qui est le SEUL point d'entrée vers
+// l'AdvancedPanel (Panel.advanced : chaînage d'agents / sous-agents / handoffs /
+// MaxAgentSteps) : masquer le bouton rend le panneau inatteignable. Masquage UI
+// seul, les valeurs (subagents/edges/agent_ids/maxAgentSteps) restent en base et
+// au runtime. Réversible en passant a `true`.
+const SHOW_ADVANCED_SETTINGS = false;
+
 export default function AgentFooter({
   activePanel,
   createMutation,
@@ -79,7 +88,7 @@ export default function AgentFooter({
 
   return (
     <div className="mb-1 flex w-full flex-col gap-2">
-      {showButtons && <AdvancedButton setActivePanel={setActivePanel} />}
+      {SHOW_ADVANCED_SETTINGS && showButtons && <AdvancedButton setActivePanel={setActivePanel} />}
       {showButtons && agent_id && <VersionButton setActivePanel={setActivePanel} />}
       {/* Context Button */}
       <div className="flex items-center justify-end gap-2">
