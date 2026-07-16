@@ -63,7 +63,6 @@ export interface IUser extends Document {
   tenantId?: string;
   companyName?: string;
   department?: string;
-  jobTitle?: string;
   federatedTokens?: OIDCTokens;
   openidTokens?: OIDCTokens;
 }
