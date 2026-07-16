@@ -5,6 +5,12 @@ import { useLocalize, useHasAccess } from '~/hooks';
 import ToggleSwitch from '../ToggleSwitch';
 import store from '~/store';
 
+// Vermeer: masquage de la fonction Comparaison (side-by-side) — demande sponsor.
+// Masque le toggle « Commande + » (plusCommand) qui active la comparaison. Meme
+// flag que le bouton Header (Header.tsx) et le raccourci `+` (useHandleKeyUp.ts).
+// Reversible en passant a `true` ; aucune logique multi-convo supprimee.
+const SHOW_COMPARISON_BUTTON = false;
+
 const commandSwitchConfigs = [
   {
     stateAtom: store.atCommand,
@@ -47,7 +53,7 @@ function Commands() {
       return true;
     }
     if (permissionType === PermissionTypes.MULTI_CONVO) {
-      return hasAccessToMultiConvo === true;
+      return SHOW_COMPARISON_BUTTON && hasAccessToMultiConvo === true;
     }
     if (permissionType === PermissionTypes.PROMPTS) {
       return hasAccessToPrompts === true;

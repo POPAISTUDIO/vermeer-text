@@ -157,13 +157,15 @@ describe('useHandleKeyUp', () => {
       expect(setShowMentionPopover).toHaveBeenCalledWith(true);
     });
 
-    it('triggers + command for "+" at position 1', () => {
+    // Vermeer: la fonction Comparaison est masquee (flag SHOW_COMPARISON_BUTTON) —
+    // le raccourci `+` ne doit plus ouvrir la popover multi-convo.
+    it('does NOT trigger + command (comparison masquee) for "+" at position 1', () => {
       const ref = makeTextAreaRef('+', 1);
       const { handleKeyUp, setShowPlusPopover } = renderUseHandleKeyUp(ref);
 
       act(() => handleKeyUp(makeKeyEvent('+')));
 
-      expect(setShowPlusPopover).toHaveBeenCalledWith(true);
+      expect(setShowPlusPopover).not.toHaveBeenCalledWith(true);
     });
 
     it('triggers $ skill command for "$" at position 1', () => {
@@ -479,14 +481,16 @@ describe('useHandleKeyUp', () => {
       expect(setShowPlusPopover).toHaveBeenCalledWith(false);
     });
 
-    it('triggers + command on non-assistants endpoint', () => {
+    // Vermeer: comparaison masquee (flag SHOW_COMPARISON_BUTTON) — le raccourci `+`
+    // reste inactif meme sur un endpoint non-assistants.
+    it('does NOT trigger + command (comparison masquee) on non-assistants endpoint', () => {
       mockEndpoint.current = 'openAI';
       const ref = makeTextAreaRef('+', 1);
       const { handleKeyUp, setShowPlusPopover } = renderUseHandleKeyUp(ref);
 
       act(() => handleKeyUp(makeKeyEvent('+')));
 
-      expect(setShowPlusPopover).toHaveBeenCalledWith(true);
+      expect(setShowPlusPopover).not.toHaveBeenCalledWith(true);
     });
 
     it('does NOT trigger $ skill command on assistants endpoint', () => {

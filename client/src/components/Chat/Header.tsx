@@ -21,6 +21,12 @@ const defaultInterface = getConfigDefaults().interface;
 // PresetsMenu et toute la logique sous-jacente sont préservés.
 const SHOW_PRESETS_BUTTON = false;
 
+// Vermeer: masquage de la fonction Comparaison (side-by-side) — demande sponsor.
+// Masque le bouton « Comparer » du Header. Le raccourci `+` et le toggle
+// Commandes sont gatés par le meme flag (useHandleKeyUp.ts, Commands.tsx).
+// Reversible en passant a `true` ; aucune logique multi-convo supprimee.
+const SHOW_COMPARISON_BUTTON = false;
+
 function Header() {
   const { data: startupConfig } = useGetStartupConfig();
   const localize = useLocalize();
@@ -104,7 +110,7 @@ function Header() {
                     <PresetsMenu />
                   )}
                   {hasAccessToBookmarks === true && <BookmarkMenu />}
-                  {hasAccessToMultiConvo === true && <AddMultiConvo />}
+                  {SHOW_COMPARISON_BUTTON && hasAccessToMultiConvo === true && <AddMultiConvo />}
                 </>
               )}
               {isSmallScreen && (
