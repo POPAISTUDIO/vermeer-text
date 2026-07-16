@@ -102,6 +102,9 @@ jest.mock('~/hooks', () => ({
     isFavoriteAgent: jest.fn(() => false),
     toggleFavoriteAgent: jest.fn(),
   })),
+  // AgentGrid lit AuthContext de façon défensive via useContext ; fournir un contexte
+  // (valeur par défaut avec un user de test) pour couvrir le chemin authentifié.
+  AuthContext: jest.requireActual('react').createContext({ user: { id: 'test-user-id' } }),
 }));
 
 // Mock Providers
