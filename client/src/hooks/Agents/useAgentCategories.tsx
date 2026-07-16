@@ -4,7 +4,8 @@ import useLocalize from '~/hooks/useLocalize';
 import {
   EMPTY_AGENT_CATEGORY,
   VERMEER_AGENT_CATEGORIES,
-  LEGACY_AGENT_CATEGORY_IDS,
+  DEFAULT_AGENT_CATEGORY,
+  toCanonicalCategory,
 } from '~/constants/agentCategories';
 
 // This interface matches the structure used by the ControlCombobox component
@@ -23,9 +24,10 @@ export interface ProcessedAgentCategory {
  * VERMEER_AGENT_CATEGORIES.
  *
  * Also exposes `getCategoryLabel(value)`: resolves a category value to its
- * translated label. Legacy IDs stored on existing agents (hr, finance, rd,
- * it, sales, aftersales) are remapped to 'general' so they render cleanly
- * as "📋 Général" instead of falling through to the raw ID or an empty badge.
+ * translated label. Values stored on existing agents (taxonomie v1 + IDs
+ * legacy) are remapped to their canonical v2 category via toCanonicalCategory
+ * so they render cleanly under the new taxonomy instead of falling through to
+ * the raw ID or an empty badge.
  */
 const useAgentCategories = () => {
   const localize = useLocalize();
@@ -52,17 +54,12 @@ const useAgentCategories = () => {
 
   const getCategoryLabel = useCallback(
     (value: string | null | undefined): string => {
+      const fallback = categories.find((c) => c.value === DEFAULT_AGENT_CATEGORY)?.label ?? '';
       if (!value) {
-        return categories.find((c) => c.value === 'general')?.label ?? '';
+        return fallback;
       }
-      const direct = categories.find((c) => c.value === value);
-      if (direct) {
-        return direct.label;
-      }
-      if (LEGACY_AGENT_CATEGORY_IDS.includes(value)) {
-        return categories.find((c) => c.value === 'general')?.label ?? '';
-      }
-      return categories.find((c) => c.value === 'general')?.label ?? value;
+      const canonical = toCanonicalCategory(value);
+      return categories.find((c) => c.value === canonical)?.label ?? fallback;
     },
     [categories],
   );

@@ -813,9 +813,16 @@ const getListAgentsHandler = async (req, res) => {
     // Base filter
     const filter = {};
 
-    // Handle category filter - only apply if category is defined
+    // Handle category filter - only apply if category is defined.
+    // Vermeer: accepte une liste séparée par des virgules (alias de la taxonomie v2 →
+    // valeurs DB v1/legacy) et applique un $in pour regrouper les assistants existants
+    // sous leur onglet canonique. Une valeur unique reste un match exact (rétro-compatible).
     if (category !== undefined && category.trim() !== '') {
-      filter.category = category;
+      const values = category
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      filter.category = values.length > 1 ? { $in: values } : values[0];
     }
 
     // Handle promoted filter - only from query param
