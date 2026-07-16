@@ -3,8 +3,9 @@ import { Spinner } from '@librechat/client';
 import { PermissionBits } from 'librechat-data-provider';
 import type t from 'librechat-data-provider';
 import { useMarketplaceAgentsInfiniteQuery } from '~/data-provider/Agents';
-import { useAgentCategories, useLocalize } from '~/hooks';
+import { useAgentCategories, useLocalize, useAuthContext } from '~/hooks';
 import { useInfiniteScroll } from '~/hooks/useInfiniteScroll';
+import type { OwnershipFilter } from './OwnershipFilter';
 import { useHasData } from './SmartLoader';
 import ErrorDisplay from './ErrorDisplay';
 import AgentCard from './AgentCard';
@@ -12,6 +13,7 @@ import AgentCard from './AgentCard';
 interface AgentGridProps {
   category: string;
   searchQuery: string;
+  ownership?: OwnershipFilter;
   onSelectAgent: (agent: t.Agent) => void;
   scrollElementRef?: React.RefObject<HTMLElement>;
 }
@@ -22,10 +24,12 @@ interface AgentGridProps {
 const AgentGrid: React.FC<AgentGridProps> = ({
   category,
   searchQuery,
+  ownership = 'all',
   onSelectAgent,
   scrollElementRef,
 }) => {
   const localize = useLocalize();
+  const { user } = useAuthContext();
 
   // Get category data from API
   const { categories } = useAgentCategories();
@@ -76,10 +80,25 @@ const AgentGrid: React.FC<AgentGridProps> = ({
   } = useMarketplaceAgentsInfiniteQuery(queryParams);
 
   // Flatten all pages into a single array of agents
-  const currentAgents = useMemo(() => {
+  const loadedAgents = useMemo(() => {
     if (!data?.pages) return [];
     return data.pages.flatMap((page) => page.data || []);
   }, [data?.pages]);
+
+  // Vermeer: filtre de propriété appliqué CÔTÉ CLIENT sur les pages chargées
+  // (useMarketplaceAgentsInfiniteQuery n'expose pas de filtre par auteur, et
+  // « shared » = complément non exprimable côté serveur). Limite connue : la
+  // pagination infinie fetch par pages non filtrées, donc le nombre d'assistants
+  // affichés par page peut varier selon le filtre.
+  const currentAgents = useMemo(() => {
+    if (ownership === 'all' || !user?.id) {
+      return loadedAgents;
+    }
+    if (ownership === 'mine') {
+      return loadedAgents.filter((agent) => agent.author === user.id);
+    }
+    return loadedAgents.filter((agent) => agent.author !== user.id);
+  }, [loadedAgents, ownership, user?.id]);
 
   // Check if we have meaningful data to prevent unnecessary loading states
   const hasData = useHasData(data?.pages?.[0]);
