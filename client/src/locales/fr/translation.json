@@ -1240,6 +1240,7 @@
   "com_ui_select": "Sélectionner",
   "com_ui_select_agent": "Sélectionner un assistant",
   "com_ui_select_all": "Tout sélectionner",
+  "com_ui_select_category": "Sélectionner une catégorie...",
   "com_ui_select_file": "Sélectionner un fichier",
   "com_ui_select_model": "Sélectionner un modèle",
   "com_ui_select_options": "Sélectionner des options...",

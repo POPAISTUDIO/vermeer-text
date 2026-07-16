@@ -1546,6 +1546,7 @@
   "com_ui_select": "Select",
   "com_ui_select_agent": "Select an assistant",
   "com_ui_select_all": "Select All",
+  "com_ui_select_category": "Select a category...",
   "com_ui_select_file": "Select a file",
   "com_ui_select_model": "Select a model",
   "com_ui_select_options": "Select options...",
