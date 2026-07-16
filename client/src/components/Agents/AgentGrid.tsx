@@ -1,9 +1,9 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useContext } from 'react';
 import { Spinner } from '@librechat/client';
 import { PermissionBits } from 'librechat-data-provider';
 import type t from 'librechat-data-provider';
 import { useMarketplaceAgentsInfiniteQuery } from '~/data-provider/Agents';
-import { useAgentCategories, useLocalize, useAuthContext } from '~/hooks';
+import { useAgentCategories, useLocalize, AuthContext } from '~/hooks';
 import { expandCategoryValue } from '~/constants/agentCategories';
 import { useInfiniteScroll } from '~/hooks/useInfiniteScroll';
 import type { OwnershipFilter } from './OwnershipFilter';
@@ -30,7 +30,12 @@ const AgentGrid: React.FC<AgentGridProps> = ({
   scrollElementRef,
 }) => {
   const localize = useLocalize();
-  const { user } = useAuthContext();
+  // Vermeer: lecture DÉFENSIVE du contexte d'auth via useContext (et non useAuthContext,
+  // qui throw hors AuthProvider). AgentGrid peut être monté sans provider (tests, previews) ;
+  // on ne veut pas crasher la page Assistants. Sans user, le filtre de propriété se désactive
+  // simplement (fallback = tous les assistants chargés, cf. currentAgents ci-dessous).
+  const authContext = useContext(AuthContext);
+  const user = authContext?.user;
 
   // Get category data from API
   const { categories } = useAgentCategories();
