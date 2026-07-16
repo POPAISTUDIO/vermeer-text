@@ -4,7 +4,6 @@ import {
   alternateName,
   EModelEndpoint,
   EToolResources,
-  LocalStorageKeys,
   defaultAgentFormValues,
 } from 'librechat-data-provider';
 import type { Agent, TFile } from 'librechat-data-provider';
@@ -45,13 +44,20 @@ export const createProviderOption = (provider: string) => ({
 });
 
 /**
- * Gets default agent form values with localStorage values for model and provider.
- * This is used to initialize agent forms with the last used model and provider.
+ * Gets default agent form values for the CREATION form.
+ *
+ * Vermeer: à la création, TOUS les champs sont vides (comme nom/description) — on ne
+ * pré-remplit plus catégorie, fournisseur ni modèle. `category` est forcée à '' ici (source
+ * réellement lue au runtime par le formulaire ; robuste même si le dist data-provider n'est
+ * pas rebuild), et provider/model ne sont plus initialisés depuis le localStorage (le
+ * « dernier couple utilisé » ne s'applique plus à la création). L'édition d'un assistant
+ * existant passe par resetAgentForm et conserve ses valeurs.
  **/
 export const getDefaultAgentFormValues = () => ({
   ...defaultAgentFormValues,
-  model: localStorage.getItem(LocalStorageKeys.LAST_AGENT_MODEL) ?? '',
-  provider: createProviderOption(localStorage.getItem(LocalStorageKeys.LAST_AGENT_PROVIDER) ?? ''),
+  category: '',
+  model: '',
+  provider: createProviderOption(''),
   avatar_file: null,
   avatar_preview: '',
   avatar_action: null,

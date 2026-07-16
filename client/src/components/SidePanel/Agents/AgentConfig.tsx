@@ -583,10 +583,8 @@ export default function AgentConfig() {
                   isCollapsed={false}
                   showCarat={true}
                 />
-                {providerValue && error && (
-                  <span className="text-sm text-red-500">
-                    {localize('com_ui_field_required')}
-                  </span>
+                {error && (
+                  <span className="text-sm text-red-500">{localize('com_ui_field_required')}</span>
                 )}
               </>
             )}
