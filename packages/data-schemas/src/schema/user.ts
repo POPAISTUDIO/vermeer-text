@@ -174,9 +174,6 @@ const userSchema = new Schema<IUser>(
     department: {
       type: String,
     },
-    jobTitle: {
-      type: String,
-    },
   },
   { timestamps: true },
 );

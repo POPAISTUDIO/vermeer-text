@@ -553,7 +553,6 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
 
   const companyName = userinfo[process.env.OPENID_COMPANY_CLAIM || 'companyName'];
   const department = userinfo[process.env.OPENID_DEPARTMENT_CLAIM || 'department'];
-  const jobTitle = userinfo[process.env.OPENID_JOBTITLE_CLAIM || 'jobTitle'];
 
   if (existingUsersOnly && !user) {
     throw new Error('User does not exist');
@@ -575,7 +574,6 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
     user = await createUser(user, balanceConfig, true, true);
     if (companyName) user.companyName = companyName;
     if (department) user.department = department;
-    if (jobTitle) user.jobTitle = jobTitle;
   } else {
     user.provider = 'openid';
     user.openidId = userinfo.sub;
@@ -591,7 +589,6 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
     }
     if (companyName) user.companyName = companyName;
     if (department) user.department = department;
-    if (jobTitle) user.jobTitle = jobTitle;
   }
 
   const adminRole = process.env.OPENID_ADMIN_ROLE;
