@@ -15,7 +15,7 @@ import MarketplaceAdminSettings from './MarketplaceAdminSettings';
 import OpenSidebar from '~/components/Chat/Menus/OpenSidebar';
 import { SidePanelGroup } from '~/components/SidePanel';
 import CategoryTabs from './CategoryTabs';
-import OwnershipFilterTabs, { OwnershipFilter } from './OwnershipFilter';
+import OwnershipFilterSelect, { OwnershipFilter } from './OwnershipFilter';
 import SearchBar from './SearchBar';
 import AgentGrid from './AgentGrid';
 import { cn } from '~/utils';
@@ -234,17 +234,20 @@ const AgentMarketplace: React.FC<AgentMarketplaceProps> = ({ className = '' }) =
                   </div>
                 </div>
 
-                {/* Category tabs */}
-                <CategoryTabs
-                  categories={marketplaceCategories}
-                  activeTab={displayCategory}
-                  isLoading={false}
-                  onChange={handleTabChange}
-                />
-
-                {/* Vermeer: filtre de propriété, se combine avec les onglets catégories */}
-                <div className="mt-3">
-                  <OwnershipFilterTabs value={ownership} onChange={setOwnership} />
+                {/* Category tabs + filtre de propriété (dropdown) sur la MÊME rangée,
+                    filtre aligné à droite. CategoryTabs gère son overflow horizontal en étroit. */}
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <CategoryTabs
+                      categories={marketplaceCategories}
+                      activeTab={displayCategory}
+                      isLoading={false}
+                      onChange={handleTabChange}
+                    />
+                  </div>
+                  <div className="shrink-0">
+                    <OwnershipFilterSelect value={ownership} onChange={setOwnership} />
+                  </div>
                 </div>
               </div>
             </div>

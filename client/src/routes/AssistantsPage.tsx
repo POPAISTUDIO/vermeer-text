@@ -6,7 +6,7 @@ import { useGetEndpointsQuery } from '~/data-provider';
 import { useLocalize, useAgentCategories } from '~/hooks';
 import { MarketplaceProvider } from '~/components/Agents/MarketplaceContext';
 import CategoryTabs from '~/components/Agents/CategoryTabs';
-import OwnershipFilterTabs, { OwnershipFilter } from '~/components/Agents/OwnershipFilter';
+import OwnershipFilterSelect, { OwnershipFilter } from '~/components/Agents/OwnershipFilter';
 import AgentGrid from '~/components/Agents/AgentGrid';
 import store from '~/store';
 
@@ -61,17 +61,19 @@ function AssistantsPageContent() {
           <h1 className="text-2xl font-semibold">{localize('com_vermeer_nav_assistants')}</h1>
         </header>
 
-        <div className="mb-4">
-          <CategoryTabs
-            categories={marketplaceCategories}
-            activeTab={activeTab}
-            isLoading={false}
-            onChange={setActiveTab}
-          />
-
-          {/* Vermeer: filtre de propriété, se combine avec les onglets catégories */}
-          <div className="mt-3">
-            <OwnershipFilterTabs value={ownership} onChange={setOwnership} />
+        {/* Vermeer: onglets catégories + filtre de propriété (dropdown) sur la MÊME rangée,
+            filtre aligné à droite. CategoryTabs gère son propre overflow horizontal en étroit. */}
+        <div className="mb-4 flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <CategoryTabs
+              categories={marketplaceCategories}
+              activeTab={activeTab}
+              isLoading={false}
+              onChange={setActiveTab}
+            />
+          </div>
+          <div className="shrink-0">
+            <OwnershipFilterSelect value={ownership} onChange={setOwnership} />
           </div>
         </div>
 
