@@ -9,10 +9,20 @@ import {
   ControllerRenderProps,
 } from 'react-hook-form';
 import { TranslationKeys, useLocalize, useAgentCategories } from '~/hooks';
+import {
+  DEFAULT_AGENT_CATEGORY,
+  CATEGORY_DISPLAY_REMAP,
+  toCanonicalCategory,
+} from '~/constants/agentCategories';
 import { cn } from '~/utils';
 
 /**
- * Custom hook to handle category synchronization
+ * Custom hook to handle category synchronization.
+ *
+ * Vermeer: runs once per agent (AgentPanel remounts via key={agent_id}). New agents get
+ * DEFAULT_AGENT_CATEGORY ; existing agents holding a legacy/v1 value get remapped to their
+ * canonical v2 category so it is preselected in the picker and persisted on Save (soft
+ * migration on edit — the DB value is only rewritten when the assistant is saved).
  */
 const useCategorySync = (agent_id: string | null) => {
   const [handled, setHandled] = useState(false);
@@ -21,9 +31,16 @@ const useCategorySync = (agent_id: string | null) => {
     syncCategory: <T extends FieldPath<FieldValues>>(
       field: ControllerRenderProps<FieldValues, T>,
     ) => {
-      // Only run once and only for new agents
-      if (!handled && agent_id === '' && !field.value) {
-        field.onChange('general');
+      if (handled) {
+        return;
+      }
+      if (agent_id === '' && !field.value) {
+        field.onChange(DEFAULT_AGENT_CATEGORY);
+        setHandled(true);
+        return;
+      }
+      if (field.value && CATEGORY_DISPLAY_REMAP[field.value]) {
+        field.onChange(CATEGORY_DISPLAY_REMAP[field.value]);
         setHandled(true);
       }
     },
@@ -57,8 +74,12 @@ const AgentCategorySelector: React.FC<{ className?: string }> = ({ className }) 
   }));
 
   const getCategoryDisplayValue = (value: string) => {
-    const categoryItem = comboboxItems.find((c) => c.value === value);
-    return categoryItem?.label || comboboxItems.find((c) => c.value === 'general')?.label;
+    // Vermeer: normalise la valeur (v1/legacy) vers sa catégorie canonique v2 pour l'affichage.
+    const canonical = toCanonicalCategory(value);
+    const categoryItem = comboboxItems.find((c) => c.value === canonical);
+    return (
+      categoryItem?.label || comboboxItems.find((c) => c.value === DEFAULT_AGENT_CATEGORY)?.label
+    );
   };
 
   const searchPlaceholder = localize('com_ui_search_agent_category');
@@ -68,7 +89,7 @@ const AgentCategorySelector: React.FC<{ className?: string }> = ({ className }) 
     <Controller
       name="category"
       control={formContext.control}
-      defaultValue="general"
+      defaultValue={DEFAULT_AGENT_CATEGORY}
       render={({ field }) => {
         // Sync category if needed (without using useEffect in render)
         syncCategory(field);
@@ -77,7 +98,7 @@ const AgentCategorySelector: React.FC<{ className?: string }> = ({ className }) 
 
         return (
           <ControlCombobox
-            selectedValue={field.value}
+            selectedValue={toCanonicalCategory(field.value)}
             displayValue={displayValue}
             searchPlaceholder={searchPlaceholder}
             setValue={(value) => {

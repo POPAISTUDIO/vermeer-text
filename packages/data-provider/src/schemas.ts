@@ -288,7 +288,8 @@ export const defaultAgentFormValues = {
   [Tools.execute_code]: false,
   [Tools.file_search]: false,
   [Tools.web_search]: false,
-  category: 'general',
+  // Vermeer: catégorie par défaut de la taxonomie v2 (remplace 'general').
+  category: 'expertises_digitales',
   support_contact: {
     name: '',
     email: '',

@@ -4,6 +4,7 @@ import { PermissionBits } from 'librechat-data-provider';
 import type t from 'librechat-data-provider';
 import { useMarketplaceAgentsInfiniteQuery } from '~/data-provider/Agents';
 import { useAgentCategories, useLocalize, useAuthContext } from '~/hooks';
+import { expandCategoryValue } from '~/constants/agentCategories';
 import { useInfiniteScroll } from '~/hooks/useInfiniteScroll';
 import type { OwnershipFilter } from './OwnershipFilter';
 import { useHasData } from './SmartLoader';
@@ -47,19 +48,23 @@ const AgentGrid: React.FC<AgentGridProps> = ({
       limit: 6,
     };
 
+    // Vermeer: on envoie la catégorie canonique v2 étendue à ses alias DB (elle-même +
+    // valeurs v1/legacy remappées), en liste séparée par des virgules. Le backend fait un
+    // $in, ce qui garde les assistants existants comptés dans le bon onglet (ex. 'media'
+    // sous 'production') tout en préservant la pagination serveur.
     // Handle search
     if (searchQuery) {
       params.search = searchQuery;
       // Include category filter for search if it's not 'all' or 'promoted'
       if (category !== 'all' && category !== 'promoted') {
-        params.category = category;
+        params.category = expandCategoryValue(category).join(',');
       }
     } else {
       // Handle category-based queries
       if (category === 'promoted') {
         params.promoted = 1;
       } else if (category !== 'all') {
-        params.category = category;
+        params.category = expandCategoryValue(category).join(',');
       }
       // For 'all' category, no additional filters needed
     }
