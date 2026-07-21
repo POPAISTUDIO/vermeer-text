@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useRef, useState } from 'react';
+import { useSetRecoilState } from 'recoil';
 import { Plus, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, useToastContext } from '@librechat/client';
@@ -25,6 +26,7 @@ import { Panel, isEphemeralAgent } from '~/common';
 import AgentConfig from './AgentConfig';
 import AgentSelect from './AgentSelect';
 import AgentFooter from './AgentFooter';
+import store from '~/store';
 
 /* Helpers */
 function getUpdateToastMessage(
@@ -222,6 +224,9 @@ export default function AgentPanel({ hideHeader = false }: { hideHeader?: boolea
   } = useAgentPanelContext();
 
   const { onSelect: onSelectAgent } = useSelectAgent();
+  // Vermeer: setter du pont Recoil qui pilote l'ouverture de la modale builder
+  // (cf. MonoSidebar builderModal / AssistantsPage). null = modale fermee.
+  const setOpenBuilder = useSetRecoilState(store.openBuilderModal);
 
   const basicAgentQuery = useGetAgentByIdQuery(current_agent_id);
 
@@ -342,6 +347,17 @@ export default function AgentPanel({ hideHeader = false }: { hideHeader?: boolea
 
       // Clear the ref after use
       previousVersionRef.current = undefined;
+
+      // Vermeer: meme regle que le create (cf. create.onSuccess) — la modale Vermeer est un
+      // wrapper one-shot, « Enregistrer » doit AUSSI la fermer, sinon deux boutons de la
+      // meme modale auraient deux comportements de fermeture differents. Gate sur hideHeader
+      // et placee APRES le await handleAvatarUpload (upload avatar asynchrone porte par
+      // onSuccess) pour ne pas demonter en plein upload. Placee en toute fin du onSuccess :
+      // le toast, le setValue('agent', ...) et le reset avatar sont deja joues, rien n'est
+      // court-circuite. Le side-panel upstream (hideHeader=false) reste inchange.
+      if (hideHeader) {
+        setOpenBuilder(null);
+      }
     },
     onError: (err) => {
       const error = err as Error;
@@ -371,6 +387,19 @@ export default function AgentPanel({ hideHeader = false }: { hideHeader?: boolea
           message: localize('com_agents_avatar_upload_error'),
           status: 'error',
         });
+      }
+
+      // Vermeer: en modale (hideHeader), fermer au succes du create. Sans cela la modale
+      // reste ouverte ET setCurrentAgentId(data.id) ci-dessus reinjecte l'id dans le
+      // formulaire (via le refetch -> resetAgentForm), si bien que la soumission suivante
+      // route en update et ecrase le premier assistant (bug P0 QA v0.10.22). Fermer
+      // demonte le sous-arbre builder : la prochaine ouverture repart vierge, pas de reset
+      // manuel necessaire. Place APRES le await handleAvatarUpload (upload avatar
+      // asynchrone porte par onSuccess) pour ne pas demonter en plein upload ; l'echec
+      // eventuel de l'upload a deja son propre toast et ne doit pas empecher la fermeture.
+      // Le side-panel upstream (hideHeader=false) est inchange : edition continue voulue.
+      if (hideHeader) {
+        setOpenBuilder(null);
       }
     },
     onError: (err) => {
