@@ -251,17 +251,50 @@ export function getGoogleConfig(
       (llmConfig as VertexAIClientOptions).includeThoughts = true;
     }
   } else if (!isGemini3Plus) {
+    /**
+     * Vermeer: garde thinkingConfig par modèle (non-Gemini-3). Deux régimes,
+     * car `thinking`/`thinkingBudget` peuvent venir des défauts du schéma
+     * (true / -1) OU de valeurs PERSISTÉES sur d'anciennes conversations/presets
+     * créés quand les toggles thinking existaient encore dans l'UI (précédent
+     * maxContextTokens) :
+     *  - familles `1.5` et `2.0` : ne supportent PAS thinking du tout (encore
+     *    atteignables via la liste de modèles par défaut du code). On n'émet
+     *    JAMAIS de thinkingConfig, quelle que soit la source des valeurs — un
+     *    clamp émettrait un thinkingConfig => 400 résiduel ;
+     *  - `flash-lite` (2.5) : thinking OFF par défaut, budget à plage stricte
+     *    (plancher 512). `thinkingBudget: -1` (dynamique) => 400 INVALID_ARGUMENT
+     *    sur Vertex AI. On n'émet PAS de thinkingConfig quand les valeurs sont
+     *    les défauts du schéma ; si des valeurs explicites arrivent (persistées
+     *    ou toggle un jour ré-exposé), on clampe le budget dans [512, 24576].
+     * `thinking=false` reste géré par `shouldEnableThinking` (pas d'émission).
+     * Les autres 2.5 (pro, flash) et la branche Gemini 3+ sont inchangés.
+     */
+    const isNoThinkingModel = /gemini-(1\.5|2\.0)/i.test(modelName);
+    const isThinkingLimitedModel = !isNoThinkingModel && /gemini-.*flash-lite/i.test(modelName);
+    const thinkingFromDefaults =
+      options.modelOptions?.thinking === undefined &&
+      options.modelOptions?.thinkingBudget === undefined;
+
     const shouldEnableThinking =
-      thinking && thinkingBudget != null && (thinkingBudget > 0 || thinkingBudget === -1);
+      thinking &&
+      thinkingBudget != null &&
+      (thinkingBudget > 0 || thinkingBudget === -1) &&
+      !isNoThinkingModel &&
+      !(isThinkingLimitedModel && thinkingFromDefaults);
+
+    const effectiveThinkingBudget =
+      isThinkingLimitedModel && thinking
+        ? Math.min(Math.max(thinkingBudget === -1 ? 512 : thinkingBudget, 512), 24576)
+        : thinkingBudget;
 
     if (shouldEnableThinking && provider === Providers.GOOGLE) {
       (llmConfig as GoogleClientOptions).thinkingConfig = {
-        thinkingBudget: thinking ? thinkingBudget : googleSettings.thinkingBudget.default,
+        thinkingBudget: thinking ? effectiveThinkingBudget : googleSettings.thinkingBudget.default,
         includeThoughts: Boolean(thinking),
       };
     } else if (shouldEnableThinking && provider === Providers.VERTEXAI) {
       (llmConfig as VertexAIClientOptions).thinkingBudget = thinking
-        ? thinkingBudget
+        ? effectiveThinkingBudget
         : googleSettings.thinkingBudget.default;
       (llmConfig as VertexAIClientOptions).includeThoughts = Boolean(thinking);
     }
