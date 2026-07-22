@@ -401,6 +401,35 @@ export default function AgentConfig() {
     }
   }, [endpointType, modelParameters, methods]);
 
+  // Vermeer: réconciliation des paramètres numériques à la bascule provider/modèle.
+  // Les bornes des sliders (min/max) changent selon le provider (ex. temperature
+  // OpenAI 0-2 vs Anthropic 0-1), mais la VALEUR stockée dans model_parameters
+  // ne l'est pas nativement (upstream : pass-through hors bornes, cf. Panel.tsx et
+  // le test llm.spec.ts « above max should pass through »). Sans ça, une
+  // temperature=2 reglée sous OpenAI survit à la bascule Anthropic et part verbatim
+  // à l'API → 400 différé à la 1re conversation. On clampe donc toute valeur définie
+  // hors [min, max] quand les définitions de params sont recalculées. Les deps sont
+  // les params recalculés (JAMAIS model_parameters) pour éviter une cascade ; on lit
+  // la valeur courante via getValues sans re-souscrire. On ne touche ni aux valeurs
+  // dans les bornes, ni aux valeurs undefined (le défaut du provider s'applique seul),
+  // ni aux params non numériques.
+  useEffect(() => {
+    const current = (methods.getValues('model_parameters') ?? {}) as Record<string, unknown>;
+    for (const param of [...essentialParams, ...advancedParams]) {
+      if (!param.range) continue;
+      const value = current[param.key];
+      if (typeof value !== 'number') continue;
+      const clamped = Math.min(Math.max(value, param.range.min), param.range.max);
+      if (clamped !== value) {
+        methods.setValue(
+          `model_parameters.${param.key as keyof t.AgentModelParameters}`,
+          clamped as t.AgentParameterValue,
+          { shouldDirty: true },
+        );
+      }
+    }
+  }, [essentialParams, advancedParams, methods]);
+
   const setOption =
     (optionKey: keyof t.AgentModelParameters) => (value: t.AgentParameterValue) => {
       methods.setValue(`model_parameters.${optionKey}`, value);
