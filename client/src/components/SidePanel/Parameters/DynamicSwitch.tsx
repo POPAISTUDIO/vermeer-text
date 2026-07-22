@@ -50,7 +50,13 @@ function DynamicSwitch({
           <div className="flex justify-between">
             <Label
               htmlFor={`${settingKey}-dynamic-switch`}
-              className="break-words text-left text-xs font-medium"
+              // Vermeer: la primitive Label impose `block w-full` → le <label> couvre
+              // toute la ligne et, via htmlFor, tout clic dans l'espace vide bascule le
+              // switch (clics accidentels). `w-fit` restreint la zone cliquable au libellé
+              // (htmlFor intact → clic-libellé accessible préservé, layout inchangé car le
+              // texte est déjà text-left). Aggravation post-#61 : un clic fantôme persiste
+              // un `false` explicite que le miroir runtime web_search respecte durablement.
+              className="w-fit break-words text-left text-xs font-medium"
             >
               {labelCode ? (localize(label as TranslationKeys) ?? label) : label || settingKey}{' '}
               {showDefault && (
