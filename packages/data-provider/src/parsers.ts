@@ -153,6 +153,16 @@ const nativeWebSearchEndpoints = new Set<EndpointSchemaKey>([
 ]);
 
 /**
+ * Vermeer: shared predicate over `nativeWebSearchEndpoints` (single source of
+ * truth). Exported so the agent runtime (`packages/api` initialize.ts) mirrors
+ * the exact same native-endpoint set instead of hardcoding a duplicate — if an
+ * endpoint is ever added/removed above, both the direct-conversation default and
+ * the agent-path default stay in sync.
+ */
+export const isNativeWebSearchEndpoint = (endpoint?: string | null): boolean =>
+  endpoint != null && nativeWebSearchEndpoints.has(endpoint as EndpointSchemaKey);
+
+/**
  * Vermeer: web search native is ON by default. The schema keeps `web_search`
  * optional (so the field stays optional on TConversation/TPreset), and the
  * default is applied here at parse time:
@@ -172,9 +182,7 @@ const applyWebSearchDefault = (
     delete convo.web_search;
     return;
   }
-  const isNative =
-    nativeWebSearchEndpoints.has(endpoint as EndpointSchemaKey) ||
-    nativeWebSearchEndpoints.has(endpointType as EndpointSchemaKey);
+  const isNative = isNativeWebSearchEndpoint(endpoint) || isNativeWebSearchEndpoint(endpointType);
   if (isNative && convo.web_search === undefined) {
     convo.web_search = true;
   }

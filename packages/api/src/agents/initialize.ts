@@ -10,6 +10,7 @@ import {
   isAgentsEndpoint,
   replaceSpecialVars,
   providerEndpointMap,
+  isNativeWebSearchEndpoint,
 } from 'librechat-data-provider';
 import type {
   AgentToolResources,
@@ -66,6 +67,24 @@ export function resolveUserMaxContextTokens(
 ): number | undefined {
   return received != null && received > 0 && received !== computed ? received : undefined;
 }
+
+/**
+ * Vermeer: mirror of `applyWebSearchDefault` (data-provider parsers.ts) for the
+ * agent runtime path. Upstream, the `agents` endpoint is NOT in
+ * `nativeWebSearchEndpoints`, so the direct-conversation default (web_search=true
+ * on native providers) never reached assistants: an agent whose `model_parameters`
+ * never persisted `web_search` arrived at the provider LLM config with it
+ * undefined, so no native tool was bound and the model reported "no internet".
+ * Returns true only when the effective value is `undefined` (never overwrites an
+ * explicit `false`, same contract as the direct path) AND the agent's raw provider
+ * is a native web-search-capable endpoint. Custom endpoints (French Models, xai…)
+ * carry a non-native raw provider here (the OpenAI override happens later in
+ * getProviderConfig), so they are excluded — preserving the anti-400 guard.
+ */
+export const shouldDefaultAgentWebSearch = (
+  currentValue: unknown,
+  provider?: string | null,
+): boolean => currentValue === undefined && isNativeWebSearchEndpoint(provider);
 
 const temporalSpecialVarRegex = /{{\s*(current_date|current_datetime|iso_datetime)\s*}}/i;
 
@@ -409,6 +428,15 @@ export async function initializeAgent(
       isInitialAgent === true ? endpointOption?.model_parameters : {},
     ),
   );
+
+  // Vermeer: le défaut web_search ne s'applique qu'aux conversations directes
+  // (l'endpoint `agents` est hors de nativeWebSearchEndpoints upstream). Ce miroir
+  // le couvre pour les assistants — stock existant inclus, aucune migration — gaté
+  // natif/custom via shouldDefaultAgentWebSearch. Voir helper ci-dessus.
+  const _webSearchOptions = _modelOptions as { web_search?: boolean };
+  if (shouldDefaultAgentWebSearch(_webSearchOptions.web_search, agent.provider)) {
+    _webSearchOptions.web_search = true;
+  }
 
   const { resendFiles, maxContextTokens, modelOptions } = extractLibreChatParams(
     _modelOptions as Record<string, unknown>,
