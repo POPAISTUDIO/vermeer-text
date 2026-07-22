@@ -413,7 +413,10 @@ describe('getLLMConfig', () => {
 
       expect(result.llmConfig).not.toHaveProperty('temperature');
       expect(result.llmConfig).not.toHaveProperty('topP');
-      expect(result.llmConfig).toHaveProperty('topK', 0);
+      // Vermeer: topK=0 est conservé par removeNullishValues (0 non nullish) PUIS
+      // clampé au min de la plage Anthropic (1) par clampNumericParam. La présence
+      // de la propriété prouve toujours qu'elle n'a pas été supprimée.
+      expect(result.llmConfig).toHaveProperty('topK', 1);
       expect(result.llmConfig).toHaveProperty('stopSequences', []);
     });
   });
@@ -1338,12 +1341,16 @@ describe('getLLMConfig', () => {
 
     describe('Parameter Boundary and Validation Logic', () => {
       it('should handle temperature boundary values', () => {
+        // Vermeer: divergence assumée du pass-through upstream. clampNumericParam
+        // borne temperature dans [0, 1] (anthropicSettings) à la construction de
+        // la requête, pour couper le 400 différé sur valeurs hors bornes
+        // persistées (cf. issue #52). Les valeurs dans les bornes sont intactes.
         const testCases = [
           { temperature: 0, expected: 0 }, // min
           { temperature: 1, expected: 1 }, // max
           { temperature: 0.5, expected: 0.5 }, // middle
-          { temperature: -0.1, expected: -0.1 }, // below min (should pass through)
-          { temperature: 1.1, expected: 1.1 }, // above max (should pass through)
+          { temperature: -0.1, expected: 0 }, // below min -> clampé au min
+          { temperature: 1.1, expected: 1 }, // above max -> clampé au max
         ];
 
         testCases.forEach(({ temperature, expected }) => {
@@ -1355,12 +1362,13 @@ describe('getLLMConfig', () => {
       });
 
       it('should handle topP boundary values', () => {
+        // Vermeer: clamp défensif dans [0, 1] (cf. issue #52 / clampNumericParam).
         const testCases = [
           { topP: 0, expected: 0 }, // min
           { topP: 1, expected: 1 }, // max
           { topP: 0.7, expected: 0.7 }, // default
-          { topP: -0.1, expected: -0.1 }, // below min
-          { topP: 1.1, expected: 1.1 }, // above max
+          { topP: -0.1, expected: 0 }, // below min -> clampé au min
+          { topP: 1.1, expected: 1 }, // above max -> clampé au max
         ];
 
         testCases.forEach(({ topP, expected }) => {
@@ -1372,12 +1380,13 @@ describe('getLLMConfig', () => {
       });
 
       it('should handle topK boundary values', () => {
+        // Vermeer: clamp défensif dans [1, 40] (cf. issue #52 / clampNumericParam).
         const testCases = [
           { topK: 1, expected: 1 }, // min
           { topK: 40, expected: 40 }, // max
           { topK: 5, expected: 5 }, // default
-          { topK: 0, expected: 0 }, // below min
-          { topK: 50, expected: 50 }, // above max
+          { topK: 0, expected: 1 }, // below min -> clampé au min
+          { topK: 50, expected: 40 }, // above max -> clampé au max
         ];
 
         testCases.forEach(({ topK, expected }) => {
@@ -1741,10 +1750,12 @@ describe('getLLMConfig', () => {
           },
         });
 
-        // Should pass through without crashing
-        expect(result.llmConfig.temperature).toBe(Number.MAX_SAFE_INTEGER);
-        expect(result.llmConfig.topP).toBe(Number.MAX_VALUE);
-        expect(result.llmConfig.topK).toBe(999999);
+        // Vermeer: sans crash, params de sampling clampés au max de leur plage
+        // (cf. issue #52). maxTokens n'est PAS clampé (borne spécifique au modèle,
+        // hors périmètre du clamp statique) -> pass-through conservé.
+        expect(result.llmConfig.temperature).toBe(1);
+        expect(result.llmConfig.topP).toBe(1);
+        expect(result.llmConfig.topK).toBe(40);
         expect(result.llmConfig.maxTokens).toBe(Number.MAX_SAFE_INTEGER);
       });
 
@@ -1759,23 +1770,28 @@ describe('getLLMConfig', () => {
           },
         });
 
-        // Should pass through negative values (API will handle validation)
-        expect(result.llmConfig.temperature).toBe(-1);
-        expect(result.llmConfig.topP).toBe(-0.5);
-        expect(result.llmConfig.topK).toBe(-10);
+        // Vermeer: params de sampling négatifs clampés au min de leur plage
+        // (cf. issue #52). maxTokens n'est PAS clampé (borne spécifique au modèle)
+        // -> pass-through conservé.
+        expect(result.llmConfig.temperature).toBe(0);
+        expect(result.llmConfig.topP).toBe(0);
+        expect(result.llmConfig.topK).toBe(1);
         expect(result.llmConfig.maxTokens).toBe(-1000);
       });
 
       it('should handle special numeric values', () => {
+        // Vermeer: clampNumericParam laisse passer NaN (non borné, non nullish)
+        // mais borne les non-finis dans [0, 1] (Infinity -> 1, -Infinity -> 0) et
+        // normalise -0 en +0 via Math.max. Aucun crash (cf. issue #52).
         const testCases = [
-          { value: NaN, shouldBeRemoved: false }, // NaN passes through removeNullishValues
-          { value: Infinity, shouldBeRemoved: false },
-          { value: -Infinity, shouldBeRemoved: false },
-          { value: 0, shouldBeRemoved: false },
-          { value: -0, shouldBeRemoved: false },
+          { value: NaN, expected: NaN }, // NaN passe (non clampé, non supprimé)
+          { value: Infinity, expected: 1 }, // clampé au max
+          { value: -Infinity, expected: 0 }, // clampé au min
+          { value: 0, expected: 0 },
+          { value: -0, expected: 0 }, // Math.max(-0, 0) -> +0
         ];
 
-        testCases.forEach(({ value, shouldBeRemoved }) => {
+        testCases.forEach(({ value, expected }) => {
           const result = getLLMConfig('test-key', {
             modelOptions: {
               model: 'claude-3-opus',
@@ -1783,11 +1799,7 @@ describe('getLLMConfig', () => {
             },
           });
 
-          if (shouldBeRemoved) {
-            expect(result.llmConfig).not.toHaveProperty('temperature');
-          } else {
-            expect(result.llmConfig.temperature).toBe(value);
-          }
+          expect(result.llmConfig.temperature).toBe(expected);
         });
       });
 

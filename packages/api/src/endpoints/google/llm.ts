@@ -3,6 +3,7 @@ import { googleSettings, AuthKeys, removeNullishValues } from 'librechat-data-pr
 import type { GoogleClientOptions, VertexAIClientOptions } from '@librechat/agents';
 import type { GoogleAIToolType } from '@librechat/agents/langchain/google-common';
 import type * as t from '~/types';
+import { clampNumericParam } from '~/endpoints/clamp';
 import { isEnabled } from '~/utils';
 
 type GoogleThinkingLevel = 'THINKING_LEVEL_UNSPECIFIED' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
@@ -386,6 +387,29 @@ export function getGoogleConfig(
 
   if (enableWebSearch) {
     tools.push({ googleSearch: {} });
+  }
+
+  // Vermeer: clamp défensif des params de sampling dans les bornes Google avant
+  // envoi (cf. clampNumericParam / issue #52). DISJOINT de la garde thinkingConfig
+  // ci-dessus (#50, fix Gemini flash-lite) : celle-ci ne touche QUE
+  // thinking/thinkingBudget/thinkingConfig et a déjà clampé le budget dans
+  // [512, 24576] ; ce bloc ne touche QUE temperature/topP/topK/maxOutputTokens.
+  // Aucun double-clamp sur thinkingBudget (absent de la table). Placé après la
+  // garde, il n'altère aucun champ thinking.
+  const googleClampTable: Array<[string, { min: number; max: number }]> = [
+    ['temperature', googleSettings.temperature],
+    ['topP', googleSettings.topP],
+    ['topK', googleSettings.topK],
+    ['maxOutputTokens', googleSettings.maxOutputTokens],
+  ];
+  const googleConfig = llmConfig as Record<string, unknown>;
+  for (const [param, range] of googleClampTable) {
+    if (typeof googleConfig[param] !== 'number') continue;
+    googleConfig[param] = clampNumericParam(googleConfig[param], range, {
+      provider: 'google',
+      param,
+      model: modelName,
+    });
   }
 
   // Return the final shape

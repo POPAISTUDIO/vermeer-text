@@ -1,10 +1,11 @@
-import { EModelEndpoint, removeNullishValues } from 'librechat-data-provider';
+import { EModelEndpoint, openAISettings, removeNullishValues } from 'librechat-data-provider';
 import type { BindToolsInput } from '@librechat/agents/langchain/language_models/chat_models';
 import type { AzureOpenAIInput } from '@librechat/agents/langchain/openai';
 import type { SettingDefinition } from 'librechat-data-provider';
 import type { OpenAI } from 'openai';
 import type * as t from '~/types';
 import { sanitizeModelName, constructAzureURL } from '~/utils/azure';
+import { clampNumericParam } from '~/endpoints/clamp';
 import { isEnabled } from '~/utils/common';
 
 export const knownOpenAIParams = new Set([
@@ -356,6 +357,25 @@ export function getOpenAILLMConfig({
 
   if (hasModelKwargs) {
     llmConfig.modelKwargs = modelKwargs;
+  }
+
+  // Vermeer: clamp défensif des params de sampling dans les bornes OpenAI avant
+  // envoi (cf. clampNumericParam / issue #52). Risque moindre côté OpenAI (bornes
+  // larges, temperature 0-2), mais la symétrie protège les données historiques et
+  // tout chemin d'écriture non-UI. Placé après les suppressions reasoning/search :
+  // si le param a été retiré (modèles o1/o3/gpt-5), il est undefined → ignoré.
+  const openAIClampTable: Array<[string, { min: number; max: number }]> = [
+    ['temperature', openAISettings.temperature],
+    ['top_p', openAISettings.top_p],
+  ];
+  const openAIConfig = llmConfig as Record<string, unknown>;
+  for (const [param, range] of openAIClampTable) {
+    if (typeof openAIConfig[param] !== 'number') continue;
+    openAIConfig[param] = clampNumericParam(openAIConfig[param], range, {
+      provider: 'openai',
+      param,
+      model: llmConfig.model,
+    });
   }
 
   if (!azure) {
