@@ -277,7 +277,13 @@ describe('getGoogleConfig', () => {
   });
 
   describe('Thinking Configuration', () => {
-    it('should enable thinking for Google provider with valid budget', () => {
+    // Vermeer: la garde thinkingConfig par modèle (#50) classe la famille
+    // gemini-2.0 (y compris `-thinking-exp`) en no-thinking via
+    // `isNoThinkingModel = /gemini-(1\.5|2\.0)/i` et n'émet JAMAIS de
+    // thinkingConfig, quelles que soient les valeurs thinking/thinkingBudget.
+    // Ces tests asservent donc l'omission voulue par la garde (et non plus
+    // l'émission upstream). Ne pas modifier la garde ici.
+    it('should omit thinkingConfig for gemini-2.0 family (Google provider, no-thinking guard #50)', () => {
       const credentials = {
         [AuthKeys.GOOGLE_API_KEY]: 'test-api-key',
       };
@@ -290,14 +296,10 @@ describe('getGoogleConfig', () => {
         },
       });
 
-      expect(result.llmConfig).toHaveProperty('thinkingConfig');
-      expect((result.llmConfig as Record<string, unknown>).thinkingConfig).toMatchObject({
-        thinkingBudget: 5000,
-        includeThoughts: true,
-      });
+      expect(result.llmConfig).not.toHaveProperty('thinkingConfig');
     });
 
-    it('should enable thinking with dynamic budget (-1)', () => {
+    it('should omit thinkingConfig for gemini-2.0 family with dynamic budget (-1) (no-thinking guard #50)', () => {
       const credentials = {
         [AuthKeys.GOOGLE_API_KEY]: 'test-api-key',
       };
@@ -310,11 +312,7 @@ describe('getGoogleConfig', () => {
         },
       });
 
-      expect(result.llmConfig).toHaveProperty('thinkingConfig');
-      expect((result.llmConfig as Record<string, unknown>).thinkingConfig).toMatchObject({
-        thinkingBudget: -1,
-        includeThoughts: true,
-      });
+      expect(result.llmConfig).not.toHaveProperty('thinkingConfig');
     });
 
     it('should not enable thinking when thinking is false', () => {
@@ -349,7 +347,7 @@ describe('getGoogleConfig', () => {
       expect(result.llmConfig).not.toHaveProperty('thinkingConfig');
     });
 
-    it('should enable thinking for Vertex AI provider', () => {
+    it('should omit thinking fields for gemini-2.0 family (Vertex AI provider, no-thinking guard #50)', () => {
       const credentials = {
         [AuthKeys.GOOGLE_SERVICE_KEY]: {
           project_id: 'test-project',
@@ -364,9 +362,11 @@ describe('getGoogleConfig', () => {
         },
       });
 
+      // Vermeer: garde no-thinking #50 pour la famille gemini-2.0 — le provider
+      // reste Vertex AI, mais ni thinkingBudget ni includeThoughts ne sont émis.
       expect(result.provider).toBe(Providers.VERTEXAI);
-      expect(result.llmConfig).toHaveProperty('thinkingBudget', 3000);
-      expect(result.llmConfig).toHaveProperty('includeThoughts', true);
+      expect(result.llmConfig).not.toHaveProperty('thinkingBudget');
+      expect(result.llmConfig).not.toHaveProperty('includeThoughts');
     });
   });
 
