@@ -93,8 +93,14 @@ function DeleteButton({
           aria-label={localize('com_ui_delete_agent')}
           title={localize('com_ui_delete_agent')}
           type="button"
+          // Vermeer: le remap --accent -> rouge brand rend l'icone rouge
+          // invisible au hover (fond accent devient rouge). La couleur epinglee
+          // de l'enfant (text-red-500) gagne sur le hover:text du parent Button
+          // -> group + group-hover force le blanc sur l'icone au survol (padding
+          // inclus). Cf. watchlist CLAUDE.md.
+          className="group"
         >
-          <div className="flex w-full items-center justify-center gap-2 text-red-500">
+          <div className="flex w-full items-center justify-center gap-2 text-red-500 group-hover:text-accent-foreground">
             <TrashIcon />
           </div>
         </Button>
