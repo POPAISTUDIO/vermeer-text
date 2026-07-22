@@ -40,8 +40,11 @@ export default function DuplicateAgent({ agent_id }: { agent_id: string }) {
       title={localize('com_ui_duplicate_agent')}
       type="button"
       onClick={handleDuplicate}
+      // Vermeer: --accent remap -> rouge brand ; text-primary (= accent) rend
+      // l'icone invisible au hover. group-hover force le blanc. Cf. CLAUDE.md.
+      className="group"
     >
-      <div className="flex w-full items-center justify-center gap-2 text-primary">
+      <div className="flex w-full items-center justify-center gap-2 text-primary group-hover:text-accent-foreground">
         <CopyPlus className="size-4" />
       </div>
     </Button>
