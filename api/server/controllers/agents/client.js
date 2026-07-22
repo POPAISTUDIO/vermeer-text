@@ -1142,6 +1142,37 @@ class AgentClient extends BaseClient {
           '[api/server/controllers/agents/client.js #sendCompletion] Unhandled error type',
           err,
         );
+        // Vermeer: le logger par défaut n'imprime que `err.message`, souvent tronqué
+        // (ex. « Google request failed with status code 400 ») en avalant le corps de
+        // la réponse du provider. Le SDK Google/Vertex (@langchain/google-common,
+        // _throwRequestError) attache le corps sur `err.message` ET/OU sur
+        // `err.response.{status,statusText,data}`. On sérialise explicitement ces
+        // champs (corps borné à 2000 car.) pour diagnostiquer les 400 provider.
+        // On N'INCLUT PAS `err.details` (= contexte de requête, payload potentiel)
+        // ni aucune clé/credential.
+        const providerResponse = err?.response;
+        if (providerResponse != null || err?.status != null) {
+          const rawBody = providerResponse?.data;
+          let body;
+          if (typeof rawBody === 'string') {
+            body = rawBody;
+          } else if (rawBody != null) {
+            try {
+              body = JSON.stringify(rawBody);
+            } catch {
+              body = undefined;
+            }
+          }
+          logger.error(
+            '[api/server/controllers/agents/client.js #sendCompletion] Provider error detail',
+            {
+              message: err?.message,
+              status: providerResponse?.status ?? err?.status,
+              statusText: providerResponse?.statusText,
+              body: typeof body === 'string' ? body.slice(0, 2000) : undefined,
+            },
+          );
+        }
         this.contentParts.push({
           type: ContentTypes.ERROR,
           [ContentTypes.ERROR]: `An error occurred while processing the request${err?.message ? `: ${err.message}` : ''}`,
