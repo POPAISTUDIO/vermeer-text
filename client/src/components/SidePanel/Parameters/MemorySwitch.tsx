@@ -53,7 +53,11 @@ function MemorySwitch() {
       <div className="flex items-center justify-between">
         <Label
           htmlFor="memory-auto-capture-switch"
-          className="break-words text-left text-xs font-medium"
+          // Vermeer: la primitive Label impose `block w-full` → le <label> remplit la
+          // ligne et, via htmlFor, tout clic dans l'espace vide bascule le switch. `w-fit`
+          // restreint la zone cliquable au libellé (htmlFor intact, layout `justify-between`
+          // inchangé). Même correctif que DynamicSwitch (fix QA n°7).
+          className="w-fit break-words text-left text-xs font-medium"
         >
           {localize('com_ui_memory_auto_capture')}
         </Label>
