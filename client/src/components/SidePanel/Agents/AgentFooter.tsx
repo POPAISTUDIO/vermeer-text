@@ -1,3 +1,4 @@
+import { useSetRecoilState } from 'recoil';
 import { Globe, MessagesSquare } from 'lucide-react';
 import { Spinner } from '@librechat/client';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +20,7 @@ import VersionButton from './Version/VersionButton';
 import DuplicateAgent from './DuplicateAgent';
 import DeleteButton from './DeleteButton';
 import { Panel } from '~/common';
+import store from '~/store';
 
 // Vermeer: masquage des « Réglages avancés » du builder (wagon B v0.10.21) —
 // pendant du flag homonyme dans AgentConfig.tsx. Gate le bouton
@@ -46,6 +48,7 @@ export default function AgentFooter({
   const localize = useLocalize();
   const navigate = useNavigate();
   const { user } = useAuthContext();
+  const setOpenBuilder = useSetRecoilState(store.openBuilderModal);
 
   const methods = useFormContext<AgentForm>();
 
@@ -132,7 +135,18 @@ export default function AgentFooter({
         {!!agent_id && !isEphemeralAgent(agent_id) && (
           <button
             type="button"
-            onClick={() => navigate(`/agents/${agent_id}/shared-conversations`)}
+            onClick={() => {
+              // Vermeer: fermer la modale builder AVANT de naviguer vers la vue
+              // partagée (route pleine page), sinon la SectionModal (nonModal)
+              // reste montée et recouvre la vue — mêmes symptôme et parade que le
+              // chemin logo (AgentDetailContent → onRequestClose puis navigate).
+              // Fermeture INCONDITIONNELLE (pas de gate hideHeader) : c'est un
+              // no-op quand openBuilderModal est déjà null (side-panel upstream),
+              // et il n'y a aucun comportement upstream à protéger ici (contrairement
+              // au #49 où la fermeture touchait l'édition continue du side-panel).
+              setOpenBuilder(null);
+              navigate(`/agents/${agent_id}/shared-conversations`);
+            }}
             className="btn btn-neutral border-token-border-light h-9 px-3"
             title={localize('com_ui_shared_conversations')}
             aria-label={localize('com_ui_shared_conversations')}
