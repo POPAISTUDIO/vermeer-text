@@ -32,6 +32,7 @@ function DeleteButton({
   const { showToast } = useToastContext();
   const setConversation = useSetRecoilState(store.conversationByIndex(0));
   const conversationAgentId = useRecoilValue(store.conversationAgentIdByIndex(0));
+  const setOpenBuilder = useSetRecoilState(store.openBuilderModal);
 
   const deleteAgent = useDeleteAgentMutation({
     onSuccess: (_, vars, context) => {
@@ -44,6 +45,23 @@ function DeleteButton({
         message: localize('com_ui_agent_deleted'),
         status: 'success',
       });
+
+      // Vermeer: fermer la modale builder au succes de la suppression. Le
+      // comportement upstream qui suit (setCurrentAgentId(updatedList[0]) =
+      // « selectionner le voisin ») est concu pour le side-panel persistant ;
+      // dans la modale one-shot Vermeer il laisserait la modale montee sur
+      // l'assistant voisin au lieu de revenir a la grille. Troisieme exemplaire
+      // du pattern (cf. create/update dans AgentPanel #49, discussions partagees
+      // dans AgentFooter #55). Fermeture EN TETE = s'applique aux trois sorties
+      // (dernier agent, agent de conversation, cas nominal). INCONDITIONNELLE
+      // (pas de gate hideHeader) : no-op quand openBuilderModal est deja null
+      // (side-panel upstream), donc la selection du voisin y reste preservee ;
+      // seule la modale Vermeer est fermee. Les setCurrentAgentId/setConversation
+      // qui suivent sont batches dans ce meme handler (React 18) : pas d'unmount
+      // en plein callback, et setCurrentAgentId (useState de AgentPanelProvider,
+      // sous-arbre demonte) ne declenche pas de warning (batch + warning retire
+      // en React 18) ; setConversation est un setter Recoil global, toujours sur.
+      setOpenBuilder(null);
 
       if (createMutation.data?.id ?? '') {
         logger.log('agents', 'resetting createMutation');
