@@ -25,6 +25,7 @@ import {
   isAnthropicVertexCredentials,
   getVertexDeploymentName,
 } from './vertex';
+import { clampNumericParam } from '~/endpoints/clamp';
 
 const WEB_SEARCH_BETA = 'web-search-2025-03-05';
 
@@ -321,6 +322,25 @@ function getLLMConfig(
       requestOptions.clientOptions.defaultHeaders as Record<string, string> | undefined,
       FINE_GRAINED_TOOL_STREAMING_BETA,
     );
+  }
+
+  // Vermeer: clamp défensif des params de sampling dans les bornes Anthropic
+  // avant envoi (cf. clampNumericParam / issue #52). maxTokens n'est PAS clampé
+  // ici : sa borne est spécifique au modèle (anthropicSettings.maxOutputTokens.set)
+  // et un clamp statique serait faux — laissé à son traitement existant.
+  const anthropicClampTable: Array<[string, { min: number; max: number }]> = [
+    ['temperature', anthropicSettings.temperature],
+    ['topP', anthropicSettings.topP],
+    ['topK', anthropicSettings.topK],
+  ];
+  const anthropicConfig = requestOptions as Record<string, unknown>;
+  for (const [param, range] of anthropicClampTable) {
+    if (typeof anthropicConfig[param] !== 'number') continue;
+    anthropicConfig[param] = clampNumericParam(anthropicConfig[param], range, {
+      provider: 'anthropic',
+      param,
+      model: requestOptions.model,
+    });
   }
 
   return {

@@ -206,7 +206,10 @@ describe('getGoogleConfig', () => {
       });
 
       expect(result.llmConfig).toHaveProperty('temperature', 0);
-      expect(result.llmConfig).toHaveProperty('topK', 0);
+      // Vermeer: topK=0 conservé (0 non nullish) PUIS clampé au min de la plage
+      // Google (1) par clampNumericParam. La présence de la propriété prouve
+      // toujours qu'un zéro n'est pas traité comme une chaîne vide.
+      expect(result.llmConfig).toHaveProperty('topK', 1);
     });
   });
 
@@ -900,7 +903,9 @@ describe('getGoogleConfig', () => {
 
       expect(result.llmConfig).not.toHaveProperty('temperature');
       expect(result.llmConfig).not.toHaveProperty('topP');
-      expect(result.llmConfig).toHaveProperty('topK', 0);
+      // Vermeer: topK=0 conservé puis clampé au min de la plage Google (1), cf.
+      // clampNumericParam / issue #52.
+      expect(result.llmConfig).toHaveProperty('topK', 1);
     });
   });
 });
