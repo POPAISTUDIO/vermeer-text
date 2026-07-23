@@ -25,7 +25,10 @@ export default function ImageVision() {
         )}
       />
       <label
-        className="form-check-label text-token-text-primary w-full cursor-pointer"
+        // Vermeer (fix QA n°16/#53) : w-fit au lieu de w-full — le <label htmlFor>
+        // s'étirait sur toute la ligne (enfant direct du flex pleine largeur) → clic
+        // dans le vide basculait la case. w-fit restreint la zone au libellé.
+        className="form-check-label text-token-text-primary w-fit cursor-pointer"
         htmlFor={Capabilities.image_vision}
         onClick={() =>
           setValue(Capabilities.image_vision, !getValues(Capabilities.image_vision), {

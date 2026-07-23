@@ -49,8 +49,11 @@ export default function Retrieval({ retrievalModels }: { retrievalModels: Set<st
           />
           <div className="flex items-center space-x-2">
             <label
+              // Vermeer (audit #53) : w-fit défensif — le w-full était borné par le
+              // parent shrink-to-content (pas de bug actif, contrairement à ImageVision),
+              // on fige l'intention pour résister aux refactors de layout.
               className={cn(
-                'form-check-label text-token-text-primary w-full select-none',
+                'form-check-label text-token-text-primary w-fit select-none',
                 isDisabled ? 'cursor-no-drop opacity-50' : 'cursor-pointer',
               )}
               htmlFor={Capabilities.retrieval}
