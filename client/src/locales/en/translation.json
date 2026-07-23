@@ -1663,7 +1663,7 @@
   "com_ui_skills_disabled_hint": "Skills are off for this assistant. Enable to allow the model to use your skills catalog.",
   "com_ui_skills_empty": "No skills yet",
   "com_ui_skills_enable_toggle": "Enable skills for this assistant",
-  "com_ui_skills_enabled_all_hint": "Enabled. The full accessible catalog is available; narrow it below if you want to limit which skills this assistant can use.",
+  "com_ui_skills_enabled_all_hint": "Enabled. By default this assistant can use all accessible skills. Add skills below to restrict it to a specific set.",
   "com_ui_skills_enabled_allowlist_hint": "Enabled. Limited to the skills selected below.",
   "com_ui_skills_load_error": "Failed to load skills",
   "com_ui_skills_manual_invoked": "Manually invoked skills",
