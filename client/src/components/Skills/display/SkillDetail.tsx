@@ -87,7 +87,7 @@ export default function SkillDetail({ skill, onEdit, onDelete }: SkillDetailProp
   return (
     <article
       className="flex h-full min-w-0 flex-col gap-2 overflow-y-auto px-5 pb-5"
-      aria-label={skill.name}
+      aria-label={skill.displayTitle ?? skill.name}
     >
       {/* Header row */}
       <div className="flex flex-col gap-3 pb-1 sm:flex-row sm:items-center sm:gap-4">
@@ -98,8 +98,11 @@ export default function SkillDetail({ skill, onEdit, onDelete }: SkillDetailProp
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2">
-                <h2 className="truncate text-xl font-bold text-text-primary" title={skill.name}>
-                  {skill.name}
+                <h2
+                  className="truncate text-xl font-bold text-text-primary"
+                  title={skill.displayTitle ?? skill.name}
+                >
+                  {skill.displayTitle ?? skill.name}
                 </h2>
                 {isPublic && (
                   <TooltipAnchor
@@ -148,7 +151,11 @@ export default function SkillDetail({ skill, onEdit, onDelete }: SkillDetailProp
             </button>
           )}
           {permissions.canDelete && onDelete && (
-            <DeleteSkill skillId={skill._id} skillName={skill.name} onDelete={onDelete} />
+            <DeleteSkill
+              skillId={skill._id}
+              skillName={skill.displayTitle ?? skill.name}
+              onDelete={onDelete}
+            />
           )}
         </div>
       </div>
