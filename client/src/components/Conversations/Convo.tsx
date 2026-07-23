@@ -174,7 +174,15 @@ export default function Conversation({
     conversationId,
     isPopoverActive,
     setIsPopoverActive: handlePopoverOpenChange,
-    isShiftHeld: isActiveConvo ? isShiftHeld : false,
+    // Vermeer: désactivation du raccourci upstream « Shift = actions rapides ».
+    // Maintenir Shift sur la conversation active remplaçait le menu ⋯ par
+    // Archiver + une suppression INSTANTANÉE sans confirmation (ConvoOptions.tsx:337-366) :
+    // dangereux et illisible pour des profils métier, remonté en QA comme un
+    // « menu incomplet après duplication » (faux positif — c'était ce raccourci,
+    // pas un bug de duplication). Forcé à false → la branche Shift de ConvoOptions
+    // devient morte mais reste intacte (neutralisation, pas suppression : merge
+    // upstream sans conflit, réactivable sur décision produit).
+    isShiftHeld: false,
   };
 
   return (
