@@ -38,7 +38,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onSelect, className = '' }
       <OGDialogTrigger asChild>
         <div
           className={cn(
-            'group relative flex h-32 gap-5 overflow-hidden rounded-xl',
+            'group relative flex h-32 flex-col overflow-hidden rounded-xl',
             'cursor-pointer select-none px-6 py-4',
             'bg-surface-tertiary transition-colors duration-150 hover:bg-surface-hover',
             'md:h-36 lg:h-40',
@@ -59,48 +59,56 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onSelect, className = '' }
             }
           }}
         >
-          {/* Category badge - top right */}
+          {/* Vermeer: badge de catégorie remis dans le flux (ligne d'en-tête alignée à droite)
+              au lieu d'un absolute top-right qui recouvrait la 1re ligne du texte pour les
+              libellés FR longs (ex. « ✍️ Conception & écriture »). Le texte flotte toujours sous
+              le badge ; hauteur de carte inchangée (h-32/36/40 + overflow-hidden). */}
           {categoryLabel && (
-            <span className="absolute right-4 top-3 rounded-md bg-surface-hover px-2 py-0.5 text-xs text-text-secondary">
-              {categoryLabel}
-            </span>
+            <div className="flex justify-end">
+              <span className="max-w-full truncate rounded-md bg-surface-hover px-2 py-0.5 text-xs text-text-secondary">
+                {categoryLabel}
+              </span>
+            </div>
           )}
 
-          {/* Avatar */}
-          <div className="flex-shrink-0 self-center">
-            <div className="overflow-hidden rounded-full shadow-[0_0_15px_rgba(0,0,0,0.3)] dark:shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-              {renderAgentAvatar(agent, { size: 'sm', showBorder: false })}
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden">
-            {/* Agent name */}
-            <Label className="line-clamp-2 text-base font-semibold text-text-primary md:text-lg">
-              {agent.name}
-            </Label>
-
-            {/* Agent description */}
-            {agent.description && (
-              <p
-                id={`agent-${agent.id}-description`}
-                className="mt-0.5 line-clamp-2 text-sm leading-snug text-text-secondary md:line-clamp-5"
-                aria-label={localize('com_agents_description_card', {
-                  description: agent.description,
-                })}
-              >
-                {agent.description}
-              </p>
-            )}
-
-            {/* Author */}
-            {displayName && (
-              <div className="mt-1 text-xs text-text-tertiary">
-                <span className="truncate">
-                  {localize('com_ui_by_author', { 0: displayName || '' })}
-                </span>
+          {/* Avatar + content */}
+          <div className="flex min-h-0 flex-1 gap-5">
+            {/* Avatar */}
+            <div className="flex-shrink-0 self-center">
+              <div className="overflow-hidden rounded-full shadow-[0_0_15px_rgba(0,0,0,0.3)] dark:shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                {renderAgentAvatar(agent, { size: 'sm', showBorder: false })}
               </div>
-            )}
+            </div>
+
+            {/* Content */}
+            <div className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden">
+              {/* Agent name */}
+              <Label className="line-clamp-2 text-base font-semibold text-text-primary md:text-lg">
+                {agent.name}
+              </Label>
+
+              {/* Agent description */}
+              {agent.description && (
+                <p
+                  id={`agent-${agent.id}-description`}
+                  className="mt-0.5 line-clamp-2 text-sm leading-snug text-text-secondary md:line-clamp-5"
+                  aria-label={localize('com_agents_description_card', {
+                    description: agent.description,
+                  })}
+                >
+                  {agent.description}
+                </p>
+              )}
+
+              {/* Author */}
+              {displayName && (
+                <div className="mt-1 text-xs text-text-tertiary">
+                  <span className="truncate">
+                    {localize('com_ui_by_author', { 0: displayName || '' })}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </OGDialogTrigger>
