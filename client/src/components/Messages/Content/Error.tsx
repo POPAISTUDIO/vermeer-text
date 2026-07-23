@@ -4,10 +4,39 @@ import { getEndpointAlternateName } from '~/utils';
 import type { LocalizeFunction } from '~/common';
 import { formatJSON, extractJson, isJson } from '~/utils/json';
 import { formatUSD } from '~/components/Admin/credits';
+import { mapProviderError } from './providerError';
 import { useLocalize } from '~/hooks';
 import CodeBlock from './CodeBlock';
 
 const localizedErrorPrefix = 'com_error';
+
+const providerErrorI18nKeys = {
+  invalid_request: 'com_error_provider_invalid_request',
+  auth: 'com_error_provider_auth',
+  not_found: 'com_error_provider_not_found',
+  rate_limit: 'com_error_provider_rate_limit',
+  unavailable: 'com_error_provider_unavailable',
+  timeout: 'com_error_provider_timeout',
+  generic: 'com_error_provider_generic',
+} as const;
+
+const ProviderError = ({ text }: { text: string }) => {
+  const localize = useLocalize();
+  const providerKey = mapProviderError(text);
+  const message = localize(providerErrorI18nKeys[providerKey ?? 'generic']);
+
+  return (
+    <>
+      {message}
+      <details className="mt-2 text-xs opacity-70">
+        <summary className="cursor-pointer select-none">
+          {localize('com_error_technical_detail')}
+        </summary>
+        <div className="mt-1 whitespace-pre-wrap break-words font-mono">{text}</div>
+      </details>
+    </>
+  );
+};
 
 type TConcurrent = {
   limit: number;
@@ -133,11 +162,9 @@ const errorMessages = {
 const Error = ({ text }: { text: string }) => {
   const localize = useLocalize();
   const jsonString = extractJson(text);
-  const errorMessage = text.length > 512 && !jsonString ? text.slice(0, 512) + '...' : text;
-  const defaultResponse = `Something went wrong. Here's the specific error message we encountered: ${errorMessage}`;
 
   if (!isJson(jsonString)) {
-    return defaultResponse;
+    return <ProviderError text={text} />;
   }
 
   const json = JSON.parse(jsonString);
@@ -151,7 +178,7 @@ const Error = ({ text }: { text: string }) => {
   } else if (keyExists) {
     return errorMessages[errorKey];
   } else {
-    return defaultResponse;
+    return <ProviderError text={text} />;
   }
 };
 
