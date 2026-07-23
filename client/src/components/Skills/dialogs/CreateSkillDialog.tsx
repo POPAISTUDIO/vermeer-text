@@ -131,7 +131,7 @@ export default function CreateSkillDialog({
           {/* Skill name (free-form; slug derived automatically) */}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="create-skill-name" className="text-sm font-medium text-text-secondary">
-              {localize('com_ui_name')}
+              {localize('com_ui_name')} <span className="text-red-500">*</span>
             </label>
             <input
               id="create-skill-name"
@@ -160,7 +160,7 @@ export default function CreateSkillDialog({
               htmlFor="create-skill-description"
               className="text-sm font-medium text-text-secondary"
             >
-              {localize('com_ui_description')}
+              {localize('com_ui_description')} <span className="text-red-500">*</span>
             </label>
             <TextareaAutosize
               id="create-skill-description"
@@ -168,6 +168,7 @@ export default function CreateSkillDialog({
               maxRows={4}
               placeholder={localize('com_ui_skill_description_placeholder')}
               aria-label={localize('com_ui_description')}
+              aria-invalid={errors.description ? 'true' : 'false'}
               className="w-full resize-none rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
               {...register('description', {
                 required: localize('com_ui_skill_description_required'),
@@ -179,12 +180,15 @@ export default function CreateSkillDialog({
                 },
               })}
             />
+            {errors.description && (
+              <p className="text-xs text-red-500">{errors.description.message}</p>
+            )}
           </div>
 
           {/* Instructions (body) */}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="create-skill-body" className="text-sm font-medium text-text-secondary">
-              {localize('com_ui_skill_instructions')}
+              {localize('com_ui_skill_instructions')} <span className="text-red-500">*</span>
             </label>
             <TextareaAutosize
               id="create-skill-body"
@@ -192,9 +196,13 @@ export default function CreateSkillDialog({
               maxRows={12}
               placeholder={localize('com_ui_skill_instructions_placeholder')}
               aria-label={localize('com_ui_skill_instructions')}
+              aria-invalid={errors.body ? 'true' : 'false'}
               className="w-full resize-none rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
-              {...register('body')}
+              {...register('body', {
+                required: localize('com_ui_skill_instructions_required'),
+              })}
             />
+            {errors.body && <p className="text-xs text-red-500">{errors.body.message}</p>}
           </div>
 
           {/* Actions */}

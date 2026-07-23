@@ -196,7 +196,7 @@ export default function SkillForm({ skillId }: SkillFormProps) {
                     htmlFor="skill-name"
                     className="pointer-events-none absolute -top-1 left-3 origin-[0] translate-y-3 scale-100 rounded bg-presentation px-1 text-base text-text-secondary transition-transform duration-200 peer-placeholder-shown:translate-y-3 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2 peer-focus:scale-75 peer-focus:text-text-primary peer-[:not(:placeholder-shown)]:-translate-y-2 peer-[:not(:placeholder-shown)]:scale-75"
                   >
-                    {localize('com_ui_name')}*
+                    {localize('com_ui_name')} <span className="text-red-500">*</span>
                   </label>
                   <div
                     id="skill-name-error"
@@ -311,11 +311,18 @@ export default function SkillForm({ skillId }: SkillFormProps) {
             )}
           />
 
-          <SkillContentEditor
-            name="body"
-            isEditing={isEditingContent}
-            setIsEditing={setIsEditingContent}
-          />
+          <div className="flex flex-col">
+            <span className="mb-1 text-sm font-medium text-text-secondary">
+              {localize('com_ui_skill_instructions')}
+              <span className="ml-0.5 text-red-500">*</span>
+            </span>
+            <SkillContentEditor
+              name="body"
+              isEditing={isEditingContent}
+              setIsEditing={setIsEditingContent}
+              rules={{ required: localize('com_ui_skill_instructions_required') }}
+            />
+          </div>
 
           {!readOnly && (
             <div className="mt-4 flex items-center justify-end gap-2">

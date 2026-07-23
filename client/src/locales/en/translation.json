@@ -1620,6 +1620,7 @@
   "com_ui_skill_identifier": "ID: {{0}}",
   "com_ui_skill_instructions": "Instructions",
   "com_ui_skill_instructions_placeholder": "Describe your skill instructions here, in markdown format…",
+  "com_ui_skill_instructions_required": "Instructions are required",
   "com_ui_skill_name_conflict": "A skill with this name already exists. Try a different name.",
   "com_ui_skill_name_invalid": "Use lowercase letters, digits, and dashes only (kebab-case)",
   "com_ui_skill_name_placeholder": "Ex. POP brand guidelines",
