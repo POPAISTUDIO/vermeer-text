@@ -20,14 +20,26 @@ function SectionModal({
   title,
   children,
   nonModal = false,
+  dismissOnOutside = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   children: ReactNode;
   nonModal?: boolean;
+  dismissOnOutside?: boolean;
 }) {
   const keepOpenOnPopover = (event: OutsideEvent) => {
+    // Vermeer: en nonModal (compromis z-index pour rendre cliquables les popovers
+    // Ariakit portalisés), Radix ferme la modale à TOUTE interaction extérieure.
+    // dismissOnOutside=false la rend persistante (cas builder Assistants : « fermer
+    // la barre », backdrop mobile ou inert du drawer ne doivent pas détruire la
+    // saisie). X, Escape et les fermetures programmatiques (setOpenBuilder(null))
+    // restent alors les seules sorties. En amont du garde popover ci-dessous.
+    if (!dismissOnOutside) {
+      event.preventDefault();
+      return;
+    }
     const target = event.detail?.originalEvent?.target;
     const inPopover =
       target instanceof Element &&

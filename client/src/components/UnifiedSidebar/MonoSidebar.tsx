@@ -98,6 +98,10 @@ function MonoSidebar({
       }}
       title={localize('com_vermeer_configure')}
       nonModal
+      // Vermeer: modale builder persistante — une saisie longue ne doit pas être
+      // perdue sur une interaction extérieure (fermer la barre, backdrop mobile).
+      // sectionModal garde son light-dismiss (pas de saisie longue).
+      dismissOnOutside={false}
     >
       {builderOpen != null ? (
         <Suspense
