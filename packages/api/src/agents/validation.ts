@@ -107,8 +107,12 @@ export const agentSharedMemorySchema = z
 
 /** Base agent schema with all common fields */
 export const agentBaseSchema = z.object({
-  name: z.string().nullable().optional(),
-  description: z.string().nullable().optional(),
+  // Vermeer: bornes de longueur AST-05 (Name ≤ 256, Description ≤ 512). Ferme le
+  // vecteur non-UI (API/import) que le maxLength HTML du builder ne couvre pas ;
+  // un agent existant hors bornes sera bloqué au save par un 400 zod explicite
+  // (audit du stock en backlog).
+  name: z.string().max(256).nullable().optional(),
+  description: z.string().max(512).nullable().optional(),
   instructions: z.string().nullable().optional(),
   avatar: agentAvatarSchema.nullable().optional(),
   model_parameters: z.record(z.unknown()).optional(),

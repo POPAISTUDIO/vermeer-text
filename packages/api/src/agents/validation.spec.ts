@@ -81,3 +81,57 @@ describe('agentUpdateSchema with subagents', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('agentCreateSchema name/description length bounds (AST-05)', () => {
+  const base = {
+    provider: 'openAI',
+    model: 'gpt-4o-mini',
+    tools: [],
+  };
+
+  it('accepts a name of exactly 256 characters', () => {
+    const result = agentCreateSchema.safeParse({ ...base, name: 'a'.repeat(256) });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a name of 257 characters', () => {
+    const result = agentCreateSchema.safeParse({ ...base, name: 'a'.repeat(257) });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a description of exactly 512 characters', () => {
+    const result = agentCreateSchema.safeParse({ ...base, description: 'a'.repeat(512) });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a description of 513 characters', () => {
+    const result = agentCreateSchema.safeParse({ ...base, description: 'a'.repeat(513) });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts null and undefined name/description', () => {
+    expect(agentCreateSchema.safeParse({ ...base, name: null }).success).toBe(true);
+    expect(agentCreateSchema.safeParse({ ...base, description: null }).success).toBe(true);
+    expect(agentCreateSchema.safeParse(base).success).toBe(true);
+  });
+});
+
+describe('agentUpdateSchema name/description length bounds (AST-05)', () => {
+  it('rejects an update whose name exceeds 256 characters', () => {
+    const result = agentUpdateSchema.safeParse({ name: 'a'.repeat(257) });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an update whose description exceeds 512 characters', () => {
+    const result = agentUpdateSchema.safeParse({ description: 'a'.repeat(513) });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts an in-bounds partial update', () => {
+    const result = agentUpdateSchema.safeParse({
+      name: 'a'.repeat(256),
+      description: 'b'.repeat(512),
+    });
+    expect(result.success).toBe(true);
+  });
+});

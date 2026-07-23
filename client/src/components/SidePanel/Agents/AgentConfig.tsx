@@ -465,7 +465,10 @@ export default function AgentConfig() {
           </label>
           <Controller
             name="name"
-            rules={{ required: localize('com_ui_agent_name_is_required') }}
+            rules={{
+              required: localize('com_ui_agent_name_is_required'),
+              maxLength: { value: 256, message: localize('com_ui_agent_name_max_length') },
+            }}
             control={control}
             render={({ field }) => (
               <>
@@ -512,18 +515,34 @@ export default function AgentConfig() {
           </label>
           <Controller
             name="description"
+            rules={{
+              maxLength: { value: 512, message: localize('com_ui_agent_description_max_length') },
+            }}
             control={control}
             render={({ field }) => (
-              <input
-                {...field}
-                value={field.value ?? ''}
-                maxLength={512}
-                className={inputClass}
-                id="description"
-                type="text"
-                placeholder={localize('com_agents_description_placeholder')}
-                aria-label={localize('com_ui_agent_description')}
-              />
+              <>
+                <input
+                  {...field}
+                  value={field.value ?? ''}
+                  maxLength={512}
+                  className={inputClass}
+                  id="description"
+                  type="text"
+                  placeholder={localize('com_agents_description_placeholder')}
+                  aria-label={localize('com_ui_agent_description')}
+                  aria-invalid={!!errors.description}
+                  aria-describedby={errors.description ? 'agent-description-error' : undefined}
+                />
+                {errors.description && (
+                  <div
+                    id="agent-description-error"
+                    className="mt-1 w-56 text-sm text-red-500"
+                    role="alert"
+                  >
+                    {errors.description.message}
+                  </div>
+                )}
+              </>
             )}
           />
         </div>
