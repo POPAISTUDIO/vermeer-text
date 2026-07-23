@@ -33,8 +33,11 @@ const SkillDetailHeader = ({ skill, showActions = true }: SkillDetailHeaderProps
     <div className="flex flex-col gap-3 py-2 sm:flex-row sm:items-center sm:gap-4">
       <div className="min-w-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate text-xl font-bold text-text-primary" title={skill.name}>
-            {skill.name}
+          <h2
+            className="truncate text-xl font-bold text-text-primary"
+            title={skill.displayTitle ?? skill.name}
+          >
+            {skill.displayTitle ?? skill.name}
           </h2>
           {isPublic && (
             <TooltipAnchor
@@ -106,7 +109,7 @@ const SkillDetailHeader = ({ skill, showActions = true }: SkillDetailHeaderProps
               />
               <DeleteSkill
                 skillId={skill._id}
-                skillName={skill.name}
+                skillName={skill.displayTitle ?? skill.name}
                 onDelete={() => navigate('/skills')}
               />
             </>

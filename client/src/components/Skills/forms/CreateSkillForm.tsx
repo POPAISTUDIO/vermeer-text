@@ -5,9 +5,8 @@ import { useForm, Controller, FormProvider } from 'react-hook-form';
 import { Input, Button, TextareaAutosize, useToastContext } from '@librechat/client';
 import {
   InvocationMode,
-  SKILL_NAME_PATTERN,
-  SKILL_NAME_MAX_LENGTH,
   SKILL_DESCRIPTION_MAX_LENGTH,
+  SKILL_DISPLAY_TITLE_MAX_LENGTH,
 } from 'librechat-data-provider';
 import type { TSkill, TCreateSkill, TSkillWarning } from 'librechat-data-provider';
 import { useCreateSkillMutation } from '~/data-provider';
@@ -15,6 +14,12 @@ import { useLocalize } from '~/hooks';
 import SkillContentEditor from './SkillContentEditor';
 import InvocationModePicker from './InvocationModePicker';
 import CategorySelector from './CategorySelector';
+import {
+  slugifySkillName,
+  withSlugSuffix,
+  isSkillNameConflict,
+  SLUG_COLLISION_MAX_ATTEMPTS,
+} from '../utils';
 import { cn } from '~/utils';
 
 const DEFAULT_BODY = `# Overview
@@ -32,7 +37,7 @@ Walk through the steps the agent should take.
 `;
 
 interface CreateSkillFormValues {
-  name: string;
+  displayTitle: string;
   description: string;
   body: string;
   category: string;
@@ -40,7 +45,7 @@ interface CreateSkillFormValues {
 }
 
 const DEFAULT_VALUES: CreateSkillFormValues = {
-  name: '',
+  displayTitle: '',
   description: '',
   body: DEFAULT_BODY,
   category: '',
@@ -78,7 +83,6 @@ export default function CreateSkillForm({
   const {
     control,
     handleSubmit,
-    setError,
     formState: { isSubmitting, isValid, errors },
   } = methods;
 
@@ -96,6 +100,11 @@ export default function CreateSkillForm({
       }
     },
     onError: (error: unknown) => {
+      // Name collisions (409) are handled by the suffix-retry loop in
+      // `onSubmit` and must not surface a toast mid-retry.
+      if (isSkillNameConflict(error)) {
+        return;
+      }
       const message =
         (error as { response?: { data?: { message?: string } } })?.response?.data?.message ??
         localize('com_ui_skill_create_error');
@@ -106,12 +115,13 @@ export default function CreateSkillForm({
   // `useCallback` would be a no-op here: `createSkill` is a React Query
   // mutation result with an unstable identity, and `handleSubmit` from
   // react-hook-form doesn't use `onSubmit` as a dependency anywhere.
-  const onSubmit = (values: CreateSkillFormValues) => {
+  const onSubmit = async (values: CreateSkillFormValues) => {
     if (createSkill.isLoading) {
       return;
     }
-    const payload: TCreateSkill = {
-      name: values.name.trim(),
+    const displayTitle = values.displayTitle.trim();
+    const basePayload: Omit<TCreateSkill, 'name'> = {
+      displayTitle,
       description: values.description.trim(),
       body: values.body,
       category: values.category || undefined,
@@ -119,13 +129,20 @@ export default function CreateSkillForm({
       // doesn't persist it. Kept in form state only so the picker has a
       // selection.
     };
-
-    if (!SKILL_NAME_PATTERN.test(payload.name)) {
-      setError('name', { message: localize('com_ui_skill_name_invalid') });
-      return;
+    const baseSlug = slugifySkillName(displayTitle);
+    for (let attempt = 1; attempt <= SLUG_COLLISION_MAX_ATTEMPTS; attempt++) {
+      const name = attempt === 1 ? baseSlug : withSlugSuffix(baseSlug, attempt);
+      try {
+        await createSkill.mutateAsync({ ...basePayload, name });
+        return;
+      } catch (error) {
+        if (isSkillNameConflict(error)) {
+          continue;
+        }
+        return;
+      }
     }
-
-    createSkill.mutate(payload);
+    showToast({ status: 'error', message: localize('com_ui_skill_name_conflict') });
   };
 
   const handleCancel = () => {
@@ -149,18 +166,14 @@ export default function CreateSkillForm({
         <div className="mb-1 flex flex-col items-center justify-between font-bold sm:text-xl md:mb-0 md:text-2xl">
           <div className="flex w-full flex-col items-center justify-between sm:flex-row">
             <Controller
-              name="name"
+              name="displayTitle"
               control={control}
               rules={{
                 required: localize('com_ui_skill_name_required'),
-                pattern: {
-                  value: SKILL_NAME_PATTERN,
-                  message: localize('com_ui_skill_name_invalid'),
-                },
                 maxLength: {
-                  value: SKILL_NAME_MAX_LENGTH,
+                  value: SKILL_DISPLAY_TITLE_MAX_LENGTH,
                   message: localize('com_ui_skill_name_too_long', {
-                    0: String(SKILL_NAME_MAX_LENGTH),
+                    0: String(SKILL_DISPLAY_TITLE_MAX_LENGTH),
                   }),
                 },
               }}
@@ -175,24 +188,24 @@ export default function CreateSkillForm({
                     tabIndex={0}
                     aria-label={localize('com_ui_name')}
                     aria-required="true"
-                    aria-invalid={errors.name ? 'true' : 'false'}
-                    aria-describedby={errors.name ? 'skill-name-error' : undefined}
+                    aria-invalid={errors.displayTitle ? 'true' : 'false'}
+                    aria-describedby={errors.displayTitle ? 'skill-name-error' : undefined}
                   />
                   <label
                     htmlFor="skill-name"
                     className="pointer-events-none absolute -top-1 left-3 origin-[0] translate-y-3 scale-100 rounded bg-presentation px-1 text-base text-text-secondary transition-transform duration-200 peer-placeholder-shown:translate-y-3 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2 peer-focus:scale-75 peer-focus:text-text-primary peer-[:not(:placeholder-shown)]:-translate-y-2 peer-[:not(:placeholder-shown)]:scale-75"
                   >
-                    {localize('com_ui_name')}*
+                    {localize('com_ui_name')} <span className="text-red-500">*</span>
                   </label>
                   <div
                     id="skill-name-error"
                     className={cn(
-                      'mt-1 w-56 text-sm text-red-500',
-                      errors.name ? 'visible h-auto' : 'invisible h-0',
+                      'mt-1 w-56 text-sm',
+                      errors.displayTitle ? 'visible h-auto text-red-500' : 'invisible h-0',
                     )}
-                    role={errors.name ? 'alert' : undefined}
+                    role={errors.displayTitle ? 'alert' : undefined}
                   >
-                    {errors.name ? errors.name.message : ' '}
+                    {errors.displayTitle ? errors.displayTitle.message : ' '}
                   </div>
                 </div>
               )}
@@ -252,11 +265,18 @@ export default function CreateSkillForm({
             )}
           />
 
-          <SkillContentEditor
-            name="body"
-            isEditing={isEditingContent}
-            setIsEditing={setIsEditingContent}
-          />
+          <div className="flex flex-col">
+            <span className="mb-1 text-sm font-medium text-text-secondary">
+              {localize('com_ui_skill_instructions')}
+              <span className="ml-0.5 text-red-500">*</span>
+            </span>
+            <SkillContentEditor
+              name="body"
+              isEditing={isEditingContent}
+              setIsEditing={setIsEditingContent}
+              rules={{ required: localize('com_ui_skill_instructions_required') }}
+            />
+          </div>
 
           {createSkill.error != null && (
             <div

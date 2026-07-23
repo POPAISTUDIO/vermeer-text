@@ -5,9 +5,8 @@ import { useForm, Controller, FormProvider } from 'react-hook-form';
 import { Input, Button, Skeleton, TextareaAutosize, useToastContext } from '@librechat/client';
 import {
   InvocationMode,
-  SKILL_NAME_PATTERN,
-  SKILL_NAME_MAX_LENGTH,
   SKILL_DESCRIPTION_MAX_LENGTH,
+  SKILL_DISPLAY_TITLE_MAX_LENGTH,
 } from 'librechat-data-provider';
 import type { TSkill, TSkillWarning, TUpdateSkillPayload } from 'librechat-data-provider';
 import { useGetSkillQuery, useUpdateSkillMutation } from '~/data-provider';
@@ -20,7 +19,7 @@ import { ShareSkill } from '../buttons';
 import { cn } from '~/utils';
 
 interface SkillFormValues {
-  name: string;
+  displayTitle: string;
   description: string;
   body: string;
   category: string;
@@ -36,7 +35,9 @@ function toValues(skill: TSkill | undefined): SkillFormValues | undefined {
     return undefined;
   }
   return {
-    name: skill.name,
+    // The editable label. Legacy skills predate `displayTitle`, so fall back to
+    // the kebab `name` — the identifier itself stays frozen (see `onSubmit`).
+    displayTitle: skill.displayTitle ?? skill.name,
     description: skill.description,
     body: skill.body ?? '',
     category: skill.category ?? '',
@@ -62,7 +63,7 @@ export default function SkillForm({ skillId }: SkillFormProps) {
 
   const methods = useForm<SkillFormValues>({
     defaultValues: {
-      name: '',
+      displayTitle: '',
       description: '',
       body: '',
       category: '',
@@ -75,7 +76,6 @@ export default function SkillForm({ skillId }: SkillFormProps) {
     control,
     handleSubmit,
     reset,
-    setError,
     formState: { isDirty, isValid, isSubmitting, errors },
   } = methods;
 
@@ -113,13 +113,11 @@ export default function SkillForm({ skillId }: SkillFormProps) {
     if (!skill || updateSkill.isLoading) {
       return;
     }
-    const trimmedName = data.name.trim();
-    if (!SKILL_NAME_PATTERN.test(trimmedName)) {
-      setError('name', { message: localize('com_ui_skill_name_invalid') });
-      return;
-    }
     const payload: TUpdateSkillPayload = {
-      name: trimmedName,
+      // `name` (the kebab identifier) is deliberately omitted: it's frozen after
+      // creation to keep every reference stable ($ invocation, model catalog,
+      // agent allowlists). Only the human-readable `displayTitle` is editable.
+      displayTitle: data.displayTitle.trim(),
       description: data.description.trim(),
       body: data.body,
       category: data.category || undefined,
@@ -168,18 +166,14 @@ export default function SkillForm({ skillId }: SkillFormProps) {
         <div className="mb-1 flex flex-col items-center justify-between font-bold sm:text-xl md:mb-0 md:text-2xl">
           <div className="flex w-full flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
             <Controller
-              name="name"
+              name="displayTitle"
               control={control}
               rules={{
                 required: localize('com_ui_skill_name_required'),
-                pattern: {
-                  value: SKILL_NAME_PATTERN,
-                  message: localize('com_ui_skill_name_invalid'),
-                },
                 maxLength: {
-                  value: SKILL_NAME_MAX_LENGTH,
+                  value: SKILL_DISPLAY_TITLE_MAX_LENGTH,
                   message: localize('com_ui_skill_name_too_long', {
-                    0: String(SKILL_NAME_MAX_LENGTH),
+                    0: String(SKILL_DISPLAY_TITLE_MAX_LENGTH),
                   }),
                 },
               }}
@@ -195,24 +189,24 @@ export default function SkillForm({ skillId }: SkillFormProps) {
                     tabIndex={0}
                     aria-label={localize('com_ui_name')}
                     aria-required="true"
-                    aria-invalid={errors.name ? 'true' : 'false'}
-                    aria-describedby={errors.name ? 'skill-name-error' : undefined}
+                    aria-invalid={errors.displayTitle ? 'true' : 'false'}
+                    aria-describedby={errors.displayTitle ? 'skill-name-error' : undefined}
                   />
                   <label
                     htmlFor="skill-name"
                     className="pointer-events-none absolute -top-1 left-3 origin-[0] translate-y-3 scale-100 rounded bg-presentation px-1 text-base text-text-secondary transition-transform duration-200 peer-placeholder-shown:translate-y-3 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2 peer-focus:scale-75 peer-focus:text-text-primary peer-[:not(:placeholder-shown)]:-translate-y-2 peer-[:not(:placeholder-shown)]:scale-75"
                   >
-                    {localize('com_ui_name')}*
+                    {localize('com_ui_name')} <span className="text-red-500">*</span>
                   </label>
                   <div
                     id="skill-name-error"
                     className={cn(
                       'mt-1 w-56 text-sm text-red-500',
-                      errors.name ? 'visible h-auto' : 'invisible h-0',
+                      errors.displayTitle ? 'visible h-auto' : 'invisible h-0',
                     )}
-                    role={errors.name ? 'alert' : undefined}
+                    role={errors.displayTitle ? 'alert' : undefined}
                   >
-                    {errors.name ? errors.name.message : ' '}
+                    {errors.displayTitle ? errors.displayTitle.message : ' '}
                   </div>
                 </div>
               )}
@@ -223,7 +217,7 @@ export default function SkillForm({ skillId }: SkillFormProps) {
               {permissions.canDelete && (
                 <DeleteSkill
                   skillId={skill._id}
-                  skillName={skill.name}
+                  skillName={skill.displayTitle ?? skill.name}
                   onDelete={() => navigate('/skills', { replace: true })}
                 />
               )}
@@ -231,10 +225,14 @@ export default function SkillForm({ skillId }: SkillFormProps) {
           </div>
         </div>
 
-        <div className="mt-1 flex items-center gap-2 text-xs text-text-secondary">
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
           <span>{localize('com_ui_skill_version', { 0: String(skill.version) })}</span>
           <span aria-hidden="true">·</span>
           <span>{skill.authorName}</span>
+          <span aria-hidden="true">·</span>
+          <span className="font-mono">
+            {localize('com_ui_skill_identifier', { 0: skill.name })}
+          </span>
         </div>
 
         {readOnly && (
@@ -313,11 +311,18 @@ export default function SkillForm({ skillId }: SkillFormProps) {
             )}
           />
 
-          <SkillContentEditor
-            name="body"
-            isEditing={isEditingContent}
-            setIsEditing={setIsEditingContent}
-          />
+          <div className="flex flex-col">
+            <span className="mb-1 text-sm font-medium text-text-secondary">
+              {localize('com_ui_skill_instructions')}
+              <span className="ml-0.5 text-red-500">*</span>
+            </span>
+            <SkillContentEditor
+              name="body"
+              isEditing={isEditingContent}
+              setIsEditing={setIsEditingContent}
+              rules={{ required: localize('com_ui_skill_instructions_required') }}
+            />
+          </div>
 
           {!readOnly && (
             <div className="mt-4 flex items-center justify-end gap-2">
