@@ -19,7 +19,13 @@ const {
   documentParserMimeTypes,
 } = require('librechat-data-provider');
 const { logger } = require('@librechat/data-schemas');
-const { sanitizeFilename, parseText, processAudioFile } = require('@librechat/api');
+const {
+  parseText,
+  UploadError,
+  sanitizeFilename,
+  UploadErrorCode,
+  processAudioFile,
+} = require('@librechat/api');
 const {
   convertImage,
   resizeAndConvert,
@@ -485,7 +491,11 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
   }
 
   if (tool_resource === EToolResources.file_search && file.mimetype.startsWith('image')) {
-    throw new Error('Image uploads are not supported for file search tool resources');
+    throw new UploadError(
+      'Image uploads are not supported for file search tool resources',
+      UploadErrorCode.UNSUPPORTED_FILE_TYPE,
+      { fileName: file.originalname, mimeType: file.mimetype },
+    );
   }
 
   if (!messageAttachment && !agent_id) {
@@ -499,7 +509,13 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
   if (tool_resource === EToolResources.execute_code) {
     const isCodeEnabled = await checkCapability(req, AgentCapabilities.execute_code);
     if (!isCodeEnabled) {
-      throw new Error('Code execution is not enabled for Agents');
+      throw new UploadError(
+        'Code execution is not enabled for Agents',
+        UploadErrorCode.CAPABILITY_DISABLED,
+        {
+          fileName: file.originalname,
+        },
+      );
     }
     const { handleFileUpload: uploadCodeEnvFile } = getStrategyFunctions(FileSources.execute_code);
     const stream = fs.createReadStream(file.path);
@@ -513,7 +529,13 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
   } else if (tool_resource === EToolResources.file_search) {
     const isFileSearchEnabled = await checkCapability(req, AgentCapabilities.file_search);
     if (!isFileSearchEnabled) {
-      throw new Error('File search is not enabled for Agents');
+      throw new UploadError(
+        'File search is not enabled for Agents',
+        UploadErrorCode.CAPABILITY_DISABLED,
+        {
+          fileName: file.originalname,
+        },
+      );
     }
     // Note: File search processing continues to dual storage logic below
   } else if (tool_resource === EToolResources.context) {
@@ -598,7 +620,13 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
     };
 
     if (shouldUseConfiguredOCR && !(await checkCapability(req, AgentCapabilities.ocr))) {
-      throw new Error('OCR capability is not enabled for Agents');
+      throw new UploadError(
+        'OCR capability is not enabled for Agents',
+        UploadErrorCode.CAPABILITY_DISABLED,
+        {
+          fileName: file.originalname,
+        },
+      );
     }
 
     if (shouldUseOCR) {
@@ -607,8 +635,10 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
         const { text, bytes, filepath: ocrFileURL } = ocrResult;
         return await createTextFile({ text, bytes, filepath: ocrFileURL });
       }
-      throw new Error(
+      throw new UploadError(
         `Unable to extract text from "${file.originalname}". The document may be image-based and requires an OCR service to process.`,
+        UploadErrorCode.EXTRACTION_FAILED,
+        { fileName: file.originalname },
       );
     }
 
@@ -629,7 +659,11 @@ const processAgentFileUpload = async ({ req, res, metadata }) => {
     );
 
     if (!shouldUseText) {
-      throw new Error(`File type ${file.mimetype} is not supported for text parsing.`);
+      throw new UploadError(
+        `File type ${file.mimetype} is not supported for text parsing.`,
+        UploadErrorCode.UNSUPPORTED_FILE_TYPE,
+        { fileName: file.originalname, mimeType: file.mimetype },
+      );
     }
 
     const { text, bytes } = await parseText({ req, file, file_id });
@@ -1021,10 +1055,12 @@ function filterFile({ req, image, isAvatar }) {
     isAvatar === true ? fileConfig.avatarSizeLimit : endpointFileConfig.fileSizeLimit;
 
   if (file.size > fileSizeLimit) {
-    throw new Error(
+    throw new UploadError(
       `File size limit of ${fileSizeLimit / megabyte} MB exceeded for ${
         isAvatar ? 'avatar upload' : `${endpoint} endpoint`
       }`,
+      UploadErrorCode.FILE_SIZE_EXCEEDED,
+      { fileName: file.originalname, sizeLimitMB: fileSizeLimit / megabyte },
     );
   }
 
@@ -1034,7 +1070,10 @@ function filterFile({ req, image, isAvatar }) {
   );
 
   if (!isSupportedMimeType) {
-    throw new Error('Unsupported file type');
+    throw new UploadError('Unsupported file type', UploadErrorCode.UNSUPPORTED_FILE_TYPE, {
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+    });
   }
 
   if (!image || isAvatar === true) {

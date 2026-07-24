@@ -3,37 +3,87 @@ import crypto from 'node:crypto';
 import { createReadStream } from 'fs';
 import { readFile, stat } from 'fs/promises';
 
-const USER_FACING_UPLOAD_ERRORS = [
-  'Invalid file format',
-  'exceeds token limit',
-  'Unable to extract text from',
-] as const;
+/**
+ * Structured upload-error codes. The client maps each to a localized message
+ * (with interpolation). Replaces the previous prose-fragment allowlist so the
+ * backend never ships user-facing English prose — it ships a stable code plus
+ * the metadata the message needs (Vermeer #81, covers the message facet of #77).
+ */
+export const UploadErrorCode = {
+  /** File exceeds the effective size limit; carries `sizeLimitMB`. */
+  FILE_SIZE_EXCEEDED: 'file_size_exceeded',
+  /** MIME type not accepted (pre-check, image-on-file_search, or embedding); carries `mimeType`. */
+  UNSUPPORTED_FILE_TYPE: 'unsupported_file_type',
+  /** RAG/indexing service unreachable or failed (file_search). */
+  INDEXING_UNAVAILABLE: 'indexing_unavailable',
+  /** Agent capability (file_search / execute_code / ocr) disabled. */
+  CAPABILITY_DISABLED: 'capability_disabled',
+  /** Text/OCR extraction produced nothing usable. */
+  EXTRACTION_FAILED: 'extraction_failed',
+  /** Anything else — no backend prose leaks; the client shows a generic message. */
+  GENERIC: 'generic',
+} as const;
+
+export type UploadErrorCode = (typeof UploadErrorCode)[keyof typeof UploadErrorCode];
+
+export interface UploadErrorMeta {
+  /** Original filename, surfaced in most messages. */
+  fileName?: string;
+  /** Effective size limit in MB (FILE_SIZE_EXCEEDED). */
+  sizeLimitMB?: number;
+  /** Received MIME type (UNSUPPORTED_FILE_TYPE). */
+  mimeType?: string;
+}
 
 /**
- * Resolves a user-facing error message from a file upload error.
- * Returns the error's own message if it matches a known user-facing pattern,
- * otherwise returns the default message.
+ * Error carrying a structured upload {@link UploadErrorCode} + metadata for
+ * client-side localization. Extends `Error` so existing `.message` logging and
+ * any legacy consumer keep working; thrown at the source (filterFile, agent
+ * upload gates, vector indexing) and read back by {@link resolveUploadError}.
  */
-export function resolveUploadErrorMessage(
-  error: { message?: string } | null | undefined,
-  defaultMessage = 'Error processing file',
-): string {
-  const errorMessage = error?.message;
-  if (!errorMessage) {
-    return defaultMessage;
+export class UploadError extends Error {
+  code: UploadErrorCode;
+  fileName?: string;
+  sizeLimitMB?: number;
+  mimeType?: string;
+
+  constructor(message: string, code: UploadErrorCode, meta: UploadErrorMeta = {}) {
+    super(message);
+    this.name = 'UploadError';
+    this.code = code;
+    this.fileName = meta.fileName;
+    this.sizeLimitMB = meta.sizeLimitMB;
+    this.mimeType = meta.mimeType;
+  }
+}
+
+export interface ResolvedUploadError {
+  code: UploadErrorCode;
+  fileName?: string;
+  sizeLimitMB?: number;
+  mimeType?: string;
+}
+
+/**
+ * Resolve any upload error into a structured payload the client localizes.
+ * A tagged {@link UploadError} passes its code + metadata straight through;
+ * everything else becomes GENERIC (never leaking backend prose), labeled with
+ * `fallback.fileName` when the route can supply it (e.g. `req.file.originalname`).
+ */
+export function resolveUploadError(
+  error: unknown,
+  fallback: { fileName?: string } = {},
+): ResolvedUploadError {
+  if (error instanceof UploadError) {
+    return {
+      code: error.code,
+      fileName: error.fileName ?? fallback.fileName,
+      sizeLimitMB: error.sizeLimitMB,
+      mimeType: error.mimeType,
+    };
   }
 
-  if (errorMessage.includes('file_ids')) {
-    return `${defaultMessage}: ${errorMessage}`;
-  }
-
-  for (const fragment of USER_FACING_UPLOAD_ERRORS) {
-    if (errorMessage.includes(fragment)) {
-      return errorMessage;
-    }
-  }
-
-  return defaultMessage;
+  return { code: UploadErrorCode.GENERIC, fileName: fallback.fileName };
 }
 
 /**

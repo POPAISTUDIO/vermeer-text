@@ -16,7 +16,14 @@ import debounce from 'lodash/debounce';
 import type { EModelEndpoint, TEndpointsConfig, TError } from 'librechat-data-provider';
 import type { ExtendedFile, FileSetter } from '~/common';
 import type { TConversation } from 'librechat-data-provider';
-import { logger, validateFiles, cachePreview, getCachedPreview, removePreviewEntry } from '~/utils';
+import {
+  logger,
+  validateFiles,
+  cachePreview,
+  getCachedPreview,
+  removePreviewEntry,
+  getUploadErrorMessage,
+} from '~/utils';
 import { useGetFileConfig, useUploadFileMutation } from '~/data-provider';
 import useLocalize, { TranslationKeys } from '~/hooks/useLocalize';
 import { useDelayedUploadToast } from './useDelayedUploadToast';
@@ -49,7 +56,13 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
   const localize = useLocalize();
   const queryClient = useQueryClient();
   const { showToast } = useToastContext();
-  const [errors, setErrors] = useState<string[]>([]);
+  /**
+   * An entry is either an i18n key (localized at display, no interpolation) or a
+   * pre-resolved `{ text }` (already localized + interpolated at push time — used
+   * for structured upload errors that need the filename / size / type filled in).
+   * This is the fix for the old TODO of passing raw prose through `localize()`.
+   */
+  const [errors, setErrors] = useState<Array<string | { text: string }>>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const { startUploadTimer, clearUploadTimer } = useDelayedUploadToast();
   const { files, setFiles, conversation } = fileState;
@@ -58,6 +71,8 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
     ephemeralAgentByConvoId(conversation?.conversationId ?? Constants.NEW_CONVO),
   );
   const setError = (error: string) => setErrors((prevErrors) => [...prevErrors, error]);
+  /** Push an already-localized (and interpolated) message, shown verbatim. */
+  const setResolvedError = (text: string) => setErrors((prevErrors) => [...prevErrors, { text }]);
   const { addFile, replaceFile, updateFileById, deleteFileById } = useUpdateFiles(
     params?.fileSetter ?? setFiles,
   );
@@ -80,11 +95,16 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
     select: (data) => mergeFileConfig(data),
   });
 
+  const renderError = useCallback(
+    (entry: string | { text: string }) =>
+      typeof entry === 'string' ? localize(entry as TranslationKeys) || entry : entry.text,
+    [localize],
+  );
+
   const displayToast = useCallback(() => {
     if (errors.length > 1) {
-      // TODO: this should not be a dynamic localize input!!
       const errorList = Array.from(new Set(errors))
-        .map((e, i) => `${i > 0 ? '• ' : ''}${localize(e as TranslationKeys) || e}\n`)
+        .map((e, i) => `${i > 0 ? '• ' : ''}${renderError(e)}\n`)
         .join('');
       showToast({
         message: errorList,
@@ -92,17 +112,15 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
         duration: 5000,
       });
     } else if (errors.length === 1) {
-      // TODO: this should not be a dynamic localize input!!
-      const message = localize(errors[0] as TranslationKeys) || errors[0];
       showToast({
-        message,
+        message: renderError(errors[0]),
         status: 'error',
         duration: 5000,
       });
     }
 
     setErrors([]);
-  }, [errors, showToast, localize]);
+  }, [errors, showToast, renderError]);
 
   const debouncedDisplayToast = debounce(displayToast, 250);
 
@@ -170,14 +188,13 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
         clearUploadTimer(file_id as string);
         deleteFileById(file_id as string);
 
-        let errorMessage = 'com_error_files_upload';
-
         if (error?.code === 'ERR_CANCELED') {
-          errorMessage = 'com_error_files_upload_canceled';
-        } else if (error?.response?.data?.message) {
-          errorMessage = error.response.data.message;
+          setError('com_error_files_upload_canceled');
+          return;
         }
-        setError(errorMessage);
+        // Structured backend code → localized + interpolated message (filename,
+        // size limit, MIME type). No raw backend prose is ever localized.
+        setResolvedError(getUploadErrorMessage(error, localize));
       },
     },
     abortControllerRef.current?.signal,
@@ -288,6 +305,7 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
         files,
         fileList,
         setError,
+        localize,
         fileConfig,
         endpointFileConfig,
         toolResource: _toolResource,
