@@ -8,6 +8,7 @@ import {
   useToastContext,
 } from '@librechat/client';
 import {
+  SKILL_BODY_MAX_LENGTH,
   SKILL_DESCRIPTION_MAX_LENGTH,
   SKILL_DISPLAY_TITLE_MAX_LENGTH,
 } from 'librechat-data-provider';
@@ -19,7 +20,7 @@ import {
   isSkillNameConflict,
   SLUG_COLLISION_MAX_ATTEMPTS,
 } from '../utils';
-import { CategorySelector } from '../forms';
+import { CategorySelector, CharacterCounter } from '../forms';
 import { cn } from '~/utils';
 
 interface CreateSkillDialogProps {
@@ -71,8 +72,12 @@ export default function CreateSkillDialog({
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { isValid, isSubmitting, errors },
   } = methods;
+
+  const descriptionLength = (watch('description') ?? '').length;
+  const bodyLength = (watch('body') ?? '').length;
 
   const createSkill = useCreateSkillMutation({
     onSuccess: (skill) => {
@@ -177,12 +182,15 @@ export default function CreateSkillDialog({
 
             {/* Description */}
             <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="create-skill-description"
-                className="text-sm font-medium text-text-secondary"
-              >
-                {localize('com_ui_description')} <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="create-skill-description"
+                  className="text-sm font-medium text-text-secondary"
+                >
+                  {localize('com_ui_description')} <span className="text-red-500">*</span>
+                </label>
+                <CharacterCounter count={descriptionLength} max={SKILL_DESCRIPTION_MAX_LENGTH} />
+              </div>
               <TextareaAutosize
                 id="create-skill-description"
                 minRows={2}
@@ -208,12 +216,15 @@ export default function CreateSkillDialog({
 
             {/* Instructions (body) */}
             <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="create-skill-body"
-                className="text-sm font-medium text-text-secondary"
-              >
-                {localize('com_ui_skill_instructions')} <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="create-skill-body"
+                  className="text-sm font-medium text-text-secondary"
+                >
+                  {localize('com_ui_skill_instructions')} <span className="text-red-500">*</span>
+                </label>
+                <CharacterCounter count={bodyLength} max={SKILL_BODY_MAX_LENGTH} />
+              </div>
               <TextareaAutosize
                 id="create-skill-body"
                 minRows={6}
@@ -224,6 +235,12 @@ export default function CreateSkillDialog({
                 className="w-full resize-none rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
                 {...register('body', {
                   required: localize('com_ui_skill_instructions_required'),
+                  maxLength: {
+                    value: SKILL_BODY_MAX_LENGTH,
+                    message: localize('com_ui_skill_instructions_too_long', {
+                      0: String(SKILL_BODY_MAX_LENGTH),
+                    }),
+                  },
                 })}
               />
               {errors.body && <p className="text-xs text-red-500">{errors.body.message}</p>}
