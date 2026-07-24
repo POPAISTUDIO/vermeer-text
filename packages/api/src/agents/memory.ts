@@ -541,6 +541,19 @@ export async function createMemoryProcessor({
     agentId,
   });
 
+  /**
+   * Vermeer #98 — La capture AUTOMATIQUE (memory agent) écrit toujours en portée
+   * globale (`agentId: null`). Une info captée sur l'utilisateur est transverse et
+   * doit être injectée dans tous les contextes (chat direct, autres assistants) ;
+   * la siloter sur l'assistant courant la rendait invisible du modèle partout ailleurs
+   * alors qu'elle restait listée dans le panneau (cf. diagnostic de l'issue).
+   * Le scope assistant (approche A) reste réservé aux écritures EXPLICITES
+   * (panneau/builder → `api/server/routes/memories.js`). La LECTURE ci-dessus reste
+   * scopée `global ∪ assistant courant` (`agentId` inchangé) pour que l'agent voie
+   * tout le contexte avant d'écrire.
+   */
+  const writeAgentId = null;
+
   return [
     withoutKeys,
     async function (messages: BaseMessage[]): Promise<(TAttachment | null)[] | undefined> {
@@ -555,7 +568,7 @@ export async function createMemoryProcessor({
           tokenLimit,
           streamId,
           conversationId,
-          agentId,
+          agentId: writeAgentId,
           memory: withKeys,
           totalTokens: totalTokens || 0,
           instructions: finalInstructions,
