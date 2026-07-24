@@ -29,6 +29,8 @@ interface CreateSkillDialogProps {
   defaultName?: string;
   defaultDescription?: string;
   defaultBody?: string;
+  /** Réf. #103 : modale non bloquante pour permettre la sélection en 1 clic dans la liste. */
+  nonModal?: boolean;
 }
 
 interface FormValues {
@@ -54,6 +56,7 @@ export default function CreateSkillDialog({
   defaultName = '',
   defaultDescription = '',
   defaultBody = '',
+  nonModal = false,
 }: CreateSkillDialogProps) {
   const localize = useLocalize();
   const navigate = useNavigate();
@@ -135,7 +138,7 @@ export default function CreateSkillDialog({
   const submitDisabled = !isValid || isSubmitting || createSkill.isLoading;
 
   return (
-    <OGDialog open={isOpen} onOpenChange={setIsOpen}>
+    <OGDialog open={isOpen} onOpenChange={setIsOpen} modal={nonModal ? false : undefined}>
       <OGDialogContent className="w-11/12 max-w-5xl overflow-hidden">
         <FormProvider {...methods}>
           <form

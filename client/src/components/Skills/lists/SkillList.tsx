@@ -11,10 +11,17 @@ interface SkillListProps {
   skills: TSkill[];
   isLoading: boolean;
   activeSkillId?: string;
+  /** Ferme les dialogues de création/import ouverts (Réf. #103). */
+  onSkillSelect?: () => void;
 }
 
 /** Collapsible skill list. Active/inactive toggling lives in the detail view. */
-export default function SkillList({ skills, isLoading, activeSkillId }: SkillListProps) {
+export default function SkillList({
+  skills,
+  isLoading,
+  activeSkillId,
+  onSkillSelect,
+}: SkillListProps) {
   const localize = useLocalize();
   const [searchParams] = useSearchParams();
   const activeFile = searchParams.get('file');
@@ -68,6 +75,7 @@ export default function SkillList({ skills, isLoading, activeSkillId }: SkillLis
                 isExpanded={skill._id === expandedSkillId}
                 activeFile={skill._id === activeSkillId ? activeFile : null}
                 onToggleExpand={(id) => setExpandedSkillId((prev) => (prev === id ? null : id))}
+                onSkillSelect={onSkillSelect}
               />
             ))
           )}

@@ -43,6 +43,13 @@ export default function SkillsSidePanel({ className }: SkillsSidePanelProps) {
     setSearchTerm('');
   };
 
+  // Réf. #103 : sélection en 1 clic depuis une modale de création/import ouverte.
+  // nonModal laisse la liste cliquable ; on ferme la modale à la sélection du skill.
+  const handleSkillSelect = () => {
+    setCreateOpen(false);
+    setImportOpen(false);
+  };
+
   return (
     <div
       className={cn(
@@ -125,11 +132,12 @@ export default function SkillsSidePanel({ className }: SkillsSidePanelProps) {
           skills={skills as unknown as import('librechat-data-provider').TSkill[]}
           isLoading={listQuery.isLoading}
           activeSkillId={activeSkillId}
+          onSkillSelect={handleSkillSelect}
         />
       </div>
 
-      <CreateSkillDialog isOpen={createOpen} setIsOpen={setCreateOpen} />
-      <UploadSkillDialog isOpen={importOpen} setIsOpen={setImportOpen} />
+      <CreateSkillDialog isOpen={createOpen} setIsOpen={setCreateOpen} nonModal />
+      <UploadSkillDialog isOpen={importOpen} setIsOpen={setImportOpen} nonModal />
     </div>
   );
 }
