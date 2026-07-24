@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { Providers } from '@librechat/agents';
 import { Tools } from 'librechat-data-provider';
 import type { MemoryArtifact } from 'librechat-data-provider';
-import { createMemoryTool, processMemory } from '../memory';
+import { createMemoryTool, processMemory, createMemoryProcessor } from '../memory';
 
 // Mock the logger
 jest.mock('winston', () => ({
@@ -136,6 +136,7 @@ describe('createMemoryTool', () => {
         key: 'test',
         value: 'small memory',
         tokenCount: 12,
+        agentId: null,
       });
     });
   });
@@ -465,6 +466,102 @@ describe('processMemory - GPT-5+ handling', () => {
           }),
         }),
       }),
+    );
+  });
+});
+
+describe('createMemoryProcessor - Vermeer #98 auto-capture write scope', () => {
+  let mockSetMemory: jest.Mock;
+  let mockDeleteMemory: jest.Mock;
+  let mockGetFormattedMemories: jest.Mock;
+  let mockRes: Partial<Response>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSetMemory = jest.fn().mockResolvedValue({ ok: true });
+    mockDeleteMemory = jest.fn().mockResolvedValue({ ok: true });
+    mockGetFormattedMemories = jest.fn().mockResolvedValue({
+      withKeys: 'existing with keys',
+      withoutKeys: 'existing without keys',
+      totalTokens: 0,
+    });
+    mockRes = {
+      headersSent: false,
+      write: jest.fn(),
+    };
+
+    const { Run } = jest.requireMock('@librechat/agents');
+    (Run.create as jest.Mock).mockResolvedValue({
+      processStream: jest.fn().mockResolvedValue('Memory processed'),
+    });
+  });
+
+  const buildProcessor = (agentId: string | null) =>
+    createMemoryProcessor({
+      res: mockRes as Response,
+      userId: 'test-user',
+      messageId: 'msg-123',
+      conversationId: 'conv-123',
+      agentId,
+      memoryMethods: {
+        setMemory: mockSetMemory,
+        deleteMemory: mockDeleteMemory,
+        getFormattedMemories: mockGetFormattedMemories,
+      },
+    });
+
+  /** Grabs the memory tools that processMemory registered on the (mocked) Run. */
+  const getRegisteredTools = () => {
+    const { Run } = jest.requireMock('@librechat/agents');
+    const callArgs = (Run.create as jest.Mock).mock.calls[0][0];
+    const tools = callArgs.graphConfig.tools as Array<{
+      name: string;
+      func: (input: { key: string; value?: string }) => Promise<unknown>;
+    }>;
+    return {
+      setTool: tools.find((t) => t.name === 'set_memory')!,
+      deleteTool: tools.find((t) => t.name === 'delete_memory')!,
+    };
+  };
+
+  it('reads with the assistant scope but forces auto writes to global (agentId=null)', async () => {
+    const [, processMemory] = await buildProcessor('agent_ABC');
+
+    // READ (approche A) preserved: global ∪ assistant courant
+    expect(mockGetFormattedMemories).toHaveBeenCalledWith({
+      userId: 'test-user',
+      agentId: 'agent_ABC',
+    });
+
+    await processMemory([]);
+
+    const { setTool, deleteTool } = getRegisteredTools();
+
+    await setTool.func({ key: 'city', value: 'Paris' });
+    expect(mockSetMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'test-user', key: 'city', value: 'Paris', agentId: null }),
+    );
+
+    await deleteTool.func({ key: 'city' });
+    expect(mockDeleteMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'test-user', key: 'city', agentId: null }),
+    );
+  });
+
+  it('writes globally even from an ephemeral/direct chat (agentId=null)', async () => {
+    const [, processMemory] = await buildProcessor(null);
+
+    expect(mockGetFormattedMemories).toHaveBeenCalledWith({
+      userId: 'test-user',
+      agentId: null,
+    });
+
+    await processMemory([]);
+
+    const { setTool } = getRegisteredTools();
+    await setTool.func({ key: 'city', value: 'Paris' });
+    expect(mockSetMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: null }),
     );
   });
 });
