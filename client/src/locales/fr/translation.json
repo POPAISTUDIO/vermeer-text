@@ -1329,6 +1329,8 @@
   "com_ui_skills_enabled_allowlist_hint": "Activé. Limité aux skills sélectionnés ci-dessous.",
   "com_ui_skills_load_error": "Échec du chargement des skills",
   "com_ui_skills_manual_invoked": "Skills invoqués manuellement",
+  "com_ui_skills_none_yet_hint": "Créez d'abord un skill depuis la section Skills.",
+  "com_ui_skills_open_section": "Ouvrir la section Skills",
   "com_ui_skills_queued": "Skills en attente pour le prochain envoi",
   "com_ui_special_var_current_date": "Date actuelle",
   "com_ui_special_var_current_datetime": "Date et heure actuelle",

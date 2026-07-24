@@ -1679,6 +1679,8 @@
   "com_ui_skills_enabled_allowlist_hint": "Enabled. Limited to the skills selected below.",
   "com_ui_skills_load_error": "Failed to load skills",
   "com_ui_skills_manual_invoked": "Manually invoked skills",
+  "com_ui_skills_none_yet_hint": "Create a skill from the Skills section first.",
+  "com_ui_skills_open_section": "Open the Skills section",
   "com_ui_skills_queued": "Skills queued for next submission",
   "com_ui_special": "special",
   "com_ui_special_var_current_date": "Current Date",
