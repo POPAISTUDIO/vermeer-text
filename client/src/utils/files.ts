@@ -16,6 +16,7 @@ import {
 } from 'librechat-data-provider';
 import type { TFile, EndpointFileConfig, FileConfig } from 'librechat-data-provider';
 import type { QueryClient } from '@tanstack/react-query';
+import type { TranslationKeys } from '~/hooks';
 import type { ExtendedFile } from '~/common';
 
 export const partialTypes = ['text/x-'];
@@ -224,6 +225,7 @@ export const validateFiles = ({
   files,
   fileList,
   setError,
+  localize,
   endpointFileConfig,
   toolResource,
   fileConfig,
@@ -231,6 +233,15 @@ export const validateFiles = ({
   fileList: File[];
   files: Map<string, ExtendedFile>;
   setError: (error: string) => void;
+  /**
+   * Builds the localized message for the size/type pre-checks so they share the
+   * exact same i18n keys as the backend upload path (Vermeer #81). The size/type
+   * checks localize inline and push the resolved string; the remaining checks
+   * still push i18n keys (localized at display) or legacy prose. Optional so
+   * existing callers keep compiling; when absent those two checks fall back to a
+   * plain key with no interpolation.
+   */
+  localize?: (key: TranslationKeys, options?: Record<string, string>) => string;
   endpointFileConfig: EndpointFileConfig;
   toolResource?: string;
   fileConfig: FileConfig | null;
@@ -282,12 +293,25 @@ export const validateFiles = ({
     }
 
     if (!checkType(originalFile.type, mimeTypesToCheck)) {
-      setError(`Unsupported file type: ${originalFile.type}`);
+      setError(
+        localize
+          ? localize('com_error_files_unsupported_type', {
+              0: originalFile.name,
+              1: originalFile.type,
+            })
+          : 'com_error_files_unsupported_type',
+      );
       return false;
     }
 
     if (fileSizeLimit && originalFile.size >= fileSizeLimit) {
-      setError(`File size limit exceeded: ${fileSizeLimit / megabyte} MB`);
+      setError(
+        localize
+          ? localize('com_error_files_upload_too_large', {
+              0: String(fileSizeLimit / megabyte),
+            })
+          : 'com_error_files_upload_too_large',
+      );
       return false;
     }
   }

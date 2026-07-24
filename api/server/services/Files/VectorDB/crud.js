@@ -3,7 +3,12 @@ const axios = require('axios');
 const FormData = require('form-data');
 const { logger } = require('@librechat/data-schemas');
 const { FileSources } = require('librechat-data-provider');
-const { logAxiosError, generateShortLivedToken } = require('@librechat/api');
+const {
+  UploadError,
+  logAxiosError,
+  UploadErrorCode,
+  generateShortLivedToken,
+} = require('@librechat/api');
 
 /**
  * Deletes a file from the vector database. This function takes a file object, constructs the full path, and
@@ -66,7 +71,9 @@ const deleteVectors = async (req, file) => {
  */
 async function uploadVectors({ req, file, file_id, entity_id, storageMetadata }) {
   if (!process.env.RAG_API_URL) {
-    throw new Error('RAG_API_URL not defined');
+    throw new UploadError('RAG_API_URL not defined', UploadErrorCode.INDEXING_UNAVAILABLE, {
+      fileName: file.originalname,
+    });
   }
 
   try {
@@ -97,7 +104,11 @@ async function uploadVectors({ req, file, file_id, entity_id, storageMetadata })
     logger.debug('Response from embedding file', responseData);
 
     if (responseData.known_type === false) {
-      throw new Error(`File embedding failed. The filetype ${file.mimetype} is not supported`);
+      throw new UploadError(
+        `File embedding failed. The filetype ${file.mimetype} is not supported`,
+        UploadErrorCode.UNSUPPORTED_FILE_TYPE,
+        { fileName: file.originalname, mimeType: file.mimetype },
+      );
     }
 
     if (!responseData.status) {
@@ -115,7 +126,17 @@ async function uploadVectors({ req, file, file_id, entity_id, storageMetadata })
       error,
       message: 'Error uploading vectors',
     });
-    throw new Error(error.message || 'An error occurred during file upload.');
+    // Preserve a tagged type/known-type error (e.g. UNSUPPORTED_FILE_TYPE); wrap
+    // everything else (network, non-status response, RAG API failure) as
+    // INDEXING_UNAVAILABLE so the client shows a dedicated indexing message.
+    if (error instanceof UploadError) {
+      throw error;
+    }
+    throw new UploadError(
+      error.message || 'An error occurred during file upload.',
+      UploadErrorCode.INDEXING_UNAVAILABLE,
+      { fileName: file.originalname },
+    );
   }
 }
 

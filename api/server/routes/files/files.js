@@ -3,7 +3,7 @@ const express = require('express');
 const { logger, SystemCapabilities } = require('@librechat/data-schemas');
 const {
   refreshS3FileUrls,
-  resolveUploadErrorMessage,
+  resolveUploadError,
   verifyAgentUploadPermission,
 } = require('@librechat/api');
 const {
@@ -478,7 +478,7 @@ router.post('/', async (req, res) => {
 
     return await processAgentFileUpload({ req, res, metadata });
   } catch (error) {
-    const message = resolveUploadErrorMessage(error);
+    const resolved = resolveUploadError(error, { fileName: req.file?.originalname });
     logger.error('[/files] Error processing file:', error);
 
     try {
@@ -487,7 +487,7 @@ router.post('/', async (req, res) => {
     } catch (error) {
       logger.error('[/files] Error deleting file:', error);
     }
-    res.status(500).json({ message });
+    res.status(500).json({ ...resolved, message: error?.message });
   } finally {
     if (cleanup) {
       try {

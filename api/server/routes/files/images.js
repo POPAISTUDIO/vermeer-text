@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const express = require('express');
 const { logger } = require('@librechat/data-schemas');
-const { verifyAgentUploadPermission, resolveUploadErrorMessage } = require('@librechat/api');
+const { verifyAgentUploadPermission, resolveUploadError } = require('@librechat/api');
 const { isAssistantsEndpoint } = require('librechat-data-provider');
 const {
   processAgentFileUpload,
@@ -43,7 +43,7 @@ router.post('/', async (req, res) => {
     // TODO: delete remote file if it exists
     logger.error('[/files/images] Error processing file:', error);
 
-    const message = resolveUploadErrorMessage(error);
+    const resolved = resolveUploadError(error, { fileName: req.file?.originalname });
 
     try {
       const filepath = path.join(
@@ -55,7 +55,7 @@ router.post('/', async (req, res) => {
     } catch (error) {
       logger.error('[/files/images] Error deleting file:', error);
     }
-    res.status(500).json({ message });
+    res.status(500).json({ ...resolved, message: error?.message });
   } finally {
     try {
       await fs.unlink(req.file.path);

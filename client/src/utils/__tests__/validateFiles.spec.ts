@@ -31,6 +31,12 @@ function makeExtendedFile(overrides: Partial<ExtendedFile> = {}): ExtendedFile {
   };
 }
 
+/* Echoes `key|arg0|arg1` so assertions cover BOTH the chosen key and the
+ * interpolated values, mirroring the real i18n keys shared with the backend
+ * upload path (#81). */
+const localize = ((key: string, opts?: Record<string, string>) =>
+  opts ? `${key}|${opts['0'] ?? ''}|${opts['1'] ?? ''}` : key) as never;
+
 describe('validateFiles', () => {
   let setError: jest.Mock;
   let files: Map<string, ExtendedFile>;
@@ -91,20 +97,43 @@ describe('validateFiles', () => {
     expect(result).toBe(true);
   });
 
-  it('rejects unsupported MIME type', () => {
+  it('rejects unsupported MIME type with the shared type key (filename + MIME)', () => {
     const fileList = [makeFile('data.xyz', 'application/x-unknown', 1024)];
-    const result = validateFiles({ files, fileList, setError, endpointFileConfig, fileConfig });
+    const result = validateFiles({
+      files,
+      fileList,
+      setError,
+      localize,
+      endpointFileConfig,
+      fileConfig,
+    });
     expect(result).toBe(false);
-    expect(setError).toHaveBeenCalledWith('Unsupported file type: application/x-unknown');
+    expect(setError).toHaveBeenCalledWith(
+      'com_error_files_unsupported_type|data.xyz|application/x-unknown',
+    );
   });
 
-  it('rejects when file size equals fileSizeLimit (>= comparison)', () => {
+  it('rejects oversize files with the shared too-large key (dynamic MB limit)', () => {
     const limit = 5 * megabyte;
     endpointFileConfig = makeEndpointConfig({ fileSizeLimit: limit });
     const fileList = [makeFile('exact.pdf', 'application/pdf', limit)];
+    const result = validateFiles({
+      files,
+      fileList,
+      setError,
+      localize,
+      endpointFileConfig,
+      fileConfig,
+    });
+    expect(result).toBe(false);
+    expect(setError).toHaveBeenCalledWith('com_error_files_upload_too_large|5|');
+  });
+
+  it('falls back to a bare key for size/type when no localize is provided', () => {
+    const fileList = [makeFile('data.xyz', 'application/x-unknown', 1024)];
     const result = validateFiles({ files, fileList, setError, endpointFileConfig, fileConfig });
     expect(result).toBe(false);
-    expect(setError).toHaveBeenCalledWith(`File size limit exceeded: ${limit / megabyte} MB`);
+    expect(setError).toHaveBeenCalledWith('com_error_files_unsupported_type');
   });
 
   it('allows file just under fileSizeLimit', () => {

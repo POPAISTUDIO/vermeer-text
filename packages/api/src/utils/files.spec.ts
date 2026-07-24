@@ -1,8 +1,10 @@
 import {
+  UploadError,
+  UploadErrorCode,
   sanitizeFilename,
+  resolveUploadError,
   sanitizeArtifactPath,
   flattenArtifactPath,
-  resolveUploadErrorMessage,
 } from './files';
 
 jest.mock('node:crypto', () => {
@@ -434,56 +436,76 @@ describe('flattenArtifactPath', () => {
   });
 });
 
-describe('resolveUploadErrorMessage', () => {
-  test('returns default message for null error', () => {
-    expect(resolveUploadErrorMessage(null)).toBe('Error processing file');
+describe('resolveUploadError', () => {
+  test('passes a tagged UploadError code + metadata straight through', () => {
+    const err = new UploadError(
+      'File size limit of 50 MB exceeded',
+      UploadErrorCode.FILE_SIZE_EXCEEDED,
+      {
+        fileName: 'big.pdf',
+        sizeLimitMB: 50,
+      },
+    );
+    expect(resolveUploadError(err)).toEqual({
+      code: UploadErrorCode.FILE_SIZE_EXCEEDED,
+      fileName: 'big.pdf',
+      sizeLimitMB: 50,
+      mimeType: undefined,
+    });
   });
 
-  test('returns default message for undefined error', () => {
-    expect(resolveUploadErrorMessage(undefined)).toBe('Error processing file');
+  test('passes unsupported-type metadata (mimeType + fileName)', () => {
+    const err = new UploadError('Unsupported file type', UploadErrorCode.UNSUPPORTED_FILE_TYPE, {
+      fileName: 'logo.png',
+      mimeType: 'image/png',
+    });
+    expect(resolveUploadError(err)).toEqual({
+      code: UploadErrorCode.UNSUPPORTED_FILE_TYPE,
+      fileName: 'logo.png',
+      sizeLimitMB: undefined,
+      mimeType: 'image/png',
+    });
   });
 
-  test('returns default message when error has no message property', () => {
-    expect(resolveUploadErrorMessage({})).toBe('Error processing file');
-  });
-
-  test('returns default message for unrecognized error', () => {
-    expect(resolveUploadErrorMessage({ message: 'ENOENT: no such file or directory' })).toBe(
-      'Error processing file',
+  test('surfaces indexing / capability / extraction codes', () => {
+    expect(
+      resolveUploadError(new UploadError('x', UploadErrorCode.INDEXING_UNAVAILABLE)).code,
+    ).toBe(UploadErrorCode.INDEXING_UNAVAILABLE);
+    expect(resolveUploadError(new UploadError('x', UploadErrorCode.CAPABILITY_DISABLED)).code).toBe(
+      UploadErrorCode.CAPABILITY_DISABLED,
+    );
+    expect(resolveUploadError(new UploadError('x', UploadErrorCode.EXTRACTION_FAILED)).code).toBe(
+      UploadErrorCode.EXTRACTION_FAILED,
     );
   });
 
-  test('prepends default message for file_ids errors', () => {
-    expect(resolveUploadErrorMessage({ message: 'max file_ids reached' })).toBe(
-      'Error processing file: max file_ids reached',
+  test('prefers the UploadError fileName over the fallback', () => {
+    const err = new UploadError('x', UploadErrorCode.EXTRACTION_FAILED, { fileName: 'doc.pdf' });
+    expect(resolveUploadError(err, { fileName: 'fallback.pdf' }).fileName).toBe('doc.pdf');
+  });
+
+  test('untagged error → GENERIC with the fallback fileName (no prose leaks)', () => {
+    expect(
+      resolveUploadError(new Error('ENOENT: no such file'), { fileName: 'notes.txt' }),
+    ).toEqual({
+      code: UploadErrorCode.GENERIC,
+      fileName: 'notes.txt',
+    });
+  });
+
+  test('null / undefined / plain object → GENERIC', () => {
+    expect(resolveUploadError(null).code).toBe(UploadErrorCode.GENERIC);
+    expect(resolveUploadError(undefined).code).toBe(UploadErrorCode.GENERIC);
+    expect(resolveUploadError({ message: 'max file_ids reached' }).code).toBe(
+      UploadErrorCode.GENERIC,
     );
   });
 
-  test('surfaces "Invalid file format" errors', () => {
-    expect(resolveUploadErrorMessage({ message: 'Invalid file format: .xyz' })).toBe(
-      'Invalid file format: .xyz',
-    );
-  });
-
-  test('surfaces "exceeds token limit" errors', () => {
-    expect(resolveUploadErrorMessage({ message: 'Content exceeds token limit' })).toBe(
-      'Content exceeds token limit',
-    );
-  });
-
-  test('surfaces "Unable to extract text from" errors', () => {
-    const msg = 'Unable to extract text from "doc.pdf". The document may be image-based.';
-    expect(resolveUploadErrorMessage({ message: msg })).toBe(msg);
-  });
-
-  test('accepts a custom default message', () => {
-    expect(resolveUploadErrorMessage(null, 'Custom default')).toBe('Custom default');
-  });
-
-  test('uses custom default in file_ids prepend', () => {
-    expect(resolveUploadErrorMessage({ message: 'file_ids limit' }, 'Upload failed')).toBe(
-      'Upload failed: file_ids limit',
-    );
+  test('GENERIC without a fallback carries no fileName', () => {
+    expect(resolveUploadError(new Error('boom'))).toEqual({
+      code: UploadErrorCode.GENERIC,
+      fileName: undefined,
+    });
   });
 });
 
