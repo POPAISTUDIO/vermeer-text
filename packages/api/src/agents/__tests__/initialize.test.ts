@@ -1230,4 +1230,183 @@ describe('initializeAgent — execute_code capability expansion', () => {
       ),
     ).rejects.toThrow(/google_tool_conflict/);
   });
+
+  /**
+   * Vermeer (#79): exclusivité automatique. When a Google/Vertex agent carries
+   * function tools AND native web search (googleSearch) is bound, the native web
+   * search is DROPPED (no throw) so the agent's explicit tools reach Gemini.
+   * The GOOGLE_TOOL_CONFLICT gate stays reachable for any residual non-web-search
+   * builtin (defense in depth).
+   */
+  const withFunctionTools = (loadTools: jest.Mock, fn: Record<string, unknown>) =>
+    loadTools.mockResolvedValue({
+      tools: [fn],
+      toolContextMap: {},
+      dynamicToolContextMap: {},
+      userMCPAuthMap: undefined,
+      toolRegistry: undefined,
+      toolDefinitions: [{ name: (fn as { name?: string }).name ?? 'fn' }],
+      hasDeferredTools: false,
+    });
+
+  const googleGetOptions = (tools: unknown[]) =>
+    jest.fn().mockResolvedValue({
+      llmConfig: { model: 'test-model', maxTokens: 4096 },
+      tools,
+    } satisfies InitializeResultBase);
+
+  it('drops native web search (googleSearch) instead of throwing when a Google agent carries function tools (#79)', async () => {
+    const { agent, req, res, loadTools, db } = createMocks({
+      provider: Providers.GOOGLE,
+      overrideProvider: Providers.GOOGLE,
+    });
+    agent.tools = ['file_search'];
+    const fileSearchTool = { name: 'file_search' };
+    withFunctionTools(loadTools, fileSearchTool);
+
+    mockGetProviderConfig.mockReturnValue({
+      getOptions: googleGetOptions([{ googleSearch: {} }]),
+      overrideProvider: Providers.GOOGLE,
+    });
+
+    const result = await initializeAgent(
+      {
+        req,
+        res,
+        agent,
+        loadTools,
+        endpointOption: { endpoint: EModelEndpoint.agents },
+        allowedProviders: new Set([Providers.GOOGLE]),
+        isInitialAgent: true,
+      },
+      db,
+    );
+
+    /* googleSearch dropped; only the agent's explicit function tools survive */
+    expect(result.tools).toEqual([fileSearchTool]);
+    expect(result.tools).not.toContainEqual({ googleSearch: {} });
+  });
+
+  it('applies the same exclusivity when web_search is explicitly enabled (agent tools still win)', async () => {
+    /* The drop keys off googleSearch present in options.tools, regardless of
+       whether web_search was defaulted or explicitly toggled by the user. */
+    const { agent, req, res, loadTools, db } = createMocks({
+      provider: Providers.GOOGLE,
+      overrideProvider: Providers.GOOGLE,
+    });
+    agent.tools = ['file_search'];
+    agent.model_parameters = {
+      model: 'test-model',
+      web_search: true,
+    } as unknown as Agent['model_parameters'];
+    const fileSearchTool = { name: 'file_search' };
+    withFunctionTools(loadTools, fileSearchTool);
+
+    mockGetProviderConfig.mockReturnValue({
+      getOptions: googleGetOptions([{ googleSearch: {} }]),
+      overrideProvider: Providers.GOOGLE,
+    });
+
+    const result = await initializeAgent(
+      {
+        req,
+        res,
+        agent,
+        loadTools,
+        endpointOption: { endpoint: EModelEndpoint.agents },
+        allowedProviders: new Set([Providers.GOOGLE]),
+        isInitialAgent: true,
+      },
+      db,
+    );
+
+    expect(result.tools).toEqual([fileSearchTool]);
+  });
+
+  it('retains native web search (googleSearch) when a Google agent has NO function tools', async () => {
+    const { agent, req, res, loadTools, db } = createMocks({
+      provider: Providers.GOOGLE,
+      overrideProvider: Providers.GOOGLE,
+    });
+    /* loadTools default returns empty tools/toolDefinitions -> hasAgentTools false */
+
+    mockGetProviderConfig.mockReturnValue({
+      getOptions: googleGetOptions([{ googleSearch: {} }]),
+      overrideProvider: Providers.GOOGLE,
+    });
+
+    const result = await initializeAgent(
+      {
+        req,
+        res,
+        agent,
+        loadTools,
+        endpointOption: { endpoint: EModelEndpoint.agents },
+        allowedProviders: new Set([Providers.GOOGLE]),
+        isInitialAgent: true,
+      },
+      db,
+    );
+
+    expect(result.tools).toEqual([{ googleSearch: {} }]);
+  });
+
+  it('still throws GOOGLE_TOOL_CONFLICT for a residual non-web-search Google builtin alongside function tools (defense in depth)', async () => {
+    const { agent, req, res, loadTools, db } = createMocks({
+      provider: Providers.VERTEXAI,
+      overrideProvider: Providers.VERTEXAI,
+    });
+    agent.tools = ['file_search'];
+    withFunctionTools(loadTools, { name: 'file_search' });
+
+    mockGetProviderConfig.mockReturnValue({
+      /* codeExecution is NOT a native web-search builtin -> not dropped */
+      getOptions: googleGetOptions([{ codeExecution: {} }]),
+      overrideProvider: Providers.VERTEXAI,
+    });
+
+    await expect(
+      initializeAgent(
+        {
+          req,
+          res,
+          agent,
+          loadTools,
+          endpointOption: { endpoint: EModelEndpoint.agents },
+          allowedProviders: new Set([Providers.VERTEXAI]),
+          isInitialAgent: true,
+        },
+        db,
+      ),
+    ).rejects.toThrow(/google_tool_conflict/);
+  });
+
+  it('drops googleSearch yet still throws if another non-web-search builtin remains alongside function tools', async () => {
+    const { agent, req, res, loadTools, db } = createMocks({
+      provider: Providers.GOOGLE,
+      overrideProvider: Providers.GOOGLE,
+    });
+    agent.tools = ['file_search'];
+    withFunctionTools(loadTools, { name: 'file_search' });
+
+    mockGetProviderConfig.mockReturnValue({
+      getOptions: googleGetOptions([{ googleSearch: {} }, { codeExecution: {} }]),
+      overrideProvider: Providers.GOOGLE,
+    });
+
+    await expect(
+      initializeAgent(
+        {
+          req,
+          res,
+          agent,
+          loadTools,
+          endpointOption: { endpoint: EModelEndpoint.agents },
+          allowedProviders: new Set([Providers.GOOGLE]),
+          isInitialAgent: true,
+        },
+        db,
+      ),
+    ).rejects.toThrow(/google_tool_conflict/);
+  });
 });

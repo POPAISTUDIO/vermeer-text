@@ -1,4 +1,4 @@
-import { shouldDefaultAgentWebSearch } from './initialize';
+import { shouldDefaultAgentWebSearch, isGoogleNativeWebSearchTool } from './initialize';
 
 /**
  * Vermeer: agent-path mirror of the native web_search default.
@@ -32,5 +32,33 @@ describe('shouldDefaultAgentWebSearch (Vermeer agent web_search default)', () =>
     expect(shouldDefaultAgentWebSearch(undefined, undefined)).toBe(false);
     expect(shouldDefaultAgentWebSearch(undefined, null)).toBe(false);
     expect(shouldDefaultAgentWebSearch(undefined, '')).toBe(false);
+  });
+});
+
+/**
+ * Vermeer (#79): discriminator for the Google/Vertex exclusivity resolution.
+ * Only native web-search builtins (`googleSearch` / legacy `googleSearchRetrieval`)
+ * are dropped when an agent carries function tools; any other builtin stays and
+ * still trips the GOOGLE_TOOL_CONFLICT gate in defense-in-depth.
+ */
+describe('isGoogleNativeWebSearchTool (Vermeer #79 exclusivity discriminator)', () => {
+  it('matches Google native web-search builtins', () => {
+    expect(isGoogleNativeWebSearchTool({ googleSearch: {} })).toBe(true);
+    expect(isGoogleNativeWebSearchTool({ googleSearchRetrieval: {} })).toBe(true);
+  });
+
+  it('does not match other Google builtins or function tools', () => {
+    expect(isGoogleNativeWebSearchTool({ codeExecution: {} })).toBe(false);
+    expect(isGoogleNativeWebSearchTool({ urlContext: {} })).toBe(false);
+    expect(isGoogleNativeWebSearchTool({ name: 'file_search' })).toBe(false);
+    /* snake_case is NOT what getGoogleConfig emits (it injects { googleSearch: {} }) */
+    expect(isGoogleNativeWebSearchTool({ google_search: {} })).toBe(false);
+  });
+
+  it('handles non-object inputs safely', () => {
+    expect(isGoogleNativeWebSearchTool(null)).toBe(false);
+    expect(isGoogleNativeWebSearchTool(undefined)).toBe(false);
+    expect(isGoogleNativeWebSearchTool('googleSearch')).toBe(false);
+    expect(isGoogleNativeWebSearchTool([])).toBe(false);
   });
 });
