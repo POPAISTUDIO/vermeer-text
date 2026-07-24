@@ -5,6 +5,7 @@ import { useForm, Controller, FormProvider } from 'react-hook-form';
 import { Input, Button, Skeleton, TextareaAutosize, useToastContext } from '@librechat/client';
 import {
   InvocationMode,
+  SKILL_BODY_MAX_LENGTH,
   SKILL_DESCRIPTION_MAX_LENGTH,
   SKILL_DISPLAY_TITLE_MAX_LENGTH,
 } from 'librechat-data-provider';
@@ -12,6 +13,7 @@ import type { TSkill, TSkillWarning, TUpdateSkillPayload } from 'librechat-data-
 import { useGetSkillQuery, useUpdateSkillMutation } from '~/data-provider';
 import { useLocalize, useSkillPermissions } from '~/hooks';
 import SkillContentEditor from './SkillContentEditor';
+import CharacterCounter from './CharacterCounter';
 import InvocationModePicker from './InvocationModePicker';
 import CategorySelector from './CategorySelector';
 import DeleteSkill from '../dialogs/DeleteSkill';
@@ -76,8 +78,12 @@ export default function SkillForm({ skillId }: SkillFormProps) {
     control,
     handleSubmit,
     reset,
+    watch,
     formState: { isDirty, isValid, isSubmitting, errors },
   } = methods;
+
+  const descriptionLength = (watch('description') ?? '').length;
+  const bodyLength = (watch('body') ?? '').length;
 
   useEffect(() => {
     setWarnings(null);
@@ -277,13 +283,16 @@ export default function SkillForm({ skillId }: SkillFormProps) {
             }}
             render={({ field }) => (
               <div className="flex flex-col">
-                <label
-                  htmlFor="skill-description"
-                  className="mb-1 text-sm font-medium text-text-secondary"
-                >
-                  {localize('com_ui_description')}
-                  <span className="ml-0.5 text-red-500">*</span>
-                </label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label
+                    htmlFor="skill-description"
+                    className="text-sm font-medium text-text-secondary"
+                  >
+                    {localize('com_ui_description')}
+                    <span className="ml-0.5 text-red-500">*</span>
+                  </label>
+                  <CharacterCounter count={descriptionLength} max={SKILL_DESCRIPTION_MAX_LENGTH} />
+                </div>
                 <TextareaAutosize
                   {...field}
                   id="skill-description"
@@ -312,15 +321,26 @@ export default function SkillForm({ skillId }: SkillFormProps) {
           />
 
           <div className="flex flex-col">
-            <span className="mb-1 text-sm font-medium text-text-secondary">
-              {localize('com_ui_skill_instructions')}
-              <span className="ml-0.5 text-red-500">*</span>
-            </span>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-sm font-medium text-text-secondary">
+                {localize('com_ui_skill_instructions')}
+                <span className="ml-0.5 text-red-500">*</span>
+              </span>
+              <CharacterCounter count={bodyLength} max={SKILL_BODY_MAX_LENGTH} />
+            </div>
             <SkillContentEditor
               name="body"
               isEditing={isEditingContent}
               setIsEditing={setIsEditingContent}
-              rules={{ required: localize('com_ui_skill_instructions_required') }}
+              rules={{
+                required: localize('com_ui_skill_instructions_required'),
+                maxLength: {
+                  value: SKILL_BODY_MAX_LENGTH,
+                  message: localize('com_ui_skill_instructions_too_long', {
+                    0: String(SKILL_BODY_MAX_LENGTH),
+                  }),
+                },
+              }}
             />
           </div>
 
