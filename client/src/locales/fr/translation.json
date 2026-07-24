@@ -82,6 +82,7 @@
   "com_agents_file_context_disabled": "L'assistant doit être créé avant de charger des fichiers pour le contexte de fichiers.",
   "com_agents_file_context_label": "Contexte de fichiers",
   "com_agents_file_search_disabled": "L'assistant doit être créé avant de pouvoir télécharger des fichiers pour la Recherche de Fichiers.",
+  "com_agents_file_search_drop_active": "Relâchez pour ajouter vos fichiers",
   "com_agents_file_search_info": "Lorsque cette option est activée, l'assistant sera informé des noms exacts des fichiers listés ci-dessous, lui permettant d'extraire le contexte pertinent de ces fichiers.",
   "com_agents_grid_announcement": "{{count}} assistants affichés dans la catégorie {{category}}",
   "com_agents_instructions_placeholder": "Les instructions système que l'assistant utilise",
