@@ -536,6 +536,7 @@
   "com_nav_export": "Exporter",
   "com_nav_export_all_message_branches": "Exporter toutes les branches de messages",
   "com_nav_export_conversation": "Exporter la conversation",
+  "com_nav_export_error": "L'export a échoué. Veuillez réessayer.",
   "com_nav_export_filename": "Nom du fichier",
   "com_nav_export_filename_placeholder": "Définir le nom du fichier",
   "com_nav_export_include_endpoint_options": "Inclure les options d'extrémité",

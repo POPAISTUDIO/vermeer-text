@@ -566,6 +566,7 @@
   "com_nav_export": "Export",
   "com_nav_export_all_message_branches": "Export all message branches",
   "com_nav_export_conversation": "Export conversation",
+  "com_nav_export_error": "The export failed. Please try again.",
   "com_nav_export_filename": "Filename",
   "com_nav_export_filename_placeholder": "Set the filename",
   "com_nav_export_include_endpoint_options": "Include endpoint options",
