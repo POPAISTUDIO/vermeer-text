@@ -9,9 +9,15 @@ import { cn } from '~/utils';
 interface UploadSkillDialogProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
+  /** Réf. #103 : modale non bloquante pour permettre la sélection en 1 clic dans la liste. */
+  nonModal?: boolean;
 }
 
-export default function UploadSkillDialog({ isOpen, setIsOpen }: UploadSkillDialogProps) {
+export default function UploadSkillDialog({
+  isOpen,
+  setIsOpen,
+  nonModal = false,
+}: UploadSkillDialogProps) {
   const localize = useLocalize();
   const navigate = useNavigate();
   const { showToast } = useToastContext();
@@ -69,7 +75,7 @@ export default function UploadSkillDialog({ isOpen, setIsOpen }: UploadSkillDial
   );
 
   return (
-    <OGDialog open={isOpen} onOpenChange={setIsOpen}>
+    <OGDialog open={isOpen} onOpenChange={setIsOpen} modal={nonModal ? false : undefined}>
       <OGDialogContent className="w-11/12 max-w-lg overflow-hidden">
         <div className="flex flex-col gap-6 p-1 sm:p-2">
           <h2 className="text-lg font-bold text-text-primary">

@@ -14,6 +14,8 @@ interface SkillListItemProps {
   isExpanded: boolean;
   activeFile: string | null;
   onToggleExpand: (skillId: string) => void;
+  /** Ferme les dialogues de création/import ouverts (Réf. #103) pour la sélection en 1 clic. */
+  onSkillSelect?: () => void;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -260,6 +262,7 @@ function SkillListItem({
   isExpanded,
   activeFile,
   onToggleExpand,
+  onSkillSelect,
 }: SkillListItemProps) {
   const navigate = useNavigate();
   const localize = useLocalize();
@@ -274,11 +277,12 @@ function SkillListItem({
   const expanded = hasFiles && isExpanded;
 
   const handleSkillClick = useCallback(() => {
+    onSkillSelect?.();
     navigate(`/skills/${skill._id}`);
     if (hasFiles && !isExpanded) {
       onToggleExpand(skill._id);
     }
-  }, [navigate, skill._id, hasFiles, isExpanded, onToggleExpand]);
+  }, [navigate, skill._id, hasFiles, isExpanded, onToggleExpand, onSkillSelect]);
 
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
