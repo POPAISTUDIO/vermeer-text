@@ -86,6 +86,26 @@ export const shouldDefaultAgentWebSearch = (
   provider?: string | null,
 ): boolean => currentValue === undefined && isNativeWebSearchEndpoint(provider);
 
+/**
+ * Vermeer: builtin keys that identify Google/Vertex NATIVE web search tools
+ * (`{ googleSearch: {} }` — the only one `getGoogleConfig` currently injects —
+ * plus the legacy `googleSearchRetrieval` shape, matched for forward-safety).
+ * These are the tools dropped by the exclusivity resolution below (#79) so an
+ * agent's explicit function tools can be sent to Gemini without tripping the
+ * "builtin + functionDeclarations" 400.
+ */
+const GOOGLE_NATIVE_WEB_SEARCH_KEYS = ['googleSearch', 'googleSearchRetrieval'] as const;
+
+/**
+ * Vermeer: true when a bound Google tool is a native web-search builtin.
+ * Google builtins are plain objects keyed by their builtin name (not LC tool
+ * instances), so a key-presence check is the reliable discriminator.
+ */
+export const isGoogleNativeWebSearchTool = (tool: unknown): boolean =>
+  typeof tool === 'object' &&
+  tool !== null &&
+  GOOGLE_NATIVE_WEB_SEARCH_KEYS.some((key) => key in tool);
+
 const temporalSpecialVarRegex = /{{\s*(current_date|current_datetime|iso_datetime)\s*}}/i;
 
 function hasTemporalSpecialVars(text: string): boolean {
@@ -856,17 +876,40 @@ export async function initializeAgent(
   /** Check for tool presence from either full instances or definitions (event-driven mode) */
   const hasAgentTools = (structuredTools?.length ?? 0) > 0 || (toolDefinitions?.length ?? 0) > 0;
 
-  let tools: GenericTool[] = options.tools?.length
-    ? (options.tools as GenericTool[])
-    : (structuredTools ?? []);
-
+  /**
+   * Vermeer (#79): exclusivité automatique côté Google/Vertex. L'API Gemini
+   * rejette la combinaison d'un outil builtin (googleSearch) et de
+   * functionDeclarations dans la même requête. Quand l'agent porte des function
+   * tools ET que le web search natif est bindé (défaut ON depuis
+   * `shouldDefaultAgentWebSearch`), on RETIRE le web search natif : les tools
+   * explicites de l'agent priment. Remplace le hard-throw historique — la
+   * conversation ne casse plus, au prix du web search natif sur ce tour.
+   * Le gate GOOGLE_TOOL_CONFLICT reste atteignable en défense en profondeur
+   * ci-dessous pour tout builtin google résiduel non-web-search.
+   */
   if (
     (agent.provider === Providers.GOOGLE || agent.provider === Providers.VERTEXAI) &&
     options.tools?.length &&
     hasAgentTools
   ) {
-    throw new Error(`{ "type": "${ErrorTypes.GOOGLE_TOOL_CONFLICT}"}`);
-  } else if (
+    const googleTools = options.tools as GenericTool[];
+    const remaining = googleTools.filter((tool) => !isGoogleNativeWebSearchTool(tool));
+    if (remaining.length !== googleTools.length) {
+      options.tools = remaining.length ? remaining : undefined;
+      logger.warn(
+        `[initializeAgent] Google tool conflict resolved: native web search (googleSearch) dropped because agent "${agent.id}" carries function tools; explicit agent tools take precedence and native web search is disabled for this request. provider=${agent.provider} conversationId=${conversationId ?? 'n/a'} userId=${req.user?.id ?? 'n/a'}`,
+      );
+    }
+    if (options.tools?.length) {
+      throw new Error(`{ "type": "${ErrorTypes.GOOGLE_TOOL_CONFLICT}"}`);
+    }
+  }
+
+  let tools: GenericTool[] = options.tools?.length
+    ? (options.tools as GenericTool[])
+    : (structuredTools ?? []);
+
+  if (
     (agent.provider === Providers.OPENAI ||
       agent.provider === Providers.AZURE ||
       agent.provider === Providers.ANTHROPIC) &&
