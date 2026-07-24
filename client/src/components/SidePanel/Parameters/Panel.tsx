@@ -26,14 +26,28 @@ import MemorySwitch from './MemorySwitch';
 import { logger } from '~/utils';
 
 // V1 UX POP/BETC : refonte light du panel Paramètres modèle :
-// - params essentiels visibles (Créativité, Recherche web) + toggle Mémoire automatique
+// - params essentiels visibles (Créativité, Réflexion approfondie, Recherche web)
+//   + toggle Mémoire automatique
 // - Reste des params LLM techniques en accordéon "Réglages avancés" replié
 // - Tooltips pédagogiques FR hardcodés (atelier specs post-congé pour
 //   i18n EN propre + composant Créativité 3-presets).
 // - Instructions/Nom personnalisés retirés : inopérants sur Claude (absents des
 //   définitions Anthropic → purgés) et intention couverte par la mémoire auto.
 // Pattern aligné sur builder Agent ModelPanel.tsx.
-const ESSENTIAL_PARAM_KEYS = ['temperature', 'web_search'];
+// `thinking` (Réflexion approfondie) est essentiel — parité avec le builder
+// (AgentConfig.tsx) — pour rester accessible en chat modèle direct une fois
+// l'accordéon avancé masqué (cf. SHOW_ADVANCED_SETTINGS). Son budget détaillé
+// (thinkingBudget) reste, lui, dans l'accordéon masqué.
+const ESSENTIAL_PARAM_KEYS = ['temperature', 'thinking', 'web_search'];
+
+// Vermeer: masquage de l'accordéon « Réglages avancés » du panneau Paramètres de
+// conversation (#100) — miroir exact du builder (AgentConfig.tsx, wagon B
+// v0.10.21, commit 175bb7a27). Simplification profil métier : on n'expose que les
+// params essentiels (Créativité, Réflexion approfondie, Recherche web) + la
+// Mémoire automatique. Masquage UI seul : les valeurs déjà réglées (y compris via
+// un préréglage) restent dans model_parameters / le preset et s'appliquent au
+// runtime. Réversible en passant a `true`.
+const SHOW_ADVANCED_SETTINGS = false;
 
 interface ParamOverride {
   label?: string;
@@ -303,7 +317,7 @@ export default function Parameters() {
       )}
 
       {/* Accordéon "Réglages avancés" replié par défaut : tous les autres params LLM */}
-      {advancedParams.length > 0 && (
+      {SHOW_ADVANCED_SETTINGS && advancedParams.length > 0 && (
         <Accordion type="single" collapsible className="mt-4 w-full">
           <AccordionItem value="advanced-settings" className="border-b-0">
             <AccordionTrigger className="text-sm font-medium text-text-primary hover:no-underline">
