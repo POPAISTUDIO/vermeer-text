@@ -13,6 +13,7 @@ import FileRow from '~/components/Chat/Input/Files/FileRow';
 import { useGetStartupConfig } from '~/data-provider';
 import FileSearchCheckbox from './FileSearchCheckbox';
 import { isEphemeralAgent } from '~/common';
+import { cn } from '~/utils';
 
 function FileSearch({
   agent_id,
@@ -22,19 +23,21 @@ function FileSearch({
   files?: [string, ExtendedFile][];
 }) {
   const localize = useLocalize();
-  const { watch } = useFormContext<AgentForm>();
+  const { watch, setValue } = useFormContext<AgentForm>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<Map<string, ExtendedFile>>(new Map());
   const fileHandlingState = useMemo(() => ({ files, setFiles, conversation: null }), [files]);
   const [isPopoverActive, setIsPopoverActive] = useState(false);
   const [isSharePointDialogOpen, setIsSharePointDialogOpen] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
 
   // Get startup configuration for SharePoint feature flag
   const { data: startupConfig } = useGetStartupConfig();
   const { endpointFileConfig, providerValue, endpointType } = useAgentFileConfig();
   const endpointOverride = providerValue || EModelEndpoint.agents;
 
-  const { handleFileChange } = useFileHandlingNoChatContext(
+  const { handleFileChange, handleFiles } = useFileHandlingNoChatContext(
     {
       additionalMetadata: { agent_id, tool_resource: EToolResources.file_search },
       endpointOverride,
@@ -69,10 +72,21 @@ function FileSearch({
   const isUploadDisabled = endpointFileConfig?.disabled ?? false;
 
   const sharePointEnabled = startupConfig?.sharePointFilePickerEnabled;
-  const disabledUploadButton = isEphemeralAgent(agent_id) || fileSearchChecked === false;
+  // The dropzone stays interactive when file_search is unchecked: dropping/clicking
+  // a file auto-activates the capability (see enableFileSearchIfNeeded). It is only
+  // disabled for ephemeral agents, which cannot own persisted file_search resources.
+  const disabledUploadButton = isEphemeralAgent(agent_id);
+
+  /** Any deliberate file hand-off (drop or click) counts as intent to enable file search. */
+  const enableFileSearchIfNeeded = () => {
+    if (fileSearchChecked === false) {
+      setValue(AgentCapabilities.file_search, true, { shouldDirty: true });
+    }
+  };
 
   const handleSharePointFilesSelected = async (sharePointFiles: any[]) => {
     try {
+      enableFileSearchIfNeeded();
       await handleSharePointFiles(sharePointFiles);
       setIsSharePointDialogOpen(false);
     } catch (error) {
@@ -84,6 +98,7 @@ function FileSearch({
   }
 
   const handleButtonClick = () => {
+    enableFileSearchIfNeeded();
     // necessary to reset the input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -92,10 +107,60 @@ function FileSearch({
   };
 
   const handleLocalFileClick = () => {
+    enableFileSearchIfNeeded();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
     fileInputRef.current?.click();
+  };
+
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    if (disabledUploadButton) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current += 1;
+    setIsDragActive(true);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (disabledUploadButton) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (disabledUploadButton) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current -= 1;
+    if (dragDepthRef.current <= 0) {
+      dragDepthRef.current = 0;
+      setIsDragActive(false);
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDragActive(false);
+    if (disabledUploadButton) {
+      return;
+    }
+    const droppedFiles = event.dataTransfer?.files;
+    if (!droppedFiles || droppedFiles.length === 0) {
+      return;
+    }
+    enableFileSearchIfNeeded();
+    // Same pipeline as the click path (input onChange -> handleFileChange -> handleFiles):
+    // no tool_resource arg is passed; it is set on the upload via additionalMetadata.
+    handleFiles(droppedFiles);
   };
 
   const dropdownItems = [
@@ -111,13 +176,19 @@ function FileSearch({
     },
   ];
 
-  const dropzoneClassName =
-    'flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border-light px-4 py-6 text-text-secondary transition-colors hover:border-border-heavy hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50';
+  const dropzoneClassName = cn(
+    'flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border-light px-4 py-6 text-text-secondary transition-colors hover:border-border-heavy hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50',
+    isDragActive && 'border-border-heavy bg-surface-hover text-text-primary',
+  );
+
+  const dropzoneLabel = localize(
+    isDragActive ? 'com_agents_file_search_drop_active' : 'com_ui_drop_files_here',
+  );
 
   const menuTrigger = (
     <Ariakit.MenuButton disabled={disabledUploadButton} className={dropzoneClassName}>
       <Upload className="h-6 w-6" aria-hidden="true" />
-      <span className="text-sm font-medium">{localize('com_ui_drop_files_here')}</span>
+      <span className="text-sm font-medium">{dropzoneLabel}</span>
     </Ariakit.MenuButton>
   );
 
@@ -133,7 +204,12 @@ function FileSearch({
           tool_resource={EToolResources.file_search}
           Wrapper={({ children }) => <div className="flex flex-wrap gap-2">{children}</div>}
         />
-        <div>
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+        >
           {sharePointEnabled ? (
             <DropdownPopup
               gutter={2}
@@ -153,7 +229,7 @@ function FileSearch({
               onClick={handleButtonClick}
             >
               <Upload className="h-6 w-6" aria-hidden="true" />
-              <span className="text-sm font-medium">{localize('com_ui_drop_files_here')}</span>
+              <span className="text-sm font-medium">{dropzoneLabel}</span>
             </button>
           )}
           <input
