@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form';
+import { useForm, FormProvider } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -19,6 +19,7 @@ import {
   isSkillNameConflict,
   SLUG_COLLISION_MAX_ATTEMPTS,
 } from '../utils';
+import { CategorySelector } from '../forms';
 import { cn } from '~/utils';
 
 interface CreateSkillDialogProps {
@@ -33,11 +34,14 @@ interface FormValues {
   displayTitle: string;
   description: string;
   body: string;
+  category: string;
 }
 
 /**
  * Minimal create-skill dialog matching Claude.ai's "Write skill instructions"
- * modal: name, description, instructions. No category, no invocation mode.
+ * modal: name, description, instructions, and an optional category (chosen from
+ * the shared taxonomy via `CategorySelector`, mirroring the edit surface). No
+ * invocation mode.
  *
  * The user types a free-form name (`displayTitle`); the machine-readable
  * kebab-case `name` identifier the model sees is derived silently via
@@ -54,19 +58,21 @@ export default function CreateSkillDialog({
   const navigate = useNavigate();
   const { showToast } = useToastContext();
 
+  const methods = useForm<FormValues>({
+    defaultValues: {
+      displayTitle: defaultName,
+      description: defaultDescription,
+      body: defaultBody,
+      category: '',
+    },
+    mode: 'onChange',
+  });
   const {
     register,
     handleSubmit,
     reset,
     formState: { isValid, isSubmitting, errors },
-  } = useForm<FormValues>({
-    defaultValues: {
-      displayTitle: defaultName,
-      description: defaultDescription,
-      body: defaultBody,
-    },
-    mode: 'onChange',
-  });
+  } = methods;
 
   const createSkill = useCreateSkillMutation({
     onSuccess: (skill) => {
@@ -98,7 +104,13 @@ export default function CreateSkillDialog({
     for (let attempt = 1; attempt <= SLUG_COLLISION_MAX_ATTEMPTS; attempt++) {
       const name = attempt === 1 ? baseSlug : withSlugSuffix(baseSlug, attempt);
       try {
-        await createSkill.mutateAsync({ name, displayTitle, description, body: data.body });
+        await createSkill.mutateAsync({
+          name,
+          displayTitle,
+          description,
+          body: data.body,
+          category: data.category || undefined,
+        });
         return;
       } catch (error) {
         if (isSkillNameConflict(error)) {
@@ -120,105 +132,118 @@ export default function CreateSkillDialog({
   return (
     <OGDialog open={isOpen} onOpenChange={setIsOpen}>
       <OGDialogContent className="w-11/12 max-w-5xl overflow-hidden">
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="flex max-h-[80vh] min-w-0 flex-col gap-3 overflow-hidden p-1 sm:gap-4 sm:p-2"
-        >
-          <h2 className="text-lg font-bold text-text-primary">
-            {localize('com_ui_create_skill')}
-          </h2>
+        <FormProvider {...methods}>
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex max-h-[80vh] min-w-0 flex-col gap-3 overflow-hidden p-1 sm:gap-4 sm:p-2"
+          >
+            <h2 className="text-lg font-bold text-text-primary">
+              {localize('com_ui_create_skill')}
+            </h2>
 
-          {/* Skill name (free-form; slug derived automatically) */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="create-skill-name" className="text-sm font-medium text-text-secondary">
-              {localize('com_ui_name')} <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="create-skill-name"
-              placeholder={localize('com_ui_skill_name_placeholder')}
-              aria-invalid={errors.displayTitle ? 'true' : 'false'}
-              autoComplete="off"
-              className="flex h-10 w-full rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-              {...register('displayTitle', {
-                required: localize('com_ui_skill_name_required'),
-                maxLength: {
-                  value: SKILL_DISPLAY_TITLE_MAX_LENGTH,
-                  message: localize('com_ui_skill_name_too_long', {
-                    0: String(SKILL_DISPLAY_TITLE_MAX_LENGTH),
-                  }),
-                },
-              })}
-            />
-            {errors.displayTitle && (
-              <p className="text-xs text-red-500">{errors.displayTitle.message}</p>
-            )}
-          </div>
+            {/* Skill name (free-form; slug derived automatically) */}
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="create-skill-name"
+                className="text-sm font-medium text-text-secondary"
+              >
+                {localize('com_ui_name')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="create-skill-name"
+                placeholder={localize('com_ui_skill_name_placeholder')}
+                aria-invalid={errors.displayTitle ? 'true' : 'false'}
+                autoComplete="off"
+                className="flex h-10 w-full rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                {...register('displayTitle', {
+                  required: localize('com_ui_skill_name_required'),
+                  maxLength: {
+                    value: SKILL_DISPLAY_TITLE_MAX_LENGTH,
+                    message: localize('com_ui_skill_name_too_long', {
+                      0: String(SKILL_DISPLAY_TITLE_MAX_LENGTH),
+                    }),
+                  },
+                })}
+              />
+              {errors.displayTitle && (
+                <p className="text-xs text-red-500">{errors.displayTitle.message}</p>
+              )}
+            </div>
 
-          {/* Description */}
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor="create-skill-description"
-              className="text-sm font-medium text-text-secondary"
-            >
-              {localize('com_ui_description')} <span className="text-red-500">*</span>
-            </label>
-            <TextareaAutosize
-              id="create-skill-description"
-              minRows={2}
-              maxRows={4}
-              placeholder={localize('com_ui_skill_description_placeholder')}
-              aria-label={localize('com_ui_description')}
-              aria-invalid={errors.description ? 'true' : 'false'}
-              className="w-full resize-none rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
-              {...register('description', {
-                required: localize('com_ui_skill_description_required'),
-                maxLength: {
-                  value: SKILL_DESCRIPTION_MAX_LENGTH,
-                  message: localize('com_ui_skill_description_too_long', {
-                    0: String(SKILL_DESCRIPTION_MAX_LENGTH),
-                  }),
-                },
-              })}
-            />
-            {errors.description && (
-              <p className="text-xs text-red-500">{errors.description.message}</p>
-            )}
-          </div>
+            {/* Category (optional; self-describing selector, mirrors the edit surface) */}
+            <div className="flex flex-col gap-1.5">
+              <CategorySelector portal={false} />
+            </div>
 
-          {/* Instructions (body) */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="create-skill-body" className="text-sm font-medium text-text-secondary">
-              {localize('com_ui_skill_instructions')} <span className="text-red-500">*</span>
-            </label>
-            <TextareaAutosize
-              id="create-skill-body"
-              minRows={6}
-              maxRows={12}
-              placeholder={localize('com_ui_skill_instructions_placeholder')}
-              aria-label={localize('com_ui_skill_instructions')}
-              aria-invalid={errors.body ? 'true' : 'false'}
-              className="w-full resize-none rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
-              {...register('body', {
-                required: localize('com_ui_skill_instructions_required'),
-              })}
-            />
-            {errors.body && <p className="text-xs text-red-500">{errors.body.message}</p>}
-          </div>
+            {/* Description */}
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="create-skill-description"
+                className="text-sm font-medium text-text-secondary"
+              >
+                {localize('com_ui_description')} <span className="text-red-500">*</span>
+              </label>
+              <TextareaAutosize
+                id="create-skill-description"
+                minRows={2}
+                maxRows={4}
+                placeholder={localize('com_ui_skill_description_placeholder')}
+                aria-label={localize('com_ui_description')}
+                aria-invalid={errors.description ? 'true' : 'false'}
+                className="w-full resize-none rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
+                {...register('description', {
+                  required: localize('com_ui_skill_description_required'),
+                  maxLength: {
+                    value: SKILL_DESCRIPTION_MAX_LENGTH,
+                    message: localize('com_ui_skill_description_too_long', {
+                      0: String(SKILL_DESCRIPTION_MAX_LENGTH),
+                    }),
+                  },
+                })}
+              />
+              {errors.description && (
+                <p className="text-xs text-red-500">{errors.description.message}</p>
+              )}
+            </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={handleClose}>
-              {localize('com_ui_cancel')}
-            </Button>
-            <Button
-              type="submit"
-              disabled={submitDisabled}
-              className={cn(submitDisabled && 'opacity-50')}
-            >
-              {localize('com_ui_create')}
-            </Button>
-          </div>
-        </form>
+            {/* Instructions (body) */}
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="create-skill-body"
+                className="text-sm font-medium text-text-secondary"
+              >
+                {localize('com_ui_skill_instructions')} <span className="text-red-500">*</span>
+              </label>
+              <TextareaAutosize
+                id="create-skill-body"
+                minRows={6}
+                maxRows={12}
+                placeholder={localize('com_ui_skill_instructions_placeholder')}
+                aria-label={localize('com_ui_skill_instructions')}
+                aria-invalid={errors.body ? 'true' : 'false'}
+                className="w-full resize-none rounded-xl border border-border-medium bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
+                {...register('body', {
+                  required: localize('com_ui_skill_instructions_required'),
+                })}
+              />
+              {errors.body && <p className="text-xs text-red-500">{errors.body.message}</p>}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={handleClose}>
+                {localize('com_ui_cancel')}
+              </Button>
+              <Button
+                type="submit"
+                disabled={submitDisabled}
+                className={cn(submitDisabled && 'opacity-50')}
+              >
+                {localize('com_ui_create')}
+              </Button>
+            </div>
+          </form>
+        </FormProvider>
       </OGDialogContent>
     </OGDialog>
   );

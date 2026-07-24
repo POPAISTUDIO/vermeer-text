@@ -9,9 +9,17 @@ import { cn } from '~/utils';
 
 interface CategorySelectorProps {
   className?: string;
+  /**
+   * Whether the dropdown menu is rendered in a portal (to `body`). Defaults to
+   * `true` for the full-page edit surface. Set `false` when hosted inside a
+   * modal `OGDialog`: a portalled menu lands on `body` at `z-40` and renders
+   * BEHIND the dialog content (`z-140`) and outside its focus tree; rendering
+   * inline keeps it within the dialog's stacking context (cf. AdminSettingsDialog).
+   */
+  portal?: boolean;
 }
 
-const CategorySelector: React.FC<CategorySelectorProps> = ({ className = '' }) => {
+const CategorySelector: React.FC<CategorySelectorProps> = ({ className = '', portal = true }) => {
   const localize = useLocalize();
   const { control, watch, setValue } = useFormContext();
   const [isOpen, setIsOpen] = useState(false);
@@ -71,7 +79,7 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({ className = '' }) =
           setIsOpen={setIsOpen}
           menuId="skill-category-selector-menu"
           className="mt-2"
-          portal={true}
+          portal={portal}
         />
       )}
     />
