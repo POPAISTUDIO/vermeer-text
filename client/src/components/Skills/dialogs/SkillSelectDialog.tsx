@@ -184,6 +184,46 @@ function SkillCard({
   );
 }
 
+/**
+ * Empty state for the skill picker. When the user owns no skills at all
+ * (`allEmpty`), guides them to the Skills section — opened in a new tab so the
+ * builder modal isn't torn down (in-app navigation would unmount it, which is
+ * why in-picker creation stays gated). Otherwise it's just a no-results state.
+ */
+function SkillPickerEmptyState({
+  allEmpty,
+  localize,
+}: {
+  allEmpty: boolean;
+  localize: ReturnType<typeof useLocalize>;
+}) {
+  if (!allEmpty) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Search className="size-8 text-text-tertiary opacity-40" aria-hidden="true" />
+        <p className="mt-3 text-sm text-text-secondary">{localize('com_ui_no_skills_found')}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <Search className="size-8 text-text-tertiary opacity-40" aria-hidden="true" />
+      <p className="mt-3 max-w-xs text-sm text-text-secondary">
+        {localize('com_ui_skills_none_yet_hint')}
+      </p>
+      <a
+        href="/skills"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border-light bg-transparent px-3 py-1.5 text-sm text-text-primary transition-colors hover:border-border-medium hover:bg-surface-hover"
+      >
+        <Plus className="size-4 shrink-0" aria-hidden="true" />
+        <span>{localize('com_ui_skills_open_section')}</span>
+      </a>
+    </div>
+  );
+}
+
 function SkillSelectDialog({ isOpen, setIsOpen }: SkillSelectDialogProps) {
   const localize = useLocalize();
   const navigate = useNavigate();
@@ -366,12 +406,7 @@ function SkillSelectDialog({ isOpen, setIsOpen }: SkillSelectDialogProps) {
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <Search className="size-8 text-text-tertiary opacity-40" aria-hidden="true" />
-                  <p className="mt-3 text-sm text-text-secondary">
-                    {localize('com_ui_no_skills_found')}
-                  </p>
-                </div>
+                <SkillPickerEmptyState allEmpty={allSkills.length === 0} localize={localize} />
               )}
             </div>
           </div>

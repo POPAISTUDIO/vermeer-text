@@ -8,6 +8,7 @@ import {
   Checkbox,
   Dropdown,
   OGDialogTemplate,
+  useToastContext,
 } from '@librechat/client';
 import type { TConversation } from 'librechat-data-provider';
 import { useLocalize, useExportConversation } from '~/hooks';
@@ -34,6 +35,7 @@ export default function ExportModal({
   children?: React.ReactNode;
 }) {
   const localize = useLocalize();
+  const { showToast } = useToastContext();
 
   const [filename, setFileName] = useState('');
   const [type, setType] = useState<string>('screenshot');
@@ -78,6 +80,15 @@ export default function ExportModal({
     exportBranches,
     recursive,
   });
+
+  const handleExport = useCallback(async () => {
+    const succeeded = await exportConversation();
+    if (succeeded) {
+      onOpenChange(false);
+      return;
+    }
+    showToast({ status: 'error', message: localize('com_nav_export_error') });
+  }, [exportConversation, onOpenChange, showToast, localize]);
 
   return (
     <OGDialog open={open} onOpenChange={onOpenChange} triggerRef={triggerRef}>
@@ -188,7 +199,7 @@ export default function ExportModal({
         }
         buttons={
           <>
-            <Button onClick={exportConversation} variant="submit">
+            <Button onClick={handleExport} variant="submit">
               {localize('com_endpoint_export')}
             </Button>
           </>

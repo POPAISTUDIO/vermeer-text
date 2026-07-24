@@ -157,13 +157,7 @@ export default function useExportConversation({
   };
 
   const exportScreenshot = async () => {
-    let data;
-    try {
-      data = await captureScreenshot();
-    } catch (err) {
-      console.error('Failed to capture screenshot');
-      return console.error(err);
-    }
+    const data = await captureScreenshot();
     download(data, `${filename}.png`, 'image/png');
   };
 
@@ -376,17 +370,29 @@ export default function useExportConversation({
     download(blob, `${filename}.json`, 'application/json');
   };
 
-  const exportConversation = () => {
-    if (type === 'json') {
-      exportJSON();
-    } else if (type == 'text') {
-      exportText();
-    } else if (type == 'markdown') {
-      exportMarkdown();
-    } else if (type == 'csv') {
-      exportCSV();
-    } else if (type == 'screenshot') {
-      exportScreenshot();
+  /**
+   * Runs the export for the selected `type` and resolves `true` on success.
+   * Resolves `false` when the export throws (e.g. a failed screenshot capture)
+   * so the caller can keep the modal open and surface an error toast instead
+   * of dismissing it as if the export had worked.
+   */
+  const exportConversation = async (): Promise<boolean> => {
+    try {
+      if (type === 'json') {
+        await exportJSON();
+      } else if (type == 'text') {
+        await exportText();
+      } else if (type == 'markdown') {
+        await exportMarkdown();
+      } else if (type == 'csv') {
+        await exportCSV();
+      } else if (type == 'screenshot') {
+        await exportScreenshot();
+      }
+      return true;
+    } catch (error) {
+      console.error('Failed to export conversation', error);
+      return false;
     }
   };
 
