@@ -129,6 +129,6 @@ jobs:
 
             Reste sobre : un titre juste et un corps court valent mieux qu'une dissertation.
           claude_args: |
-            --max-turns 30
+            --max-turns 50
             --allowedTools "Read,Glob,Grep,Bash(gh issue *)"
             --append-system-prompt "Tu tries sur preuves : issue de bug seulement si le rapport prouve un défaut applicatif. Aucun fichier modifié, aucune issue fermée."
