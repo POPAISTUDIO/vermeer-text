@@ -73,5 +73,5 @@ jobs:
             Si tu ne parviens pas à identifier la cause racine avec confiance,
             n'ouvre PAS de PR : commente l'issue avec ton analyse et ce qui te bloque.
           claude_args: |
-            --max-turns 50
+            --max-turns 80
             --append-system-prompt "Respecte CLAUDE.md. Ne merge jamais. Ne modifie que le code lié au bug — aucun refactoring opportuniste."
