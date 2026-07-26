@@ -1,0 +1,17 @@
+{
+  "name": "vermeer-e2e-staging",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Suite E2E Playwright — recette Vermeer Chat exécutée contre un environnement déployé (staging)",
+  "scripts": {
+    "fixtures": "node fixtures/make.mjs",
+    "test": "playwright test",
+    "test:wave1": "playwright test --grep @wave1",
+    "test:canary": "playwright test --grep @canary",
+    "typecheck": "npx -y -p typescript -p @types/node tsc --noEmit",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
+  }
+}
