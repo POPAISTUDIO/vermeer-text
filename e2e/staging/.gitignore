@@ -1,0 +1,17 @@
+# Session QA capturée manuellement — contient des cookies de session SSO.
+# NE JAMAIS COMMITER : elle est fournie en CI via le secret QA_STORAGE_STATE.
+auth.json
+auth.json.b64
+
+# Artefacts d'exécution
+test-results/
+playwright-report/
+report.json
+blob-report/
+playwright/.cache/
+
+node_modules/
+
+# Fixtures volumineuses générées à la demande (voir fixtures/make.mjs)
+fixtures/sample-1.5mb.png
+fixtures/sample-8mb.png
