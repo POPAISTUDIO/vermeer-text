@@ -181,7 +181,9 @@ const ChatForm = memo(function ChatForm({
   useQueryParams({ textAreaRef });
 
   const { ref, ...registerProps } = methods.register('text', {
-    required: true,
+    // Vermeer: un fichier joint (ex. image sans texte) rend le texte optionnel,
+    // sinon `required: true` bloquait silencieusement handleSubmit (issue #113).
+    validate: (value) => value.trim().length > 0 || files.size > 0,
     onChange: useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) =>
         methods.setValue('text', e.target.value, { shouldValidate: true }),
@@ -394,6 +396,7 @@ const ChatForm = memo(function ChatForm({
                     <SendButton
                       ref={submitButtonRef}
                       control={methods.control}
+                      hasFiles={files.size > 0}
                       disabled={
                         filesLoading ||
                         isSubmitting ||
