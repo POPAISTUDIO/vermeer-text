@@ -1,0 +1,194 @@
+# Recette Vague 1 (porte de release) jouée chaque nuit ouvrée contre staging.
+# Commandes et chemins : voir e2e/staging/README.md §6.
+#
+# La session QA est un storageState capturé à la main (SSO, aucun login par formulaire
+# possible). Deux conséquences structurantes, documentées dans e2e/staging/README.md §3 :
+#   - le test de garde tourne avant tout le reste ; s'il échoue, les 12 cas restent NON
+#     exécutés et le motif est « session expirée », jamais un bug produit ;
+#   - l'application fait tourner le refresh token à chaque chargement, donc la session est
+#     à USAGE UNIQUE : d'où l'étape de persistance en fin de job.
+name: QA Nightly — Staging
+
+on:
+  schedule:
+    # 04h30 UTC = 06h30 Paris (heure d'été), du lundi au vendredi.
+    - cron: '30 4 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+# Groupe PARTAGÉ avec canary-providers.yml : la session staging ne supporte pas deux
+# consommateurs simultanés (rotation du refresh token). On sérialise au lieu d'annuler,
+# pour ne jamais interrompre un run au milieu d'une rotation.
+concurrency:
+  group: qa-session
+  cancel-in-progress: false
+
+jobs:
+  wave1:
+    name: Recette Vague 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installer les dépendances de la suite
+        working-directory: e2e/staging
+        run: npm ci
+
+      - name: Installer Chromium
+        working-directory: e2e/staging
+        run: npx playwright install --with-deps chromium
+
+      - name: Restaurer la session QA
+        env:
+          QA_STORAGE_STATE_B64: ${{ secrets.QA_STORAGE_STATE }}
+        run: |
+          echo "$QA_STORAGE_STATE_B64" | base64 -d > e2e/staging/auth.json
+          if [ ! -s e2e/staging/auth.json ]; then
+            echo "::error::Session QA vide — secret QA_STORAGE_STATE vide ou mal encodé. Régénérer : e2e/staging/README.md §3."
+            exit 1
+          fi
+
+      - name: Recette Vague 1
+        id: wave1
+        continue-on-error: true
+        working-directory: e2e/staging
+        env:
+          BASE_URL: ${{ secrets.QA_STAGING_URL }}
+          PLAYWRIGHT_JSON_OUTPUT_NAME: report.json
+        run: npx playwright test --grep @wave1
+
+      - name: Publier le rapport et les traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-wave1-report
+          path: |
+            e2e/staging/report.json
+            e2e/staging/playwright-report/
+            e2e/staging/test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
+      # ── PERSISTANCE DE SESSION ────────────────────────────────────────────────────
+      # Pourquoi cette étape existe : l'app régénère le refresh token au premier
+      # chargement (AuthService.setAuthTokens → generateRefreshToken), ce qui INVALIDE
+      # celui qui vient d'être présenté. La fixture persistRotatedSession (lib/test.ts)
+      # réécrit auth.json avec les cookies rotatés après chaque test — mais ce fichier vit
+      # dans le workspace du job et disparaît avec lui. Sans republication du secret, le
+      # run suivant rejouerait un token mort et se heurterait au mur de login.
+      # Le secret QA_STORAGE_STATE n'est donc PAS une valeur figée : c'est un relais.
+      - name: Persister la session rotatée dans QA_STORAGE_STATE
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.VERMEER_SECRETS_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::VERMEER_SECRETS_TOKEN absent — session rotatée NON republiée. Le prochain run échouera sur la garde (README §3)."
+            exit 0
+          fi
+          if [ ! -s e2e/staging/auth.json ]; then
+            echo "::warning::auth.json vide en fin de run — secret laissé intact (jamais écraser une session valide par du vide)."
+            exit 0
+          fi
+          if ! node -e 'JSON.parse(require("fs").readFileSync("e2e/staging/auth.json","utf8"))' 2>/dev/null; then
+            echo "::warning::auth.json n'est pas un JSON valide — secret laissé intact."
+            exit 0
+          fi
+          base64 -w0 e2e/staging/auth.json > auth.json.b64
+          gh secret set QA_STORAGE_STATE --repo "$GITHUB_REPOSITORY" < auth.json.b64
+          rm -f auth.json.b64
+          echo "Session rotatée republiée dans QA_STORAGE_STATE."
+
+      # Le label doit exister avant que l'analyse ne tente `gh issue create --label`.
+      - name: Garantir le label qa-nightly
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh label create qa-nightly --color 1d76db --description "Dossier QA nightly" 2>/dev/null || true
+
+      - name: Analyse du rapport et tenue du Dossier QA
+        if: always()
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Tu rends compte d'un run de recette automatisée contre staging. Tu ne corriges
+            rien, tu ne modifies aucun fichier : tu lis des faits et tu tiens un dossier.
+
+            Sources de vérité, dans cet ordre :
+              1. `e2e/staging/report.json` — rapport JSON Playwright du run.
+              2. `e2e/staging/test-results/**/error-context.md` — contexte des échecs.
+              3. `e2e/staging/README.md` — §4 tags, §5 cas couverts, §8 divergences assumées.
+
+            Résultat de l'étape Playwright : ${{ steps.wave1.outcome }}
+            Run : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            RÈGLES D'HONNÊTETÉ — non négociables :
+            - Un cas n'est PASS que si le rapport JSON le dit. Tu ne déduis jamais un
+              succès d'une absence d'information.
+            - Si `report.json` est absent ou illisible, tu l'écris explicitement et tu
+              t'arrêtes là sur l'analyse des cas : la suite a probablement échoué avant de
+              produire un rapport (config, session, installation).
+            - Un test « skipped » n'est pas un test qui passe. CTX-02 est un SKIP motivé
+              connu (cf. README §8.3) : rappelle-le en une ligne, ce n'est pas une
+              régression.
+            - Tu distingues systématiquement trois natures d'échec :
+                * ÉCHEC PRODUIT — une assertion métier est fausse (statut HTTP, contenu,
+                  comportement UI).
+                * ÉCHEC INFRA — timeout d'installation, réseau, runner, artefact manquant.
+                * SESSION EXPIRÉE — cf. cas particulier ci-dessous.
+              Si tu ne peux pas trancher, écris INDÉTERMINÉ et dis ce qui manque.
+
+            CAS PARTICULIER — SESSION EXPIRÉE (prioritaire) :
+            Si l'échec est le test de garde (`guard.setup.ts`, « GUARD — la session QA est
+            valide et authentifiée »), alors la session QA est morte et les 12 cas n'ont
+            PAS tourné. Ce n'est pas un bug produit et il ne faut surtout pas le présenter
+            comme tel. Le dossier doit contenir UNE ligne actionnable, du type :
+            « Session QA expirée — régénérer QA_STORAGE_STATE (e2e/staging/README.md §3),
+            aucun cas exécuté, aucune conclusion produit possible sur ce run. »
+            N'analyse alors aucun autre échec : il n'y en a pas.
+
+            CE QUE TU FAIS :
+            1. Cherche l'issue ouverte servant de Dossier QA :
+               `gh issue list --label qa-nightly --state open`
+               - Si elle existe, ajoute un commentaire daté avec ton compte rendu.
+               - Sinon, crée-la : titre « Dossier QA nightly », label `qa-nightly`, et mets
+                 ton compte rendu dans le corps.
+            2. Le compte rendu, court et factuel :
+               - une ligne de verdict (vert / rouge, et pourquoi) ;
+               - le décompte réel passés / échoués / skippés tel que lu dans le JSON ;
+               - pour chaque échec : identifiant du cas (GEN-02, FILE-01…), nature
+                 (PRODUIT / INFRA / SESSION EXPIRÉE / INDÉTERMINÉ), et l'assertion exacte
+                 qui a cassé, citée depuis le rapport ;
+               - le lien du run.
+            3. Si tout est vert, dis-le en deux lignes. Pas de commentaire fleuve.
+
+            Tu ne crées ni ne fermes aucune autre issue. Le triage des bugs produit est le
+            travail d'un autre workflow (qa-triage.yml) — pas le tien.
+          claude_args: |
+            --max-turns 25
+            --allowedTools "Read,Glob,Grep,Bash(gh issue *)"
+            --append-system-prompt "Tu rends compte de faits de QA : jamais un succès que le rapport ne prouve pas, jamais une expiration de session présentée comme un défaut produit."
+
+      - name: Gate — la Vague 1 est la porte de release
+        if: always()
+        run: |
+          if [ "${{ steps.wave1.outcome }}" != "success" ]; then
+            echo "::error::Recette Vague 1 en échec — voir le Dossier QA et les artefacts de ce run."
+            exit 1
+          fi
+          echo "Vague 1 verte."

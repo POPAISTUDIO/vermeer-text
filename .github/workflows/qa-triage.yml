@@ -1,0 +1,134 @@
+# Triage des échecs de la recette nocturne. Ne tourne QUE si la nightly a échoué.
+#
+# Rôle : classer chaque échec en s'appuyant sur le rapport et les traces RÉELS du run
+# échoué, puis n'ouvrir des issues `claude-fix` que pour ce qui est un vrai bug produit.
+# Une session QA expirée ne doit JAMAIS produire d'issue de bug : c'est une opération
+# d'exploitation (régénérer le secret), pas un défaut du produit.
+#
+# Une issue labellisée `claude-fix` déclenche l'agent codeur (claude.yml → claude-autofix).
+# D'où l'exigence de non-duplication et le plafond de 3 issues par run.
+name: QA Triage
+
+on:
+  workflow_run:
+    workflows: ["QA Nightly — Staging"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+  id-token: write
+
+jobs:
+  triage:
+    name: Triage des échecs
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # Artefacts du run échoué : `run-id` + `github-token` sont requis pour lire les
+      # artefacts d'un AUTRE run que celui en cours.
+      - name: Télécharger les artefacts du run échoué
+        id: artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: qa-wave1-report
+          path: qa-artifacts
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Garantir les labels de triage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create claude-fix --color 5319e7 --description "À corriger par l'agent codeur" 2>/dev/null || true
+          gh label create qa-nightly --color 1d76db --description "Dossier QA nightly" 2>/dev/null || true
+
+      - name: Classification des échecs
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            La recette nocturne a échoué. Tu tries les échecs. Tu ne corriges rien, tu ne
+            modifies aucun fichier du dépôt, tu ne fermes aucune issue.
+
+            Sources de vérité — uniquement des faits, jamais des suppositions :
+              - `qa-artifacts/report.json` — rapport JSON Playwright du run échoué.
+              - `qa-artifacts/test-results/**/error-context.md` — assertion exacte, log
+                d'attente et arborescence d'accessibilité de chaque échec.
+              - `e2e/staging/README.md` — §4 tags, §5 ce que chaque cas asservit,
+                §8 divergences assumées, §9 limites connues.
+              - le code de la suite dans `e2e/staging/` pour localiser les fichiers suspects.
+
+            Run échoué : ${{ github.event.workflow_run.html_url }}
+            Téléchargement des artefacts : ${{ steps.artifacts.outcome }}
+
+            Si les artefacts sont absents (`outcome` différent de `success`) ou si
+            `report.json` est illisible, tu ne devines pas : commente le Dossier QA pour
+            dire que le run a échoué sans produire de rapport exploitable, et arrête-toi.
+
+            ÉTAPE 1 — classer CHAQUE échec dans exactement une catégorie :
+              * BUG PRODUIT — une assertion métier est fausse et la cause est du côté de
+                l'application : statut HTTP inattendu, contenu de réponse absent,
+                comportement UI contraire à ce que le cas asservit.
+              * FLAKY-INFRA — timeout réseau, runner lent, installation, artefact partiel,
+                indisponibilité passagère d'un fournisseur. Rien ne prouve un défaut du
+                code applicatif.
+              * SESSION EXPIRÉE — l'échec est le test de garde (`guard.setup.ts`, « GUARD —
+                la session QA est valide et authentifiée »), ou le rapport montre le mur de
+                login / un `POST /api/auth/refresh` en 401.
+              * INDÉTERMINÉ — les éléments ne permettent pas de trancher. Dis précisément
+                ce qui manquerait pour conclure.
+
+            Un test « skipped » n'est pas un échec. CTX-02 est un SKIP motivé documenté
+            (README §8.3) : ne l'instruis jamais comme un bug.
+
+            ÉTAPE 2 — agir selon la catégorie :
+
+            SESSION EXPIRÉE :
+              - AUCUNE issue `claude-fix`. C'est une opération d'exploitation, pas un bug.
+              - UN SEUL commentaire sur le Dossier QA (issue ouverte avec le label
+                `qa-nightly` — `gh issue list --label qa-nightly --state open`), disant que
+                la session est expirée, qu'aucun cas n'a tourné, et qu'il faut régénérer
+                `QA_STORAGE_STATE` (e2e/staging/README.md §3).
+              - Puis arrête-toi : les autres cas n'ont pas été exécutés, il n'y a rien
+                d'autre à trier.
+
+            BUG PRODUIT :
+              - D'abord la non-duplication : `gh issue list --label claude-fix --state all
+                --limit 50`. Compare les IDENTIFIANTS DE CAS présents dans les titres
+                (GEN-02, FILE-01, WEB-01…) avec ceux que tu viens de classer. Si une issue
+                porte déjà le même identifiant pour le même symptôme, tu n'en crées PAS une
+                seconde : ajoute un commentaire à l'existante avec le lien du nouveau run.
+              - Sinon, crée l'issue :
+                  titre : `[QA] <ID du cas> — <symptôme en une ligne>`
+                  label : `claude-fix`
+                  corps :
+                    - l'assertion exacte qui a échoué, citée depuis le rapport ou
+                      l'error-context (pas reformulée) ;
+                    - le lien du run échoué ;
+                    - ton analyse : ce que le cas asservit (README §5) et ce que le produit
+                      a fait à la place ;
+                    - les fichiers suspects, avec chemins précis, côté application — pas
+                      côté suite de test, sauf si le défaut est manifestement dans le test.
+              - PLAFOND : 3 issues maximum pour ce run. S'il y a plus de 3 bugs produit,
+                crée les 3 plus graves et liste les autres dans un commentaire du Dossier QA.
+
+            FLAKY-INFRA et INDÉTERMINÉ :
+              - Pas d'issue. Un commentaire sur le Dossier QA, une ligne par cas, avec la
+                raison du classement.
+
+            Reste sobre : un titre juste et un corps court valent mieux qu'une dissertation.
+          claude_args: |
+            --max-turns 30
+            --allowedTools "Read,Glob,Grep,Bash(gh issue *)"
+            --append-system-prompt "Tu tries sur preuves : issue de bug seulement si le rapport prouve un défaut applicatif. Aucun fichier modifié, aucune issue fermée."

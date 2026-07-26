@@ -59,6 +59,19 @@ chaque cas déclenche de vrais appels LLM facturés.
 Si `BASE_URL` est absent ou si `auth.json` est manquant, la suite **échoue immédiatement au
 chargement de la configuration**, avec la marche à suivre — aucun test n'est lancé.
 
+### Secrets attendus côté GitHub Actions
+
+| Secret | Contenu | Utilisé par |
+|---|---|---|
+| `QA_STAGING_URL` | URL racine de l'environnement cible (alimente `BASE_URL`) | les trois workflows |
+| `QA_STORAGE_STATE` | `auth.json` encodé en base64 — **relais, pas valeur figée** (cf. §3) | nightly, canary |
+| `VERMEER_SECRETS_TOKEN` | PAT fine-grained, portée **Secrets : Read and write** sur `vermeer-text`, durée 90 j | étape de persistance de session |
+| `CLAUDE_CODE_OAUTH_TOKEN` | jeton OAuth Claude Code (déjà en place pour `claude.yml`) | nightly (analyse), triage |
+
+`VERMEER_SECRETS_TOKEN` expire au bout de 90 jours : à son expiration, l'étape de
+persistance émet un **warning** (`session rotatée NON republiée`) et le run **suivant**
+échoue sur la garde. Le renouvellement du PAT fait donc partie de l'entretien courant.
+
 ---
 
 ## 3. Authentification et régénération de `auth.json`
@@ -97,8 +110,35 @@ Conséquences :
   de test en test. Sans elle, seul le premier test s'authentifie et tous les suivants tombent sur le
   mur de login.
 - **Entre deux runs locaux** : l'état rotaté reste dans `auth.json`, donc les runs s'enchaînent.
-- **En CI** : l'état rotaté vit dans le workspace du job et disparaît avec lui. **Le secret
-  `QA_STORAGE_STATE` n'est donc réutilisable qu'une fois par capture.** Voir §9 pour les options.
+- **En CI** : l'état rotaté vit dans le workspace du job et disparaît avec lui. Une capture
+  ne servirait donc qu'une seule fois. Les workflows referment cette boucle : voir la
+  mécanique de persistance ci-dessous.
+
+### Persistance de session en CI
+
+`qa-nightly.yml` et `canary-providers.yml` traitent `QA_STORAGE_STATE` comme un **relais**,
+pas comme une valeur figée :
+
+1. **Au début du job** — le secret est décodé vers `e2e/staging/auth.json`.
+2. **Pendant le run** — la fixture `persistRotatedSession` réécrit ce fichier après chaque
+   test, avec les cookies rotatés.
+3. **À la fin du job** (`if: always()`) — le fichier est ré-encodé en base64 et republié
+   dans le secret via `gh secret set`, authentifié par `VERMEER_SECRETS_TOKEN`.
+
+La session survit ainsi d'un run au suivant, et se prolonge à chaque exécution.
+
+Trois garde-fous à l'étape de persistance : le secret **n'est jamais écrasé** si
+`VERMEER_SECRETS_TOKEN` est absent, si `auth.json` est vide, ou si son contenu n'est pas un
+JSON valide. Dans ces cas l'étape émet un warning et sort en succès — on préfère un run
+suivant qui échoue proprement sur la garde à un secret détruit.
+
+**Limite connue.** Si un run est **annulé ou tué après la rotation mais avant la
+persistance** (timeout de job, annulation manuelle, panne du runner), le token rotaté est
+perdu : le secret contient encore l'ancien, désormais invalide. Le run suivant échoue sur la
+garde avec « Session QA expirée » — il faut alors **régénérer `auth.json` à la main** (§3
+ci-dessous) et republier le secret. C'est le seul mode de défaillance qui impose une
+intervention humaine ; les deux workflows partagent le groupe de concurrence `qa-session`
+précisément pour ne jamais interrompre un run au milieu d'une rotation.
 
 ### Régénérer la session
 
@@ -123,11 +163,14 @@ gh secret set QA_STORAGE_STATE < auth.json.b64
 rm -f auth.json.b64
 ```
 
-Côté job CI, le secret est redéployé en fichier avant le run :
+Côté job CI, le secret est redéployé en fichier avant le run — le secret passe par une
+variable d'environnement, jamais en clair dans la ligne de commande :
 
 ```yaml
 - name: Restaurer la session QA
-  run: echo "${{ secrets.QA_STORAGE_STATE }}" | base64 --decode > e2e/staging/auth.json
+  env:
+    QA_STORAGE_STATE_B64: ${{ secrets.QA_STORAGE_STATE }}
+  run: echo "$QA_STORAGE_STATE_B64" | base64 -d > e2e/staging/auth.json
 ```
 
 `auth.json` et `auth.json.b64` sont dans `.gitignore`. **Aucune session ne doit apparaître dans le
@@ -184,52 +227,36 @@ fichiers.
 
 ## 6. Correspondance tags ↔ workflows CI
 
-Les workflows GitHub Actions ne sont **pas** fournis ici (le périmètre de ce chantier est strictement
-`e2e/`). Correspondance visée, avec le job prêt à coller :
+Trois workflows, dans `.github/workflows/` :
 
-| Workflow | Déclencheur | Filtre | Attente |
-|---|---|---|---|
-| `qa-canary` | à chaque déploiement staging, et manuel | `--grep @canary` | ~4 min, garde-fou rapide |
-| `qa-wave1` | avant toute release, et nocturne | `--grep @wave1` | porte de release : rouge = pas de release |
-| `qa-full` | manuel | aucun filtre | inclut les cas `@extra` |
+| Workflow | Nom affiché | Déclencheur | Filtre | Rôle |
+|---|---|---|---|---|
+| `qa-nightly.yml` | `QA Nightly — Staging` | cron `30 4 * * 1-5` (06h30 Paris été) + manuel | `--grep @wave1` | Porte de release. Rouge = pas de release. Analyse du rapport et tenue du **Dossier QA nightly** (label `qa-nightly`). |
+| `canary-providers.yml` | `Canary Providers` | cron `0 5 * * 1-5` + manuel | `--grep @canary` | Garde-fou court (4 cas, ~4 min). Ouvre une issue `canary`/`infra` si rouge. |
+| `qa-triage.yml` | `QA Triage` | `workflow_run` sur la nightly **en échec** | — | Classe les échecs et n'ouvre des issues `claude-fix` que pour les vrais bugs produit. |
 
-```yaml
-name: qa-wave1
-on:
-  workflow_dispatch:
-  schedule: [{ cron: '0 3 * * 1-5' }]
+Les cas `@extra` (FILE-02, FILE-04, SKL-01c) ne sont dans **aucun** workflow planifié : ils
+se lancent à la main (`npx playwright test` sans filtre), étant hors porte de release.
 
-jobs:
-  wave1:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: e2e/staging
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - name: Restaurer la session QA
-        run: echo "${{ secrets.QA_STORAGE_STATE }}" | base64 --decode > auth.json
-      - name: Recette Vague 1
-        env:
-          BASE_URL: ${{ secrets.QA_BASE_URL }}
-          PLAYWRIGHT_JSON_OUTPUT_NAME: report.json
-        run: npx playwright test --grep @wave1
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-wave1-report
-          path: |
-            e2e/staging/report.json
-            e2e/staging/playwright-report/
-            e2e/staging/test-results/
+### Ce que chaque workflow fait de la session
+
+`qa-nightly` et `canary-providers` partagent le groupe de concurrence **`qa-session`** (sans
+annulation) : la session staging ne supporte pas deux consommateurs simultanés. Tous deux
+restaurent la session au début et **republient l'état rotaté à la fin** (cf. §3).
+
+### Chaîne de traitement des échecs
+
+```
+QA Nightly (échec) ──workflow_run──> QA Triage ──label claude-fix──> Claude Code (claude.yml)
+                    │                          │
+                    └─> Dossier QA nightly <───┘  (session expirée / flaky / indéterminé)
 ```
 
-`BASE_URL` passe par un secret (`QA_BASE_URL`) : l'URL de l'environnement n'entre pas dans le dépôt.
+Un échec de la **garde de session** ne produit jamais d'issue `claude-fix` : il est reporté
+en une ligne actionnable sur le Dossier QA. Une expiration de session n'est pas un bug.
+
+Le triage plafonne à **3 issues par run** et vérifie la non-duplication sur les
+identifiants de cas présents dans les titres existants, avant d'en créer une nouvelle.
 
 ---
 
@@ -287,17 +314,19 @@ masquerait le sujet réel des cas FILE (limite de taille, prise en compte du con
 
 ## 9. Limites connues
 
-- **Le secret CI n'est utilisable qu'une fois** (rotation du refresh token, cf. §3). Trois pistes,
-  par ordre de robustesse :
+- **Rotation du refresh token — traitée, mais pas supprimée.** La réinjection du secret en fin
+  de job est **implémentée** dans `qa-nightly.yml` et `canary-providers.yml` (cf. §3
+  « Persistance de session en CI »). Contrepartie assumée : la CI détient un PAT autorisé à
+  écrire les secrets du dépôt (`VERMEER_SECRETS_TOKEN`), et un run tué entre la rotation et la
+  persistance impose une régénération manuelle. Deux alternatives restent ouvertes, par ordre
+  de robustesse :
   1. **Compte de service QA en authentification locale** (email + mot de passe hors SSO), si
-     l'environnement peut en exposer un : supprime totalement le problème et rend la suite
-     autonome.
+     l'environnement peut en exposer un : supprime totalement le problème, rend la suite
+     autonome et permet de retirer le PAT. **C'est la cible recommandée.**
   2. **Reprise SSO silencieuse** : les cookies Entra persistants présents dans la capture
      (`ESTSAUTHPERSISTENT`, ~3 mois de validité) permettent de reminter une session en visitant
      `/oauth/openid` sans saisir d'identifiant. Vérifié manuellement contre staging. Non implémenté
      ici : cela masquerait l'expiration de session que la garde doit précisément rendre visible.
-  3. **Réinjection du secret en fin de job** (`gh secret set` avec un PAT) : fonctionnel, mais donne
-     à la CI le droit d'écrire les secrets.
 - **Anomalie ouverte sur l'upload de 1,5 Mo (FILE-02).** La vignette apparaît dans le
   composer mais **aucun POST d'upload n'est émis** (observé sur 20 s, sans toast d'erreur),
   alors que l'image de 8 Mo (FILE-04) est bien envoyée et acceptée. Le redimensionnement
