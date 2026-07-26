@@ -1,0 +1,148 @@
+# Garde-fou court : les 4 cas @canary (GEN-02, GEN-03, GEN-06, SEL-01) vérifient que les
+# trois fournisseurs répondent et que le catalogue de modèles est conforme.
+# Commandes et chemins : voir e2e/staging/README.md §6. Pas d'analyse Claude ici : le
+# déterminisme des assertions suffit, et un canary doit rester rapide et lisible.
+name: Canary Providers
+
+on:
+  schedule:
+    # 05h00 UTC = 07h00 Paris (heure d'été), du lundi au vendredi — après la nightly.
+    - cron: '0 5 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+# Groupe PARTAGÉ avec qa-nightly.yml : la session staging est à usage unique (rotation du
+# refresh token), les deux workflows ne doivent jamais tourner en même temps.
+concurrency:
+  group: qa-session
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Canary fournisseurs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installer les dépendances de la suite
+        working-directory: e2e/staging
+        run: npm ci
+
+      - name: Installer Chromium
+        working-directory: e2e/staging
+        run: npx playwright install --with-deps chromium
+
+      - name: Restaurer la session QA
+        env:
+          QA_STORAGE_STATE_B64: ${{ secrets.QA_STORAGE_STATE }}
+        run: |
+          echo "$QA_STORAGE_STATE_B64" | base64 -d > e2e/staging/auth.json
+          if [ ! -s e2e/staging/auth.json ]; then
+            echo "::error::Session QA vide — secret QA_STORAGE_STATE vide ou mal encodé. Régénérer : e2e/staging/README.md §3."
+            exit 1
+          fi
+
+      - name: Canary fournisseurs
+        id: canary
+        continue-on-error: true
+        working-directory: e2e/staging
+        env:
+          BASE_URL: ${{ secrets.QA_STAGING_URL }}
+          PLAYWRIGHT_JSON_OUTPUT_NAME: report.json
+        run: npx playwright test --grep @canary
+
+      - name: Publier le rapport et les traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-report
+          path: |
+            e2e/staging/report.json
+            e2e/staging/test-results/
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── PERSISTANCE DE SESSION ────────────────────────────────────────────────────
+      # Même mécanique que la nightly : l'app régénère le refresh token au premier
+      # chargement, donc la session capturée est à USAGE UNIQUE. La fixture
+      # persistRotatedSession réécrit auth.json pendant le run ; sans republication du
+      # secret, le run suivant rejouerait un token mort. Voir e2e/staging/README.md §3.
+      - name: Persister la session rotatée dans QA_STORAGE_STATE
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.VERMEER_SECRETS_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::VERMEER_SECRETS_TOKEN absent — session rotatée NON republiée. Le prochain run échouera sur la garde (README §3)."
+            exit 0
+          fi
+          if [ ! -s e2e/staging/auth.json ]; then
+            echo "::warning::auth.json vide en fin de run — secret laissé intact (jamais écraser une session valide par du vide)."
+            exit 0
+          fi
+          if ! node -e 'JSON.parse(require("fs").readFileSync("e2e/staging/auth.json","utf8"))' 2>/dev/null; then
+            echo "::warning::auth.json n'est pas un JSON valide — secret laissé intact."
+            exit 0
+          fi
+          base64 -w0 e2e/staging/auth.json > auth.json.b64
+          gh secret set QA_STORAGE_STATE --repo "$GITHUB_REPOSITORY" < auth.json.b64
+          rm -f auth.json.b64
+          echo "Session rotatée republiée dans QA_STORAGE_STATE."
+
+      - name: Ouvrir une alerte si le canary est rouge
+        if: steps.canary.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Labels créés à la demande : sans eux, `gh issue create --label` échoue.
+          gh label create canary --color d73a4a --description "Canary fournisseurs" 2>/dev/null || true
+          gh label create infra --color 0e8a16 --description "Infrastructure / environnement" 2>/dev/null || true
+
+          {
+            echo "Le canary fournisseurs (\`--grep @canary\` : GEN-02, GEN-03, GEN-06, SEL-01) est en échec."
+            echo
+            echo "Run : $RUN_URL"
+            echo
+            echo "## Point 0 avant tout diagnostic"
+            echo
+            echo "**Vérifier l'image réellement servie par le pod (Loki) avant de conclure quoi que ce soit.**"
+            echo "Un canary rouge signifie très souvent que l'environnement ne fait pas tourner le build"
+            echo "attendu — pas que le code est cassé. Tant que l'image n'est pas confirmée, aucune"
+            echo "conclusion produit n'est valide."
+            echo
+            echo "## Ensuite seulement"
+            echo
+            echo "1. Si l'échec est le test de garde (\`GUARD\`), la session QA est expirée : régénérer"
+            echo "   \`QA_STORAGE_STATE\` (voir \`e2e/staging/README.md\` §3). Ce n'est pas un bug produit."
+            echo "2. Sinon, lire le rapport et les traces dans les artefacts du run (\`canary-report\`)."
+            echo "3. GEN-06 en 403 → clé GCP à revérifier côté Ops."
+            echo
+            echo "_Issue ouverte automatiquement par le workflow \`Canary Providers\`._"
+          } > canary-issue.md
+
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "🔴 Canary providers KO — $(date -u +%F)" \
+            --label canary \
+            --label infra \
+            --body-file canary-issue.md
+
+      - name: Gate — un canary rouge doit être rouge
+        if: always()
+        run: |
+          if [ "${{ steps.canary.outcome }}" != "success" ]; then
+            echo "::error::Canary fournisseurs en échec — voir l'issue ouverte et les artefacts."
+            exit 1
+          fi
+          echo "Canary vert."
