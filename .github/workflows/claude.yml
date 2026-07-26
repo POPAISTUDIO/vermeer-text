@@ -1,0 +1,70 @@
+# Agent codeur — deux modes :
+# 1. Interactif : mention @claude dans une issue ou PR
+# 2. Autonome : issue labellisée claude-fix (posée par l'agent triage ou par Loïse)
+# Ouvre des PRs, ne merge JAMAIS. Le merge reste humain (Loïse).
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  # Mode interactif — @claude
+  claude-interactive:
+    if: |
+      github.actor != 'github-actions[bot]' && (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'issues' && github.event.action != 'labeled' && contains(github.event.issue.body, '@claude'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --max-turns 40
+            --append-system-prompt "Respecte CLAUDE.md. Ne merge jamais de PR. Toute modification passe par une branche + PR avec description structurée (contexte, changement, comment tester)."
+
+  # Mode autonome — label claude-fix
+  claude-autofix:
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'claude-fix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Traite l'issue #${{ github.event.issue.number }} de bout en bout :
+            1. Lis l'issue et reproduis ta compréhension du bug en la commentant brièvement.
+            2. Localise la cause racine dans le code (pas de fix symptomatique).
+            3. Implémente la correction sur une branche fix/issue-${{ github.event.issue.number }}.
+            4. Fais tourner typecheck et les tests unitaires concernés ; compare aux
+               baselines connues (erreurs TS et échecs Jest préexistants documentés
+               dans CLAUDE.md) — n'introduis aucune régression nouvelle.
+            5. Ouvre une PR qui référence l'issue (Fixes #${{ github.event.issue.number }}),
+               avec : cause racine, correction, comment vérifier en staging.
+            Si tu ne parviens pas à identifier la cause racine avec confiance,
+            n'ouvre PAS de PR : commente l'issue avec ton analyse et ce qui te bloque.
+          claude_args: |
+            --max-turns 50
+            --append-system-prompt "Respecte CLAUDE.md. Ne merge jamais. Ne modifie que le code lié au bug — aucun refactoring opportuniste."
