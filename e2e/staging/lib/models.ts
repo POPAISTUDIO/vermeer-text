@@ -51,11 +51,6 @@ export const EXPECTED_CATALOGUE: ModelGroup[] = [
       'Gemini 2.5 Flash-lite',
     ],
   },
-  {
-    group: 'French Models',
-    ordered: false,
-    models: ['French-Alpaca Llama 3 8B (FR)'],
-  },
 ];
 
 /** Modèle explicitement retiré de la config : sa présence est une régression. */
