@@ -125,7 +125,10 @@ export default function useChatFunctions({
     resetLatestMultiMessage();
 
     text = text.trim();
-    if (!!isSubmitting || text === '') {
+    // Vermeer: un message peut être composé uniquement de fichiers (ex. image sans
+    // texte, cf. issue #20/#113) — ne bloquer que si ni texte ni fichier n'est présent.
+    const hasFiles = (files?.size ?? 0) > 0 || (overrideFiles != null && overrideFiles.length > 0);
+    if (!!isSubmitting || (text === '' && !hasFiles)) {
       return;
     }
 

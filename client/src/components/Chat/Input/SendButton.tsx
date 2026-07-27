@@ -8,6 +8,8 @@ import { cn } from '~/utils';
 type SendButtonProps = {
   disabled: boolean;
   control: Control<{ text: string }>;
+  /** Vermeer: un fichier joint (ex. image sans texte) suffit à débloquer l'envoi (cf. issue #20/#113) */
+  hasFiles?: boolean;
 };
 
 const SubmitButton = React.memo(
@@ -42,7 +44,7 @@ const SendButton = React.memo(
   forwardRef((props: SendButtonProps, ref: React.ForwardedRef<HTMLButtonElement>) => {
     const data = useWatch({ control: props.control });
     const content = data?.text?.trim();
-    return <SubmitButton ref={ref} disabled={props.disabled || !content} />;
+    return <SubmitButton ref={ref} disabled={props.disabled || (!content && !props.hasFiles)} />;
   }),
 );
 
