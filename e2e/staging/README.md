@@ -14,12 +14,13 @@ fichier upstream n'est modifié.
 1. [Lancement local](#1-lancement-local)
 2. [Variables requises](#2-variables-requises)
 3. [Authentification et régénération de `auth.json`](#3-authentification-et-régénération-de-authjson)
-4. [Convention de tags](#4-convention-de-tags)
-5. [Cas couverts](#5-cas-couverts)
-6. [Correspondance tags ↔ workflows CI](#6-correspondance-tags--workflows-ci)
-7. [Fixtures](#7-fixtures)
-8. [Divergences assumées avec la recette](#8-divergences-assumées-avec-la-recette)
-9. [Limites connues](#9-limites-connues)
+4. [Isolation d'état et ciblage des conversations](#4-isolation-détat-et-ciblage-des-conversations)
+5. [Convention de tags](#5-convention-de-tags)
+6. [Cas couverts](#6-cas-couverts)
+7. [Correspondance tags ↔ workflows CI](#7-correspondance-tags--workflows-ci)
+8. [Fixtures](#8-fixtures)
+9. [Divergences assumées avec la recette](#9-divergences-assumées-avec-la-recette)
+10. [Limites connues](#10-limites-connues)
 
 ---
 
@@ -43,6 +44,27 @@ Raccourcis équivalents : `npm run test:wave1`, `npm run test:canary`.
 
 La suite tourne sur **chromium uniquement**, en **série** (`workers: 1`) : un seul compte QA, et
 chaque cas déclenche de vrais appels LLM facturés.
+
+> ### ⚠️ Un run local désynchronise le secret `QA_STORAGE_STATE`
+>
+> L'application fait de la **rotation de refresh token** (cf. §3) : dès le premier test, le
+> token porté par le secret CI est **invalidé** et le nouveau n'existe plus que dans le
+> `auth.json` local. Tant que ce fichier n'est pas republié, le prochain run de
+> `qa-nightly` / `canary-providers` échoue sur la garde de session (« Session QA expirée »),
+> sans qu'aucun défaut produit soit en cause.
+>
+> **Après tout run local, republier le secret** :
+>
+> ```bash
+> cd e2e/staging
+> base64 -i auth.json -o auth.json.b64      # macOS  (Linux : base64 -w0 auth.json > auth.json.b64)
+> gh secret set QA_STORAGE_STATE < auth.json.b64
+> rm -f auth.json.b64
+> ```
+>
+> Même contrainte dans l'autre sens : lancer un run local **pendant** un run CI casse l'un
+> des deux. Les workflows partagent le groupe de concurrence `qa-session` entre eux, mais un
+> poste de dev n'en fait pas partie.
 
 ---
 
@@ -110,6 +132,8 @@ Conséquences :
   de test en test. Sans elle, seul le premier test s'authentifie et tous les suivants tombent sur le
   mur de login.
 - **Entre deux runs locaux** : l'état rotaté reste dans `auth.json`, donc les runs s'enchaînent.
+  En revanche le secret `QA_STORAGE_STATE` porte désormais un token mort : **le republier**
+  (cf. l'encadré de §1).
 - **En CI** : l'état rotaté vit dans le workspace du job et disparaît avec lui. Une capture
   ne servirait donc qu'une seule fois. Les workflows referment cette boucle : voir la
   mécanique de persistance ci-dessous.
@@ -178,7 +202,90 @@ code ni dans l'historique git.**
 
 ---
 
-## 4. Convention de tags
+## 4. Isolation d'état et ciblage des conversations
+
+Deux défauts d'**isolation de la suite** — pas de l'application — ont produit des échecs et une
+instabilité sur les runs des 26-27/07 (cf. issue #112). Les deux parades sont mutualisées dans
+`lib/`, jamais recopiées par spec.
+
+### 4.1 Fixture d'isolation des préférences (`lib/state.ts` + `lib/test.ts`)
+
+**Le problème.** LibreChat persiste nativement le dernier réglage de conversation dans le
+`localStorage` (`lastConversationSetup_0`, `lastSelectedModel`, …) : une conversation neuve en
+hérite, c'est le comportement produit voulu. Mais le `storageState` réécrit après chaque test par
+`persistRotatedSession` embarque **les origines et leur `localStorage`** : le modèle choisi par un
+test devenait donc le modèle par défaut du test suivant. GEN-03, qui asserte précisément le modèle
+par défaut d'une conversation neuve, lisait le résidu de GEN-02 — « Opus 4.8 » un jour, « Sonnet
+4.6 » le lendemain. Le libellé qui change d'un run à l'autre est la signature d'un héritage, jamais
+celle d'un défaut produit.
+
+**La parade.** La fixture auto `isolatedPreferences` (`lib/test.ts`) enregistre un `addInitScript`
+sur le **contexte**, donc exécuté avant tout script de l'application et valable aussi pour les
+onglets ouverts en cours de route (SAV-01). Il purge les clés de préférence de conversation **une
+seule fois par test**, avant le premier chargement de page.
+
+| Purgé | Détail |
+|---|---|
+| Clés exactes | `lastSelectedModel`, `lastSelectedTools`, `lastSelectedSpec`, `lastAgentProvider`, `lastAgentModel`, `filesToDelete`, `isTemporary` — plus leur sibling `<clé>_TIMESTAMP` |
+| Préfixes | `lastConversationSetup`, `assistant_id__`, `agent_id__`, `LAST_MCP_`, `LAST_CODE_TOGGLE_`, `LAST_WEB_SEARCH_TOGGLE_`, `LAST_FILE_SEARCH_TOGGLE_`, `LAST_ARTIFACTS_TOGGLE_`, `LAST_SKILLS_TOGGLE_`, `PIN_MCP_`, `PIN_WEB_SEARCH_`, `PIN_CODE_INTERPRETER_`, `textDraft_`, `filesDraft_` |
+
+La liste reprend ce que l'application elle-même considère comme préférence de conversation — union
+de `clearLocalStorage()` et `clearAllConversationStorage()`
+(`client/src/utils/localStorage.ts`) — augmentée des toggles de capability par conversation et du
+couple provider/modèle d'agent. La source de vérité des noms est l'énumération `LocalStorageKeys`
+de `packages/data-provider/src/config.ts`.
+
+**Ce qui n'est jamais touché** :
+
+- **Les cookies.** L'authentification est intégralement portée par eux (`refreshToken`,
+  `connect.sid`, `token_provider`, `cognito`, cookies Entra ID) ; **aucun jeton
+  d'authentification ne vit dans le `localStorage`** de cette application. La purge est donc sans
+  effet sur la session, et le relais `persistRotatedSession` fonctionne à l'identique.
+- Les préférences d'affichage hors conversation : `i18nextLng`, `color-theme`, `appTitle`,
+  `favorites`, `chatsExpanded`, `react-resizable-panels:*`.
+
+**Pourquoi une seule fois par test.** Le drapeau d'idempotence vit dans le `sessionStorage`, qui
+n'est pas repris par le `storageState` : il est donc vierge à chaque nouveau contexte, mais
+survit aux navigations du test. Sans lui, un `page.goto` en cours de test effacerait un réglage
+que le test vient lui-même de poser (`selectModel`, paramètre d'URL `?web_search=true`…).
+
+### 4.2 Ciblage des conversations — ne jamais utiliser `.first()`
+
+**Le problème.** `conversationItems(page).first()` désigne ce que la sidebar met **en tête** :
+une conversation **épinglée**, ou la plus récente d'un test précédent. Pas celle que le test vient
+de créer. Le désépinglage manuel des conversations du compte QA masquait le symptôme sans corriger
+le motif.
+
+**Le titre non plus n'est pas discriminant** : le compte QA porte des conversations homonymes
+(« Salutation en Français » y apparaît trois fois, « Friendly Greeting Exchange » deux) — les cas
+envoient tous des prompts voisins, donc les titres générés se répètent.
+
+**La parade.** Deux helpers dans `lib/app.ts`, à utiliser dans cet ordre :
+
+| Helper | Rôle |
+|---|---|
+| `currentConversationId(page, context)` | Identifiant lu dans l'URL applicative (`/c/<uuid>`). C'est **l'ancre** : indépendante de l'ordre de la sidebar, des épinglages, des homonymes et de l'historique du compte. |
+| `activeConversationItem(page)` | Item de sidebar de la conversation **ouverte**, via `aria-current="page"` — attribut posé par `ConvoLink` sur le seul item dont l'identifiant est celui de la conversation courante (`Convo.isActiveConvo`). Prise DOM équivalente à l'URL. |
+
+`expectGeneratedTitle(page, context)` compose les deux : conversation persistée (URL `/c/<id>`),
+puis item **actif** porteur d'un titre. Il rend le titre lu.
+
+Quand un cas a besoin d'une conversation **avec historique**, il la **crée lui-même** plutôt que
+d'emprunter celle du compte QA (cf. NEG-03), et la rouvre par son identifiant (`page.goto('/c/<id>')`).
+
+`conversationItems(page)` reste légitime pour **compter** l'historique (GEN-01, qui asserte son
+existence et non une conversation précise).
+
+> **L'API n'est pas une voie de contournement.** Les routes `/api/*` exigent le jeton d'accès que
+> le client garde **en mémoire** : `GET /api/convos` répond **401** aussi bien depuis
+> `page.request` que depuis un `fetch` exécuté dans la page (seul `POST /api/auth/refresh`, qui ne
+> dépend que du cookie, est utilisable — c'est ce que fait la garde de session). Toute vérification
+> doit donc passer par l'UI ou par les requêtes que l'application émet elle-même
+> (`ask()` capture déjà le corps réel du POST de complétion).
+
+---
+
+## 5. Convention de tags
 
 | Tag | Sens | Cumulable |
 |---|---|---|
@@ -192,20 +299,20 @@ fichiers.
 
 ---
 
-## 5. Cas couverts
+## 6. Cas couverts
 
 ### `@wave1` — porte de release (12 cas)
 
 | Cas | Tags | Ce qui est réellement asservi |
 |---|---|---|
-| GEN-01 | `@wave1` | Application authentifiée, titre `Vermeer LLM & Agentic Portal`, historique de conversations restitué dans la sidebar. |
-| GEN-02 | `@wave1` `@canary` | Opus 4.8 **et** Sonnet 4.6 : statut HTTP de la complétion, flux progressif observé, réponse non vide, titre de conversation généré. |
-| GEN-03 | `@wave1` `@canary` | Modèle par défaut affiché = `GPT-5.2 (Équilibré)`, puis réponse en streaming. |
+| GEN-01 | `@wave1` | Application authentifiée, titre `Vermeer LLM & Agentic Portal`, **au moins une** conversation restituée dans la sidebar (existence de l'historique, pas une conversation précise). |
+| GEN-02 | `@wave1` `@canary` | Opus 4.8 **et** Sonnet 4.6 : statut HTTP de la complétion, flux progressif observé, réponse non vide, titre généré **pour la conversation du test** (item actif de la sidebar, ancré sur l'URL — cf. §4.2). |
+| GEN-03 | `@wave1` `@canary` | Modèle par défaut affiché = `GPT-5.2 (Équilibré)`, puis réponse en streaming. Suppose l'absence de réglage hérité — garantie par la fixture d'isolation (§4.1). |
 | GEN-06 | `@wave1` `@canary` | Gemini 3 Flash répond ; **tout 403/permission fait échouer** le cas (régression clé GCP). |
 | SEL-01 | `@wave1` `@canary` | Catalogue du sélecteur : présence de chaque modèle par groupe, **ordre** asservi pour OpenAI, nombre d'entrées par groupe, et `gemini-2.0-flash-001` absent. |
 | MOD-02 | `@wave1` | Fichiers / Mémoires / Skills / Paramètres s'ouvrent en modale et se ferment par Esc, clic backdrop et bouton X ; composer retrouvé ; réouverture possible. |
-| CTX-02 | `@wave1` | `maxContextTokens=50000` persiste après rechargement, et une conversation **neuve** revient à `Système` (garde anti-contamination). **SKIP motivé sur ce build** : le champ n'est pas exposé dans la modale Paramètres (cf. §8.3). |
-| NEG-03 | `@wave1` | Bouton d'envoi désactivé pendant l'hydratation d'une conversation, puis envoi porteur de `conversationId` + `parentMessageId` (pas de branche sans contexte). |
+| CTX-02 | `@wave1` | `maxContextTokens=50000` persiste après rechargement, et une conversation **neuve** revient à `Système` (garde anti-contamination). **SKIP motivé sur ce build** : le champ n'est pas exposé dans la modale Paramètres (cf. §9.3). |
+| NEG-03 | `@wave1` | Bouton d'envoi désactivé pendant l'hydratation d'une conversation, puis envoi porteur du **`conversationId` de la conversation ouverte** + d'un `parentMessageId` (pas de branche sans contexte). La conversation est **créée par le test** (2 complétions, cf. §9.5). |
 | FILE-01 | `@wave1` | Statut HTTP réel de l'upload, vignette visible, et réponse du modèle **décrivant le contenu visuel** de l'image. |
 | FILE-03 | `@wave1` | Image **sans texte** : pas de 400 ; puis message de suite : pas de 400 (non-régression #20). |
 | WEB-01 | `@wave1` | Réponse sourcée, puis **relance sans 400** (`user messages must have non-empty content`). |
@@ -225,7 +332,7 @@ fichiers.
 
 ---
 
-## 6. Correspondance tags ↔ workflows CI
+## 7. Correspondance tags ↔ workflows CI
 
 Trois workflows, dans `.github/workflows/` :
 
@@ -260,7 +367,7 @@ identifiants de cas présents dans les titres existants, avant d'en créer une n
 
 ---
 
-## 7. Fixtures
+## 8. Fixtures
 
 ```bash
 npm run fixtures      # (re)génère fixtures/sample-*.png
@@ -281,7 +388,7 @@ masquerait le sujet réel des cas FILE (limite de taille, prise en compte du con
 
 ---
 
-## 8. Divergences assumées avec la recette
+## 9. Divergences assumées avec la recette
 
 1. **FILE-02 / FILE-04 et le 413.** La recette attend l'**absence** de 413 jusqu'à ~10 Mo (« LB limit
    raised to 10 MB ») ; le brief de ce chantier mentionnait un « 413 attendu au-delà de 1 Mo ». Les
@@ -292,7 +399,7 @@ masquerait le sujet réel des cas FILE (limite de taille, prise en compte du con
    lectures possibles.
 2. **FILE-02 est un cas PDF dans la recette** (P2 : « attach a PDF/document », réponse ancrée dans le
    document + présence dans l'historique des fichiers). Le cas implémenté ici reprend le périmètre
-   *taille* du script exploratoire. Le volet PDF/RAG n'est pas couvert (cf. §9).
+   *taille* du script exploratoire. Le volet PDF/RAG n'est pas couvert (cf. §10).
 3. **CTX-02 n'est pas exerçable sur ce build.** La modale Paramètres de Vermeer est le
    panneau « light » (Créativité, Réflexion approfondie, Recherche web, Mémoire
    automatique) : le champ « Jetons de contexte maximum » n'y est pas exposé, les réglages
@@ -304,15 +411,29 @@ masquerait le sujet réel des cas FILE (limite de taille, prise en compte du con
 4. **GEN-01 et le login SSO.** Les étapes « cliquer Sign in » et « s'authentifier via Entra ID » ne
    sont pas automatisables. La garde de session couvre l'état authentifié ; le cas GEN-01 asserte le
    reste (titre, historique). Le parcours de login lui-même reste une vérification manuelle.
-5. **NEG-03 et la fenêtre d'hydratation.** La fenêtre réelle est trop courte pour être observée de
-   façon fiable. Le test la rend déterministe en retardant `GET /api/messages/*` de 4 s : c'est bien
-   le comportement de l'application pendant le chargement qui est asservi, pas un timing de course.
+5. **NEG-03 : fenêtre d'hydratation suspendue, et conversation créée par le test.** La fenêtre
+   réelle est trop courte pour être observée de façon fiable. Elle n'est plus **retardée** d'un
+   délai fixe (4 s), ce qui laissait une course entre la temporisation et les assertions : la
+   récupération `GET /api/messages/*` est **suspendue jusqu'à libération explicite** par le test.
+   La fenêtre reste donc ouverte aussi longtemps qu'il le faut, et il n'y a plus rien à
+   chronométrer. Le test vérifie d'ailleurs que la requête est bien retenue **avant** d'asserter le
+   bouton désactivé : à défaut, il échouait auparavant sans qu'aucune hydratation ait eu lieu. Le
+   filtre de route porte sur l'**identifiant de la conversation** : `useGetMessagesByConvoId`
+   n'exclut pas la conversation neuve, donc `GET /api/messages/new` est bien émis sur `/c/new` et un
+   filtre large consommait le `times: 1` sur cette requête-là — mécanisme le plus probable derrière
+   l'échec intermittent (KO en 1ʳᵉ tentative, OK au retry) observé sur le run 30254386452.
+   La sortie de fenêtre est attendue sur la **fin réelle** de l'hydratation (arbre de messages
+   rendu — c'est ce rendu qui pose l'atome `latestMessage` d'où dérive `parentMessageId`), pas sur
+   un délai. Contrepartie assumée : la conversation exercée est **créée par le test** (§4.2), ce
+   qui coûte **une complétion supplémentaire** mais supprime la dépendance à l'historique du
+   compte QA et à l'ordre de la sidebar. La réouverture se fait par `page.goto('/c/<id>')` : la
+   cible est l'identifiant, sans ambiguïté possible.
 6. **SEL-01 est étiqueté P1** dans la recette mais appartient à la Vague 1 ; il est donc tagué
    `@wave1` (et `@canary`).
 
 ---
 
-## 9. Limites connues
+## 10. Limites connues
 
 - **Rotation du refresh token — traitée, mais pas supprimée.** La réinjection du secret en fin
   de job est **implémentée** dans `qa-nightly.yml` et `canary-providers.yml` (cf. §3
@@ -344,4 +465,7 @@ masquerait le sujet réel des cas FILE (limite de taille, prise en compte du con
 - **Les cas Vague 2 et Vague 3 de la recette ne sont pas couverts** (11 et 10 cas). La structure —
   helpers `lib/`, tags, garde — est prévue pour les accueillir sans refonte.
 - **Coût** : un run `@wave1` complet déclenche une dizaine de complétions réelles, dont deux
-  recherches web. À garder en tête pour la fréquence de la planification.
+  recherches web — et depuis l'amorçage de sa propre conversation par NEG-03, **une de plus**
+  (prompt court, modèle par défaut). À garder en tête pour la fréquence de la planification.
+- **Un run local désynchronise le secret `QA_STORAGE_STATE`** : le republier après coup, sinon le
+  prochain run CI échoue sur la garde de session. Marche à suivre dans l'encadré de §1.

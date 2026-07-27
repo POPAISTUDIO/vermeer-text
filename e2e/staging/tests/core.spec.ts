@@ -1,9 +1,9 @@
 import { expect, test } from '../lib/test';
-import type { Page } from '@playwright/test';
 import {
   ask,
   composer,
   conversationItems,
+  expectGeneratedTitle,
   expectHealthyAnswer,
   errorBubbles,
   modelSelectorTrigger,
@@ -30,10 +30,18 @@ test.describe('GEN — génération', () => {
        */
       await expect(page).toHaveTitle(new RegExp(escapeRegExp(APP_TITLE)));
 
-      await expect(
-        conversationItems(page).first(),
-        "Aucune conversation existante listée dans la sidebar : l'historique du compte QA n'est pas restitué (GEN-01 attend un historique intact).",
-      ).toBeVisible({ timeout: 30_000 });
+      /**
+       * Ici l'attente porte sur l'EXISTENCE d'un historique, pas sur une conversation
+       * précise : le comptage est donc le bon outil (aucun `.first()`, dont la cible
+       * dépendrait de l'ordre de la sidebar et des conversations épinglées).
+       */
+      await expect
+        .poll(async () => conversationItems(page).count(), {
+          timeout: 30_000,
+          message:
+            "Aucune conversation existante listée dans la sidebar : l'historique du compte QA n'est pas restitué (GEN-01 attend un historique intact).",
+        })
+        .toBeGreaterThan(0);
     },
   );
 
@@ -59,9 +67,16 @@ test.describe('GEN — génération', () => {
     async ({ page }) => {
       await newConversation(page);
 
+      /**
+       * « Par défaut » suppose l'absence de réglage hérité : une conversation neuve reprend
+       * nativement le dernier réglage utilisé (`lastConversationSetup_0`), et ce réglage
+       * traversait les tests via le relais de session. La fixture d'isolation
+       * (`lib/state.ts`) purge ces clés avant le premier chargement de page — sans elle, ce
+       * cas lit le modèle du test précédent et échoue sans qu'aucun défaut produit existe.
+       */
       await expect(
         modelSelectorTrigger(page),
-        `Le modèle par défaut affiché n'est pas « ${DEFAULT_MODEL_LABEL} ».`,
+        `Le modèle par défaut affiché n'est pas « ${DEFAULT_MODEL_LABEL} » — si un autre modèle est lu, vérifier que la purge des préférences (lib/state.ts) est bien active.`,
       ).toContainText(DEFAULT_MODEL_LABEL, { timeout: 20_000 });
 
       const result = await ask(page, SHORT_PROMPT);
@@ -94,17 +109,6 @@ test.describe('GEN — génération', () => {
     },
   );
 });
-
-/** Le titre de conversation est généré côté serveur après la réponse. */
-async function expectGeneratedTitle(page: Page, context: string): Promise<void> {
-  const active = conversationItems(page).first();
-  await expect
-    .poll(async () => ((await active.textContent().catch(() => '')) ?? '').trim(), {
-      timeout: 60_000,
-      message: `${context} — aucun titre de conversation généré (la conversation reste sans titre dans la sidebar).`,
-    })
-    .not.toMatch(/^(nouvelle conversation|new chat|)$/i);
-}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
