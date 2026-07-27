@@ -33,6 +33,12 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == "branch" ]]; then
             if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
               echo "tag=latest" >> $GITHUB_OUTPUT
+              # Vermeer: tag immuable additionnel sur main, consomme par le release
+              # train (.github/workflows/release-train.yml). `latest` etant mutable,
+              # il ne peut pas etre pinne dans les HelmRelease gitops (diff vide au
+              # 2e merge, aucun rollback possible). `sha-<7>` donne un diff reel a
+              # chaque merge et un rollback par tag.
+              echo "sha_tag=sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
             else
               safe_branch=$(echo "${GITHUB_REF_NAME}" | tr '/' '-')
               echo "tag=$safe_branch" >> $GITHUB_OUTPUT
@@ -65,6 +71,14 @@ jobs:
           ECR_REGISTRY_URL: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ steps.vars.outputs.repo_name }}
           IMAGE_TAG: ${{ steps.vars.outputs.tag }}
+          SHA_TAG: ${{ steps.vars.outputs.sha_tag }}
         run: |
           docker build -t $ECR_REGISTRY_URL/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY_URL/$ECR_REPOSITORY:$IMAGE_TAG
+
+          # Vermeer: sur main uniquement, second tag immuable pointant sur la meme
+          # image (docker tag ne rebuild pas, meme digest). Vide ailleurs -> no-op.
+          if [[ -n "$SHA_TAG" ]]; then
+            docker tag  $ECR_REGISTRY_URL/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY_URL/$ECR_REPOSITORY:$SHA_TAG
+            docker push $ECR_REGISTRY_URL/$ECR_REPOSITORY:$SHA_TAG
+          fi

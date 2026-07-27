@@ -1,0 +1,398 @@
+# Release train — propagation automatique dev + staging, puis QA.
+#
+# Chaine complete declenchee par un merge sur `main` :
+#   merge main -> "Build & Push Vermeer Custom Image to ECR" -> [ce workflow]
+#     -> bump du tag d'image dans vermeer-gitops (dev + staging)
+#     -> PR auto-mergee (squash)
+#     -> attente de reconciliation Flux
+#     -> dispatch de "QA Nightly — Staging"
+#
+# ---------------------------------------------------------------------------
+# FORMAT DE TAG (decouvert dans vermeer-prod-image.yml)
+# ---------------------------------------------------------------------------
+# Le workflow de build derive le tag d'image de la ref Git poussee :
+#   - push sur `main`          -> `latest`   (MUTABLE)
+#   - push sur autre branche   -> nom de branche assaini (`feat/x` -> `feat-x`)
+#   - push d'un tag Git        -> nom du tag (`v0.10.24`)
+#
+# `latest` etant mutable, il est INEXPLOITABLE pour un pin gitops : le 1er merge
+# produirait un diff, tous les suivants un diff vide (Flux ne voit rien changer,
+# aucun rollback par tag possible). Le workflow de build pousse donc, sur `main`
+# UNIQUEMENT, un second tag immuable sur la meme image :
+#
+#     sha-<7 premiers caracteres du SHA de merge>      ex. sha-a1b2c3d
+#
+# C'est CE tag que le release train propage. Il est reconstruit ici a partir de
+# `github.event.workflow_run.head_sha`, avec exactement la meme troncature a 7
+# que `${GITHUB_SHA::7}` cote build — les deux logiques doivent rester alignees.
+#
+# ---------------------------------------------------------------------------
+# CHEMINS GITOPS MODIFIES
+# ---------------------------------------------------------------------------
+# Repo : POPAISTUDIO/vermeer-gitops   (dev, staging, alpha — PAS de prod)
+#   dev/llm/helm-release.yaml       ligne `      tag: "<x>"` sous `values.image`
+#   staging/llm/helm-release.yaml   ligne `      tag: "<x>"` sous `values.image`
+#
+# Ces deux fichiers contiennent chacun EXACTEMENT UNE ligne `tag: "..."` (verifie
+# a l'execution : si ce n'est plus le cas, on avorte au lieu de deviner).
+# Aucun autre fichier n'est touche : ni librechat.yaml, ni external-secrets,
+# ni kustomization, ni les podAnnotations.
+#
+# ---------------------------------------------------------------------------
+# GARDE-FOUS NON NEGOCIABLES
+# ---------------------------------------------------------------------------
+# 1. PROD INTOUCHABLE. La prod vit dans un repo SEPARE (POPAISTUDIO/vermeer-gitops-prod,
+#    chemins prod/llm/*). Ce workflow ne le clone jamais et n'y a aucun droit : le
+#    PAT GITOPS_PUSH_TOKEN est scope sur vermeer-gitops SEUL. Une assertion
+#    explicite verifie en plus qu'aucun chemin touche ne contient "prod".
+# 2. DIFF CHIRURGICAL. Le diff produit doit etre exactement : 2 fichiers, 4 lignes
+#    (2 suppressions + 2 ajouts), toutes de la forme `tag: "..."`. Toute autre
+#    ligne fait echouer le job AVANT le push — donc avant la PR, donc avant le merge.
+# 3. AUCUN RETRY. Un push gitops echoue n'est jamais rejoue automatiquement :
+#    le job ouvre/commente une issue `release-train` et s'arrete. Reprise manuelle.
+# 4. AUCUNE ETAPE LLM. Le train est 100 % deterministe : pas de claude-code-action,
+#    donc pas besoin de `id-token: write` ici.
+#
+# ---------------------------------------------------------------------------
+# LIMITATION CONNUE — "Point 0" : pas de verification de l'image reellement servie
+# ---------------------------------------------------------------------------
+# Le CI n'a aucun acces au cluster : il ne peut pas verifier quelle image le pod
+# staging fait tourner. L'attente de reconciliation est un SLEEP a l'aveugle
+# (FLUX_WAIT_MINUTES, defaut 8 ; l'interval Flux declare dans les HelmRelease est
+# de 5m, plus le pull ECR et le rolling update). Si Flux est lent ou si le rollout
+# echoue, la QA se lancera CONTRE L'ANCIENNE IMAGE et son verdict sera trompeur —
+# un vert ne prouve pas que le nouveau code est bon, un rouge peut pointer un bug
+# deja corrige. Toujours recouper le tag QA avec l'image reellement deployee.
+# Amelioration future : exposer un endpoint /version cote app (retournant le tag
+# d'image / SHA de build) et remplacer le sleep par un poll jusqu'a concordance
+# avec le tag propage, avec timeout et echec explicite.
+
+name: Release Train — dev + staging
+
+on:
+  workflow_run:
+    workflows: ["Build & Push Vermeer Custom Image to ECR"]
+    types: [completed]
+
+# Les bumps se suivent, ils ne s'annulent pas : annuler un train en cours pourrait
+# laisser une PR gitops ouverte non mergee, ou un bump merge sans QA declenchee.
+# NB : GitHub ne garde qu'UN run en attente par groupe. Sur une rafale de merges,
+# les trains intermediaires en file sont abandonnes au profit du plus recent —
+# sans consequence ici, chaque train bumpe vers le dernier SHA connu.
+concurrency:
+  group: release-train
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write # ouverture/commentaire de l'issue d'echec
+  actions: write # dispatch de "QA Nightly — Staging"
+
+jobs:
+  propagate:
+    name: Bump gitops dev+staging puis QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # Le train ne part QUE sur un build vert issu d'un push sur main.
+    # `head_branch` vaut le nom du tag Git sur un push de tag : l'egalite stricte
+    # a 'main' exclut donc nativement les releases taguees (v0.10.x), qui suivent
+    # la procedure de deploiement manuelle documentee dans CLAUDE.md §12.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+
+    env:
+      GITOPS_REPO: POPAISTUDIO/vermeer-gitops
+      DEV_FILE: dev/llm/helm-release.yaml
+      STAGING_FILE: staging/llm/helm-release.yaml
+      QA_WORKFLOW: QA Nightly — Staging
+      # Surchargeable sans toucher au YAML via une variable de repo (Settings >
+      # Variables > Actions > FLUX_WAIT_MINUTES).
+      FLUX_WAIT_MINUTES: ${{ vars.FLUX_WAIT_MINUTES || '8' }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      BUILD_RUN_URL: ${{ github.event.workflow_run.html_url }}
+
+    steps:
+      - name: Checkout vermeer-text
+        uses: actions/checkout@v4
+
+      # --- (a) Tag de l'image produite par le build ---------------------------
+      - name: Resoudre le tag d'image
+        id: tag
+        run: |
+          set -euo pipefail
+          echo "resolution du tag" > "$RUNNER_TEMP/stage"
+
+          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::SHA de build inattendu: '$HEAD_SHA'"
+            exit 1
+          fi
+
+          # Meme troncature que `${GITHUB_SHA::7}` dans vermeer-prod-image.yml.
+          image_tag="sha-${HEAD_SHA:0:7}"
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG=$image_tag" >> "$GITHUB_ENV"
+          echo "Tag propage : $image_tag (build $HEAD_SHA)"
+
+      # --- (b) Clone de vermeer-gitops ---------------------------------------
+      - name: Cloner vermeer-gitops
+        env:
+          GITOPS_PUSH_TOKEN: ${{ secrets.GITOPS_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "clone gitops" > "$RUNNER_TEMP/stage"
+
+          if [[ -z "${GITOPS_PUSH_TOKEN:-}" ]]; then
+            echo "::error::secret GITOPS_PUSH_TOKEN absent — voir docs/ci/release-train.md"
+            exit 1
+          fi
+
+          # Garde-fou 1 : on ne clone JAMAIS le repo gitops de prod.
+          case "$GITOPS_REPO" in
+            *vermeer-gitops-prod*)
+              echo "::error::GITOPS_REPO pointe sur la prod — refus categorique"
+              exit 1
+              ;;
+          esac
+
+          git clone --depth 1 \
+            "https://x-access-token:${GITOPS_PUSH_TOKEN}@github.com/${GITOPS_REPO}.git" \
+            gitops
+          cd gitops
+          git config user.name  "vermeer-release-train[bot]"
+          git config user.email "vermeer-release-train@users.noreply.github.com"
+
+      # --- (c) Bump chirurgical dev + staging --------------------------------
+      - name: Bumper le tag dev et staging
+        id: bump
+        working-directory: gitops
+        run: |
+          set -euo pipefail
+          echo "bump des HelmRelease" > "$RUNNER_TEMP/stage"
+
+          # Une seule ligne `tag: "..."` par fichier — verifie AVANT d'ecrire.
+          # Si le fichier evolue et en contient 0 ou 2+, on avorte : mieux vaut un
+          # train casse qu'un sed qui touche la mauvaise ligne.
+          bump() {
+            file="$1"
+            [[ -f "$file" ]] || { echo "::error::$file introuvable"; exit 1; }
+            n=$(grep -cE '^[[:space:]]+tag: "[^"]*"$' "$file" || true)
+            if [[ "$n" != "1" ]]; then
+              echo "::error::$file: attendu exactement 1 ligne 'tag: \"...\"', trouve $n — bump manuel requis"
+              exit 1
+            fi
+            sed -i -E "s|^([[:space:]]+)tag: \"[^\"]*\"\$|\1tag: \"${IMAGE_TAG}\"|" "$file"
+          }
+
+          bump "$DEV_FILE"
+          bump "$STAGING_FILE"
+
+          if git diff --quiet; then
+            echo "Aucun changement : dev et staging sont deja sur ${IMAGE_TAG}."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- Garde-fou 2 : le diff ne contient QUE les deux lignes de tag -------
+      - name: Verifier que le diff est strictement limite aux lignes de tag
+        if: steps.bump.outputs.changed == 'true'
+        working-directory: gitops
+        run: |
+          set -euo pipefail
+          echo "verification du diff" > "$RUNNER_TEMP/stage"
+
+          echo "--- diff produit ---"
+          git --no-pager diff
+          echo "--------------------"
+
+          # 2a. Aucun fichier hors de la liste blanche. On tolere qu'un seul des
+          #     deux bouge (dev et staging peuvent deja diverger, l'un peut donc
+          #     etre deja sur le SHA entrant) mais RIEN d'autre ne peut apparaitre.
+          changed=$(git diff --name-only | sort)
+          n_files=$(echo "$changed" | grep -c . || true)
+          unexpected=$(echo "$changed" \
+            | grep -vxF -e "$DEV_FILE" -e "$STAGING_FILE" || true)
+          if [[ -n "$unexpected" ]]; then
+            echo "::error::fichiers modifies hors liste blanche :"
+            echo "$unexpected"
+            echo "seuls '$DEV_FILE' et '$STAGING_FILE' sont autorises."
+            exit 1
+          fi
+          echo "Fichiers touches ($n_files) :"; echo "$changed"
+
+          # 2b. Aucun chemin touche ne releve de la prod (ceinture + bretelles :
+          #     vermeer-gitops n'a pas de dossier prod, mais si un jour il en a un
+          #     ce workflow doit s'arreter net plutot que d'y toucher).
+          if echo "$changed" | grep -qi 'prod'; then
+            echo "::error::un chemin prod apparait dans le diff — abandon"
+            exit 1
+          fi
+
+          # 2c. Chaque ligne ajoutee/supprimee est une ligne de tag. Toute autre
+          #     ligne (commentaire, env var, annotation...) fait echouer le job.
+          offending=$(git diff -U0 \
+            | grep -E '^[+-]' \
+            | grep -vE '^(\+\+\+|---)' \
+            | grep -vE '^[+-][[:space:]]+tag: "[^"]*"$' || true)
+          if [[ -n "$offending" ]]; then
+            echo "::error::le diff contient autre chose que des lignes de tag :"
+            echo "$offending"
+            exit 1
+          fi
+
+          # 2d. Volumetrie : 1 suppression + 1 ajout par fichier touche, plus les
+          #     2 entetes ---/+++ que git emet par fichier.
+          raw=$(git diff -U0 | grep -cE '^[+-]' | tr -d ' ')
+          n=$(( raw - 2 * n_files ))
+          if [[ "$n" != "$(( 2 * n_files ))" ]]; then
+            echo "::error::attendu $(( 2 * n_files )) lignes modifiees, trouve $n"
+            exit 1
+          fi
+
+          # 2e. Etat final : les DEUX fichiers portent le tag vise, qu'ils aient ete
+          #     modifies a l'instant ou qu'ils y soient deja.
+          for f in "$DEV_FILE" "$STAGING_FILE"; do
+            grep -qE "^[[:space:]]+tag: \"${IMAGE_TAG}\"$" "$f" \
+              || { echo "::error::$f ne porte pas le tag ${IMAGE_TAG}"; exit 1; }
+          done
+
+          echo "Diff conforme."
+
+      # --- (d) PR + auto-merge squash ----------------------------------------
+      - name: Ouvrir et merger la PR gitops
+        if: steps.bump.outputs.changed == 'true'
+        working-directory: gitops
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "PR gitops" > "$RUNNER_TEMP/stage"
+
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          branch="bump/${IMAGE_TAG}"
+          git checkout -b "$branch"
+
+          {
+            printf 'chore(dev+staging): bump image vers %s\n\n' "$IMAGE_TAG"
+            printf 'Propagation automatique du build ECR de main (%s).\n' "$HEAD_SHA"
+            printf 'Release train: %s\n' "$run_url"
+          } > "$RUNNER_TEMP/commit-msg"
+          git commit -a -F "$RUNNER_TEMP/commit-msg"
+
+          # --force : le seul contenu possible de cette branche est ce bump, et un
+          # re-run du meme SHA regenere un contenu identique. Aucun autre auteur
+          # n'ecrit sur bump/sha-*.
+          git push --force origin "$branch"
+
+          pr_url=$(gh pr list --repo "$GITOPS_REPO" --head "$branch" --state open \
+            --json url --jq '.[0].url // empty')
+
+          if [[ -z "$pr_url" ]]; then
+            {
+              printf 'Propagation automatique par le release train de `vermeer-text`.\n\n'
+              printf '| | |\n|---|---|\n'
+              printf '| Tag d'"'"'image | `%s` |\n' "$IMAGE_TAG"
+              printf '| SHA de build | `%s` |\n' "$HEAD_SHA"
+              printf '| Build ECR | %s |\n' "$BUILD_RUN_URL"
+              printf '| Run release train | %s |\n\n' "$run_url"
+              printf 'Fichiers modifies (lignes de tag uniquement, diff verifie automatiquement) :\n'
+              printf -- '- `%s`\n' "$DEV_FILE" "$STAGING_FILE"
+              printf '\nLa prod n'"'"'est pas concernee (repo separe `vermeer-gitops-prod`).\n'
+            } > "$RUNNER_TEMP/pr-body.md"
+
+            pr_url=$(gh pr create \
+              --repo "$GITOPS_REPO" \
+              --base main \
+              --head "$branch" \
+              --title "bump dev+staging → ${IMAGE_TAG} (auto, release train)" \
+              --body-file "$RUNNER_TEMP/pr-body.md")
+          fi
+
+          echo "PR : $pr_url"
+          echo "$pr_url" > "$RUNNER_TEMP/pr-url"
+
+          # Pas de --admin : vermeer-gitops n'a pas de protection de branche, un PAT
+          # fine-grained "Pull requests: write" + "Contents: write" suffit.
+          gh pr merge "$pr_url" --repo "$GITOPS_REPO" --squash --delete-branch
+
+      # --- (e) Attente de reconciliation Flux --------------------------------
+      # Sleep a l'aveugle — cf. limitation "Point 0" en tete de fichier.
+      - name: Attendre la reconciliation Flux
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          echo "attente Flux" > "$RUNNER_TEMP/stage"
+          echo "Attente de ${FLUX_WAIT_MINUTES} min (interval Flux declare : 5m)."
+          sleep $(( FLUX_WAIT_MINUTES * 60 ))
+
+      # --- (f) Declenchement de la QA ----------------------------------------
+      - name: Declencher la QA staging
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "dispatch QA" > "$RUNNER_TEMP/stage"
+          # workflow_dispatch fait partie des exceptions qui creent bien un run
+          # quand elles sont declenchees avec le GITHUB_TOKEN du repo.
+          gh workflow run "$QA_WORKFLOW" --repo "${{ github.repository }}" --ref main
+          echo "QA « $QA_WORKFLOW » declenchee pour ${IMAGE_TAG}."
+
+      # --- (g) Rapport d'echec ------------------------------------------------
+      # AUCUN retry : on trace et on s'arrete. Une reprise apres echec de push
+      # gitops est une decision humaine (l'etat du repo distant est inconnu).
+      # Limite : si le job depasse `timeout-minutes`, il est annule et cette etape
+      # peut ne pas s'executer — surveiller aussi l'onglet Actions.
+      - name: Signaler l'echec (issue release-train)
+        if: ${{ failure() || cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: "Release train — echecs de propagation dev/staging"
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Etape en echec et URL de PR : lues depuis des fichiers d'etat, pas depuis
+          # $GITHUB_ENV — une variable ecrite dans $GITHUB_ENV n'est exposee qu'aux
+          # etapes SUIVANTES, donc jamais a l'etape qui vient d'echouer.
+          stage=$(cat "$RUNNER_TEMP/stage" 2>/dev/null || echo "inconnue")
+          pr_url=$(cat "$RUNNER_TEMP/pr-url" 2>/dev/null || echo "aucune")
+          tag="${IMAGE_TAG:-non resolu}"
+
+          {
+            printf 'Le release train a echoue.\n\n'
+            printf '| | |\n|---|---|\n'
+            printf '| Tag vise | `%s` |\n' "$tag"
+            printf '| SHA de build | `%s` |\n' "$HEAD_SHA"
+            printf '| Etape en echec | **%s** |\n' "$stage"
+            printf '| Run release train | %s |\n' "$run_url"
+            printf '| Build ECR | %s |\n' "$BUILD_RUN_URL"
+            printf '| PR gitops | %s |\n\n' "$pr_url"
+            printf 'Aucun retry automatique n'"'"'a ete effectue (garde-fou).\n'
+            printf 'Verifier l'"'"'etat de `%s` (branche `bump/%s` eventuellement restee\n' "$GITOPS_REPO" "$tag"
+            printf 'ouverte) avant toute reprise manuelle. La prod n'"'"'est pas impactee.\n'
+          } > "$RUNNER_TEMP/issue-body.md"
+
+          gh label create release-train \
+            --repo "${{ github.repository }}" \
+            --color B60205 \
+            --description "Echecs du release train dev/staging" 2>/dev/null || true
+
+          issue=$(gh issue list --repo "${{ github.repository }}" \
+            --label release-train --state open \
+            --search "$ISSUE_TITLE in:title" \
+            --json number --jq '.[0].number // empty')
+
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --repo "${{ github.repository }}" \
+              --body-file "$RUNNER_TEMP/issue-body.md"
+            echo "Commentaire ajoute sur l'issue #$issue."
+          else
+            gh issue create --repo "${{ github.repository }}" \
+              --title "$ISSUE_TITLE" \
+              --label release-train \
+              --body-file "$RUNNER_TEMP/issue-body.md"
+          fi
