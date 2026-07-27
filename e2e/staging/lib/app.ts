@@ -9,7 +9,87 @@ export const UPLOAD_ROUTE = /^\/api\/files(\/images)?\/?$/;
 
 export const composer = (page: Page): Locator => page.getByTestId('text-input');
 export const sendButton = (page: Page): Locator => page.getByTestId('send-button');
+
+/**
+ * TOUS les items de conversation de la sidebar.
+ *
+ * ⚠️ Ne PAS utiliser `conversationItems(page).first()` pour retrouver « la conversation du
+ * test » : le premier item est celui que la sidebar met en tête, c'est-à-dire une
+ * conversation ÉPINGLÉE ou la plus récente d'un test précédent — pas nécessairement celle
+ * que le test vient de créer. Le titre non plus n'est pas discriminant : le compte QA porte
+ * plusieurs conversations homonymes (« Salutation en Français » y apparaît trois fois).
+ * Passer par `currentConversationId` (URL) puis `activeConversationItem` (`aria-current`).
+ * Cet accesseur ne reste légitime que pour compter l'historique (GEN-01).
+ */
 export const conversationItems = (page: Page): Locator => page.getByTestId('convo-item');
+
+/** Identifiant de conversation dans l'URL applicative (`/c/<uuid>`), hors `/c/new`. */
+const CONVERSATION_URL = /\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:$|[/?#])/i;
+
+/** Titres « pas encore généré » : placeholder client ou titre par défaut du serveur. */
+const UNTITLED = /^(nouvelle conversation|new chat|sans titre|untitled)?$/i;
+
+export function conversationIdFromUrl(url: string): string | null {
+  return CONVERSATION_URL.exec(url)?.[1] ?? null;
+}
+
+/**
+ * Identifiant de la conversation RÉELLEMENT ouverte, lu dans l'URL. C'est l'ancre de tout
+ * ciblage : elle ne dépend ni de l'ordre de la sidebar, ni des conversations épinglées, ni
+ * de l'historique du compte QA.
+ */
+export async function currentConversationId(page: Page, context: string): Promise<string> {
+  await expect
+    .poll(() => conversationIdFromUrl(page.url()), {
+      timeout: 30_000,
+      message: `${context} — aucune conversation persistée : l'URL reste ${page.url()} (attendu /c/<id>).`,
+    })
+    .not.toBeNull();
+
+  return conversationIdFromUrl(page.url()) as string;
+}
+
+/**
+ * Item de sidebar de la conversation OUVERTE.
+ *
+ * `aria-current="page"` est posé par `ConvoLink` sur le seul item dont l'identifiant est
+ * celui de la conversation courante (`Convo.isActiveConvo`, comparaison directe des ids).
+ * C'est donc une prise DOM équivalente à l'URL, et indépendante de l'ordre de la sidebar,
+ * des épinglages et des homonymes.
+ *
+ * L'API n'est pas une option pour lire la conversation : les routes `/api/*` exigent le
+ * jeton d'accès que le client garde EN MÉMOIRE (vérifié — `GET /api/convos` répond 401 aussi
+ * bien depuis `page.request` que depuis un `fetch` exécuté dans la page).
+ */
+export function activeConversationItem(page: Page): Locator {
+  return conversationItems(page).filter({ has: page.locator('[aria-current="page"]') });
+}
+
+/**
+ * Le titre de conversation est généré côté serveur APRÈS la réponse.
+ *
+ * Ancré sur la conversation du test — jamais sur le premier item de la sidebar : on vérifie
+ * d'abord qu'une conversation est bien persistée (URL `/c/<id>`), puis que l'item ACTIF —
+ * celui de cette conversation — porte un titre.
+ */
+export async function expectGeneratedTitle(page: Page, context: string): Promise<string> {
+  const conversationId = await currentConversationId(page, context);
+  const active = activeConversationItem(page);
+
+  await expect(
+    active,
+    `${context} — la conversation ${conversationId} n'est pas l'item actif de la sidebar.`,
+  ).toHaveCount(1, { timeout: 30_000 });
+
+  await expect
+    .poll(async () => ((await active.textContent().catch(() => '')) ?? '').trim(), {
+      timeout: 60_000,
+      message: `${context} — aucun titre généré pour la conversation ${conversationId} (elle reste sans titre dans la sidebar).`,
+    })
+    .not.toMatch(UNTITLED);
+
+  return ((await active.textContent()) ?? '').trim();
+}
 
 export const stopButton = (page: Page): Locator =>
   page.getByRole('button', { name: /arrêter la génération|stop generating/i });

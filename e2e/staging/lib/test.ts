@@ -1,5 +1,6 @@
 import { test as base } from '@playwright/test';
 import { authStateFile } from './env';
+import { purgeArgs, purgePreferences } from './state';
 
 /**
  * `test` de la suite — à importer partout à la place de `@playwright/test`.
@@ -19,7 +20,24 @@ import { authStateFile } from './env';
  * job et disparaît avec lui. Le secret QA_STORAGE_STATE n'est donc réutilisable qu'une
  * fois par capture, sauf à le réinjecter en fin de job.
  */
-export const test = base.extend<{ persistRotatedSession: void }>({
+export const test = base.extend<{
+  isolatedPreferences: void;
+  persistRotatedSession: void;
+}>({
+  /**
+   * Isolation d'état — enregistrée sur le CONTEXTE (donc valable pour la page du test comme
+   * pour tout onglet ouvert en cours de route, cf. SAV-01), avant le premier chargement de
+   * page. Ne touche qu'aux clés de préférence de conversation : les cookies — seuls porteurs
+   * de l'authentification — restent intacts, et `persistRotatedSession` ci-dessous continue
+   * de relayer la session à l'identique. Détail du périmètre : `lib/state.ts`.
+   */
+  isolatedPreferences: [
+    async ({ context }, use) => {
+      await context.addInitScript(purgePreferences, purgeArgs);
+      await use();
+    },
+    { auto: true },
+  ],
   persistRotatedSession: [
     async ({ context }, use, testInfo) => {
       await use();
