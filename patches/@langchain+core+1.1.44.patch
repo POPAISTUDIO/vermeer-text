@@ -1,0 +1,37 @@
+diff --git a/node_modules/@langchain/core/dist/utils/uuid/index.cjs b/node_modules/@langchain/core/dist/utils/uuid/index.cjs
+index 12fc951..14c4605 100644
+--- a/node_modules/@langchain/core/dist/utils/uuid/index.cjs
++++ b/node_modules/@langchain/core/dist/utils/uuid/index.cjs
+@@ -24,21 +24,21 @@ var uuid_exports = /* @__PURE__ */ require_runtime.__exportAll({
+ 	version: () => require_version.default
+ });
+ //#endregion
+-exports.MAX = require_max;
+-exports.NIL = require_nil;
+-exports.parse = require_parse;
+-exports.stringify = require_stringify;
++exports.MAX = require_max.default;
++exports.NIL = require_nil.default;
++exports.parse = require_parse.default;
++exports.stringify = require_stringify.default;
+ Object.defineProperty(exports, "uuid_exports", {
+ 	enumerable: true,
+ 	get: function() {
+ 		return uuid_exports;
+ 	}
+ });
+-exports.v1 = require_v1;
+-exports.v4 = require_v4;
+-exports.v5 = require_v5;
+-exports.v7 = require_v7;
+-exports.validate = require_validate;
+-exports.version = require_version;
++exports.v1 = require_v1.default;
++exports.v4 = require_v4.default;
++exports.v5 = require_v5.default;
++exports.v7 = require_v7.default;
++exports.validate = require_validate.default;
++exports.version = require_version.default;
+ 
+ //# sourceMappingURL=index.cjs.map
+\ No newline at end of file
