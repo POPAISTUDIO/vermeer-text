@@ -443,6 +443,9 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
     Object.assign(userinfo, providerUserinfo);
   }
 
+  // Vermeer: observabilité SSO — clés de claims uniquement, jamais les valeurs (données personnelles).
+  logger.info(`[openidStrategy] OIDC profile claim keys: ${Object.keys(userinfo).join(', ')}`);
+
   const email = getOpenIdEmail(userinfo);
   const openidIssuer = getOpenIdIssuer(claims, openidConfig);
 
@@ -551,8 +554,8 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
     );
   }
 
-  const companyName = userinfo[process.env.OPENID_COMPANY_CLAIM || 'companyName'];
-  const department = userinfo[process.env.OPENID_DEPARTMENT_CLAIM || 'department'];
+  const companyName = userinfo[process.env.OPENID_COMPANY_CLAIM || 'custom:compagnyname'];
+  const department = userinfo[process.env.OPENID_DEPARTMENT_CLAIM || 'custom:department'];
 
   if (existingUsersOnly && !user) {
     throw new Error('User does not exist');
@@ -572,8 +575,8 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
 
     const balanceConfig = getBalanceConfig(appConfig);
     user = await createUser(user, balanceConfig, true, true);
-    if (companyName) user.companyName = companyName;
-    if (department) user.department = department;
+    if (typeof companyName === 'string' && companyName) user.companyName = companyName;
+    if (typeof department === 'string' && department) user.department = department;
   } else {
     user.provider = 'openid';
     user.openidId = userinfo.sub;
@@ -587,8 +590,8 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
       user.email = email;
       user.emailVerified = userinfo.email_verified || false;
     }
-    if (companyName) user.companyName = companyName;
-    if (department) user.department = department;
+    if (typeof companyName === 'string' && companyName) user.companyName = companyName;
+    if (typeof department === 'string' && department) user.department = department;
   }
 
   const adminRole = process.env.OPENID_ADMIN_ROLE;
