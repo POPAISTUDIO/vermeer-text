@@ -91,7 +91,7 @@
 | **Stockage** | Secrets Actions de `vermeer-text` (partagés avec la QA nightly) — **OBSERVED**. Groupe de concurrence `qa-session` partagé avec `qa-nightly.yml` : les deux ne tournent jamais en parallèle |
 | **Expiration** | Identique à la QA nightly |
 | **Permis** | Jouer les 4 cas `@canary` (GEN-02, GEN-03, GEN-06, SEL-01) · créer les labels `canary` et `infra` s'ils manquent · ouvrir une issue d'alerte quand le canary est rouge (avec la consigne « Point 0 avant tout diagnostic ») · republier `QA_STORAGE_STATE` |
-| **Interdits** | Modifier un fichier du dépôt · poser un **label déclencheur** — il pose `canary` + `infra`, deux labels de classement, **jamais `claude-fix`** ([règle « l'observation ne désigne pas »](GOVERNANCE.md#règle-lobservation-ne-désigne-pas)) · conclure quoi que ce soit avant le Point 0 |
+| **Interdits** | Modifier un fichier du dépôt · poser un **label déclencheur** — il pose `canary` + `infra`, deux labels de classement, **jamais `claude-fix`** ([règle « l'observation ne désigne pas »](GOVERNANCE.md#6--observation)) · conclure quoi que ce soit avant le Point 0 |
 | **Fiabilité** | **Élevée.** Aucun jugement de modèle dans la boucle, verdict = code de sortie, gate final explicite (`exit 1` si rouge). Porte le même `VERMEER_SECRETS_TOKEN` que la QA nightly, avec les mêmes réserves |
 
 ### 5. Triage QA — `vermeer-text`
@@ -185,7 +185,7 @@
 | **Expiration** | **UNKNOWN** |
 | **Permis** | Appliquer l'état mergé sur `main` de `vermeer-gitops-prod`. Intervalle de réconciliation : **UNKNOWN** (non relevé ; à préciser lors du chantier 5, où le smoke automatique devra l'attendre) |
 | **Interdits** | Aucune initiative, comme ci-dessus |
-| **Fiabilité** | **Machinerie déterministe.** C'est le **seul** chemin par lequel un changement atteint la production — et il ne part que d'un merge humain protégé par l'écluse ([GOVERNANCE.md §4](GOVERNANCE.md#lécluse-de-la-production--ruleset-écluse-main--prod)) |
+| **Fiabilité** | **Machinerie déterministe.** C'est le **seul** chemin par lequel un changement atteint la production — et il ne part que d'un merge humain protégé par l'écluse ([GOVERNANCE.md §4](GOVERNANCE.md#4--lécluse)) |
 
 ### 12. `gitops-bot` — hotswap staging (acteur hors périmètre)
 
@@ -229,7 +229,7 @@
 | **Stockage** | Secrets Actions — dépôt à arbitrer au chantier 6 |
 | **Expiration** | À consigner **OBSERVED** à la création |
 | **Permis** | Lire les journaux · comparer `librechat.yaml` + `configEnv` staging ↔ prod · **ouvrir une issue instruite** (preuves, contexte, taux) et notifier · journaliser un « RAS » horodaté quand tout va bien |
-| **Interdits** | **Poser un label déclencheur** — l'issue est ouverte **sans label** ([règle « l'observation ne désigne pas »](GOVERNANCE.md#règle-lobservation-ne-désigne-pas)) · toute écriture · tout accès gitops en écriture |
+| **Interdits** | **Poser un label déclencheur** — l'issue est ouverte **sans label** ([règle « l'observation ne désigne pas »](GOVERNANCE.md#6--observation)) · toute écriture · tout accès gitops en écriture |
 | **À ajouter** | À l'étape 1 du coupe-circuit ([GOVERNANCE.md §7](GOVERNANCE.md#coupe-circuit--endormir-tout-le-système)) |
 
 ### 15. Agent MEP — jeton branches-only — ⏳ chantier 7
