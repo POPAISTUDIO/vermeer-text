@@ -7,6 +7,20 @@
 #
 # Une issue labellisée `claude-fix` déclenche l'agent codeur (claude.yml → claude-autofix).
 # D'où l'exigence de non-duplication et le plafond de 3 issues par run.
+#
+# Second désignateur du système : ses six garde-fous sont prescrits par docs/GOVERNANCE.md §2.
+# Trois d'entre eux vivent dans le prompt ci-dessous et s'y lisent nommément :
+#   - garde-fou 2 : déduplication par SIGNATURE d'échec (cas | fichier | assertion
+#     normalisée), écrite dans le corps de l'issue en commentaire HTML machine-lisible ;
+#   - garde-fou 3 : exclusion des cas tagués `@known-issue-N` (étape 0), en second filet du
+#     `--grep-invert @known-issue` de qa-nightly.yml ;
+#   - garde-fou 4 : plafond de 2 tentatives, compté dans les marqueurs `<!-- tentative: X -->`
+#     des commentaires de l'issue — jamais dans les PRs liées. Au-delà : retrait définitif du
+#     label, synthèse, et assignation de l'issue à l'humaine.
+# Le cycle du label (retirer puis reposer `claude-fix`) est une DÉSIGNATION, pas un détail
+# technique : l'agent codeur ne se réveille que sur l'événement `labeled`. Il est borné par le
+# compteur, et il ne repose jamais un label qu'un humain a retiré (veto, garde-fou 5).
+# Test de garde de tout ceci : qa-triage-replay.yml (rejeu dry-run sur fixtures archivées).
 name: QA Triage
 
 on:
@@ -25,7 +39,10 @@ jobs:
     name: Triage des échecs
     if: github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Budget relevé au chantier 4 (était 20 min / --max-turns 50) : la déduplication passe de
+    # une à deux passes (lecture du corps de chaque candidate) et le garde-fou 4 ajoute la
+    # lecture des marqueurs de comptage. Le plafond de 3 dossiers par run est inchangé.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,8 +82,8 @@ jobs:
               - `qa-artifacts/report.json` — rapport JSON Playwright du run échoué.
               - `qa-artifacts/test-results/**/error-context.md` — assertion exacte, log
                 d'attente et arborescence d'accessibilité de chaque échec.
-              - `e2e/staging/README.md` — §4 tags, §5 ce que chaque cas asservit,
-                §8 divergences assumées, §9 limites connues.
+              - `e2e/staging/README.md` — §5 convention de tags (dont `@known-issue-N`),
+                §6 ce que chaque cas asservit, §9 divergences assumées, §10 limites connues.
               - le code de la suite dans `e2e/staging/` pour localiser les fichiers suspects.
 
             Run échoué : ${{ github.event.workflow_run.html_url }}
@@ -75,6 +92,22 @@ jobs:
             Si les artefacts sont absents (`outcome` différent de `success`) ou si
             `report.json` est illisible, tu ne devines pas : commente le Dossier QA pour
             dire que le run a échoué sans produire de rapport exploitable, et arrête-toi.
+
+            ÉTAPE 0 — écarter les défauts connus (garde-fou 3, exclusion `@known-issue-N`) :
+            Pour chaque échec, lis les tags de son cas — champ `tags` du spec dans
+            `report.json` (le reporter y écrit les tags SANS l'arobase :
+            `["wave1","known-issue-114"]`), et au besoin le `{ tag: [...] }` du fichier de
+            test. Si le cas porte un tag de la forme `@known-issue-N` (N = numéro d'issue
+            GitHub, `known-issue-N` dans le JSON), c'est un
+            défaut connu et dépriorisé : le tag est le veto persistant de l'humain.
+              - Tu ne crées AUCUNE issue, tu ne poses AUCUN label, et tu ne commentes PAS
+                l'issue N — elle est déjà instruite et volontairement au repos.
+              - Tu écris UNE ligne au Dossier QA : identifiant du cas, tag lu, renvoi à
+                l'issue N (« hors verdict P0 et hors désignation »).
+              - Tu ne le classes pas en BUG PRODUIT et il ne compte pas dans le plafond de 3.
+            Ces cas sont normalement déjà exclus du run par le `--grep-invert @known-issue`
+            de la nightly ; cette étape est le second filet, pour les runs lancés à la main
+            ou filtrés autrement.
 
             ÉTAPE 1 — classer CHAQUE échec dans exactement une catégorie :
               * BUG PRODUIT — une assertion métier est fausse et la cause est du côté de
@@ -90,7 +123,7 @@ jobs:
                 ce qui manquerait pour conclure.
 
             Un test « skipped » n'est pas un échec. CTX-02 est un SKIP motivé documenté
-            (README §8.3) : ne l'instruis jamais comme un bug.
+            (README §9.3) : ne l'instruis jamais comme un bug.
 
             ÉTAPE 2 — agir selon la catégorie :
 
@@ -104,24 +137,104 @@ jobs:
                 d'autre à trier.
 
             BUG PRODUIT :
-              - D'abord la non-duplication : `gh issue list --label claude-fix --state all
-                --limit 50`. Compare les IDENTIFIANTS DE CAS présents dans les titres
-                (GEN-02, FILE-01, WEB-01…) avec ceux que tu viens de classer. Si une issue
-                porte déjà le même identifiant pour le même symptôme, tu n'en crées PAS une
-                seconde : ajoute un commentaire à l'existante avec le lien du nouveau run.
-              - Sinon, crée l'issue :
-                  titre : `[QA] <ID du cas> — <symptôme en une ligne>`
-                  label : `claude-fix`
-                  corps :
-                    - l'assertion exacte qui a échoué, citée depuis le rapport ou
-                      l'error-context (pas reformulée) ;
-                    - le lien du run échoué ;
-                    - ton analyse : ce que le cas asservit (README §5) et ce que le produit
-                      a fait à la place ;
-                    - les fichiers suspects, avec chemins précis, côté application — pas
-                      côté suite de test, sauf si le défaut est manifestement dans le test.
+
+              (a) CALCULE LA SIGNATURE D'ÉCHEC (garde-fou 2). Trois champs, séparés par
+                  ` | ` : identifiant du cas · chemin du fichier de spec · assertion
+                  normalisée. L'assertion normalisée est la PREMIÈRE ligne d'erreur
+                  d'assertion du rapport, débarrassée de tout ce qui varie d'un run à
+                  l'autre : horodatages, durées et délais (`2.4s`, `20000ms`), UUID et
+                  identifiants de conversation, URL de run, numéros de ligne, compteurs et
+                  valeurs mesurées. Garde la forme de l'assertion et son locator.
+                  Exemple : `GEN-02 | e2e/staging/tests/core.spec.ts | expect(locator).toBeVisible`
+                  Elle s'écrit dans le corps de l'issue, sur une ligne à elle, dans un
+                  commentaire HTML machine-lisible — c'est la clé de déduplication :
+                    <!-- signature: GEN-02 | e2e/staging/tests/core.spec.ts | expect(locator).toBeVisible -->
+
+              (b) DÉDUPLIQUE EN DEUX PASSES.
+                  Passe 1, filtre grossier par identifiant de cas :
+                  `gh issue list --label claude-fix --state all --limit 50`. Retiens les
+                  issues dont le titre porte le même identifiant (GEN-02, FILE-01, WEB-01…).
+                  Aucune candidate → va en (c), c'est un échec neuf.
+                  Passe 2, confrontation des signatures : pour chaque candidate,
+                  `gh issue view <N> --json body,state,labels,comments` et lis la ligne
+                  `<!-- signature: … -->` de son corps.
+                    - Signature IDENTIQUE → va en (d). Tu ne crées rien.
+                    - Signature DIFFÉRENTE sur toutes les candidates → c'est un échec
+                      DIFFÉRENT du même cas : va en (c) et crée une issue.
+                    - Candidate sans ligne de signature (issue ouverte à la main, ou
+                      antérieure à ce mécanisme) : si le symptôme est manifestement le même,
+                      traite-la comme identique (va en (d)) ; dis en une phrase, dans ton
+                      commentaire, que la comparaison a porté sur le symptôme faute de
+                      signature.
+
+              (c) ÉCHEC NEUF — crée l'issue, dans cet ordre exact :
+                  1. `gh issue create` SANS label :
+                       titre : `[QA] <ID du cas> — <symptôme en une ligne>`
+                       corps :
+                         - la ligne `<!-- signature: … -->` calculée en (a) ;
+                         - l'assertion exacte qui a échoué, citée depuis le rapport ou
+                           l'error-context (pas reformulée) ;
+                         - le lien du run échoué ;
+                         - ton analyse : ce que le cas asservit (README §6) et ce que le
+                           produit a fait à la place ;
+                         - les fichiers suspects, avec chemins précis, côté application —
+                           pas côté suite de test, sauf si le défaut est manifestement dans
+                           le test.
+                  2. `gh issue comment <N>` avec le marqueur de comptage daté :
+                       <!-- tentative: 1 -->
+                     suivi de la date du jour et du lien du run.
+                  3. `gh issue edit <N> --add-label claude-fix` — c'est CE geste qui met
+                     l'agent codeur en marche, et il vient APRÈS le marqueur : le compteur
+                     existe toujours avant la désignation. Si le job meurt entre 1 et 3, il
+                     reste une issue instruite et endormie — jamais un agent lancé hors
+                     compteur.
+
+              (d) SIGNATURE DÉJÀ CONNUE — compte les tentatives (garde-fou 4), ne crée rien.
+                  Le comptage se lit UNIQUEMENT dans les marqueurs de l'issue, jamais dans
+                  les PRs liées :
+                  `gh issue view <N> --json comments --jq '[.comments[].body | scan("<!-- tentative: ([0-9]+) -->") | .[0] | tonumber] | max // 0'`
+                  (`gh issue view … --json …` suffit et reste dans l'allowlist `gh issue *` ;
+                  n'essaie pas `gh api`, il n'y est pas.)
+                  Note aussi si le label `claude-fix` est ENCORE POSÉ (`--json labels`) et si
+                  l'issue est ouverte ou fermée. Puis, dans tous les cas, commente l'issue
+                  avec le lien du nouveau run et la signature confrontée. Ensuite :
+
+                    - Issue FERMÉE → tu t'arrêtes là : aucun label, aucune assignation. Une
+                      réouverture est une décision humaine. Une ligne au Dossier QA.
+
+                    - Label `claude-fix` ABSENT d'une issue ouverte → un humain l'a retiré,
+                      ou le plafond a déjà été atteint : c'est un VETO (garde-fou 5). Tu ne
+                      reposes JAMAIS un label retiré. Une ligne au Dossier QA, et c'est tout.
+
+                    - Label PRÉSENT et compteur à 0 ou 1 → la première tentative n'a pas
+                      reverdi le cas. CYCLE DU LABEL, dans cet ordre :
+                        1. `gh issue comment <N>` avec `<!-- tentative: 2 -->`, la date et le
+                           lien du run ;
+                        2. `gh issue edit <N> --remove-label claude-fix` ;
+                        3. `gh issue edit <N> --add-label claude-fix`.
+                      Les deux gestes sont nécessaires : l'agent codeur ne se déclenche que
+                      sur l'ÉVÉNEMENT de pose du label, et réajouter un label déjà présent ne
+                      produit aucun événement. C'est la deuxième et DERNIÈRE désignation.
+
+                    - Label PRÉSENT et compteur DÉJÀ à 2 (ou plus) → PLAFOND ATTEINT. Deux
+                      désignations n'ont pas suffi : l'issue redevient humaine.
+                        1. `gh issue edit <N> --remove-label claude-fix` — retrait définitif,
+                           tu ne le reposes plus jamais sur cette signature ;
+                        2. `gh issue comment <N>` avec une synthèse : les deux tentatives
+                           (dates et runs lus dans les marqueurs), les PRs référencées dans
+                           les commentaires de l'issue si elles y figurent — sinon écris
+                           explicitement qu'aucune PR n'y est référencée, ne devine pas —, et
+                           pourquoi le cas n'a pas reverdi (la signature est-elle strictement
+                           la même, l'assertion a-t-elle bougé) ;
+                        3. `gh issue edit <N> --add-assignee Loisetoscer` — c'est la seule
+                           notification humaine du mécanisme, et il n'y en a pas d'autre ;
+                        4. une ligne au Dossier QA : plafond atteint sur `<ID>`, issue N
+                           rendue à l'humain.
+
               - PLAFOND : 3 issues maximum pour ce run. S'il y a plus de 3 bugs produit,
                 crée les 3 plus graves et liste les autres dans un commentaire du Dossier QA.
+                Ce plafond compte les issues CRÉÉES ; les commentaires, cycles de label et
+                retraits du (d) n'en relèvent pas.
 
             FLAKY-INFRA et INDÉTERMINÉ :
               - Pas d'issue. Un commentaire sur le Dossier QA, une ligne par cas, avec la
@@ -129,6 +242,6 @@ jobs:
 
             Reste sobre : un titre juste et un corps court valent mieux qu'une dissertation.
           claude_args: |
-            --max-turns 50
+            --max-turns 70
             --allowedTools "Read,Glob,Grep,Bash(gh issue *)"
-            --append-system-prompt "Tu tries sur preuves : issue de bug seulement si le rapport prouve un défaut applicatif. Aucun fichier modifié, aucune issue fermée."
+            --append-system-prompt "Tu tries sur preuves : issue de bug seulement si le rapport prouve un défaut applicatif. Aucun fichier modifié, aucune issue fermée. Tu ne poses ni ne reposes jamais un label sur un cas tagué @known-issue-N, sur une issue fermée, ou sur une issue dont le label a été retiré par un humain."
