@@ -9,9 +9,12 @@ const FOLLOW_UP = 'je suis en déclaration automatique donc rien à faire ?';
 /**
  * Le cas historique WEB-01 asservissait DEUX promesses dans une seule assertion
  * (`links > 0 || sourcesAffordance > 0`) : la réponse s'appuie sur le web et le dit, et les
- * citations sont affichées. La seconde relève du défaut connu #114, dépriorisé — elle est
- * donc sortie du verdict P0 (cas B, `@known-issue-114`), pendant que la première y reste
- * (cas A). Règle du rouge : GOVERNANCE.md §5, README §5 et §6.
+ * citations sont affichées. Les DEUX se sont révélées non tenues — épreuve du 29/07/2026 au
+ * soir contre staging (run local unique, WEB-01a rouge, « Mentions de sources : 0 ») : le
+ * défaut #114 couvre le SERVICE (recherche non déclenchée), pas seulement l'affichage des
+ * citations. Les deux moitiés dorment donc sous `@known-issue-114`, hors verdict P0 et hors
+ * désignation, le temps de WEB-01 phase 2. Elles gardent `@wave1` : retirer le seul tag
+ * `@known-issue-114` les réintègre. Règle du rouge : GOVERNANCE.md §5, README §5 et §6.
  */
 async function askWebSearchAnswer(page: Page) {
   /* La recherche web native est activée par défaut sur les endpoints natifs ; le
@@ -28,7 +31,12 @@ async function askWebSearchAnswer(page: Page) {
 
 test(
   'WEB-01a — recherche web : réponse appuyée sur le web et annoncée comme telle, puis relance sans erreur 400',
-  { tag: ['@wave1'] },
+  /* `@known-issue-114` posé après épreuve contre staging le 29/07/2026 : la part conservée
+     ne tient pas davantage que les citations (« Mentions de sources : 0 »). Hors verdict P0
+     et hors désignation — sinon chaque nuit rouge désignerait un agent sur un défaut connu.
+     Bémol à instruire à la refonte du cas en vague 2 : le prompt invite à une demande de
+     précision, et le modèle a répondu par une question — part non prouvable sur un passage. */
+  { tag: ['@wave1', '@known-issue-114'] },
   async ({ page }) => {
     test.setTimeout(300_000);
 
