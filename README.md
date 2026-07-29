@@ -157,6 +157,14 @@ Open source, actively developed, and built for anyone who values control over th
 
 ---
 
+## 🏛️ Gouvernance (Vermeer)
+
+Le système d'orchestration agentique de Vermeer Chat est régi par un document prescriptif unique : **[docs/GOVERNANCE.md](docs/GOVERNANCE.md)** — sept étages, de l'identité des agents à la boucle de correction. Le registre de leurs identités, jetons et pouvoirs vit en **[docs/registre-identites.md](docs/registre-identites.md)**.
+
+L'invariant tient en une phrase : **aucune sortie de modèle n'atteint le réel sans merge humain**. Les agents proposent en PR ; l'écluse, c'est la relecture.
+
+---
+
 ## 🌐 Resources
 
 **GitHub Repo:**
