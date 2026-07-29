@@ -184,7 +184,7 @@ La voie humaine (Loïse via Hermes) est vivante et sans réserve.
 
 #### Release train (`vermeer-text` → `vermeer-gitops`)
 
-*OBSERVED — cinq gardes successifs dans `release-train.yml`, étape « Verifier que le diff est strictement limite aux lignes de tag », 29/07/2026.*
+*OBSERVED — deux familles de gardes dans `release-train.yml` : cinq gardes de diff dans l'étape « Verifier que le diff est strictement limite aux lignes de tag », deux gardes d'amont. Relevé le 29/07/2026.*
 
 - **La ligne de version, et rien d'autre.** Tout autre diff = abandon du job, pas de tentative de correction. **Les cinq gardes, vérifiées une par une dans le fichier — OBSERVED, `release-train.yml`, 29/07/2026** : elles vivent toutes dans le step nommé **« Verifier que le diff est strictement limite aux lignes de tag »** (l. 200), que le fichier annote lui-même `# --- Garde-fou 2 : le diff ne contient QUE les deux lignes de tag` (l. 199), et sont numérotées à la source :
   - **`2a`** (l. 211, `# 2a. Aucun fichier hors de la liste blanche`) — aucun fichier hors liste blanche (`dev/llm/helm-release.yaml`, `staging/llm/helm-release.yaml`) ; tolère qu'un seul des deux bouge, jamais un troisième ;
@@ -192,7 +192,9 @@ La voie humaine (Loïse via Hermes) est vivante et sans réserve.
   - **`2c`** (l. 234, `# 2c. Chaque ligne ajoutee/supprimee est une ligne de tag`) — un commentaire, une variable d'environnement, une annotation font échouer le job ;
   - **`2d`** (l. 246, `# 2d. Volumetrie : 1 suppression + 1 ajout par fichier touche`) — volumétrie exacte, en-têtes de diff déduits ;
   - **`2e`** (l. 255, `# 2e. Etat final : les DEUX fichiers portent le tag vise`) — état final vérifié, qu'un fichier ait été modifié à l'instant ou qu'il y soit déjà.
-- **Deux gardes mécaniques supplémentaires existent en amont**, hors de ce décompte de cinq mais du même ordre — OBSERVED : le fichier nomme **`Garde-fou 1`** (l. 151) qui **refuse catégoriquement de cloner le dépôt gitops de prod** (`case "$GITOPS_REPO" in *vermeer-gitops-prod*) → exit 1`), et le step « Bumper le tag dev et staging » vérifie **avant d'écrire** que chaque fichier contient **exactement une** ligne `tag: "…"` — zéro, deux ou plus → abandon (l. 175 : « mieux vaut un train cassé qu'un `sed` qui touche la mauvaise ligne »). Soit **sept** vérifications mécaniques au total sur ce chemin.
+- **Deux gardes d'amont**, distinctes des cinq précédentes par leur rôle : elles ne vérifient pas le diff produit, elles **empêchent de produire le mauvais diff** — OBSERVED : le fichier nomme **`Garde-fou 1`** (l. 151), qui **refuse catégoriquement de cloner le dépôt gitops de prod** (`case "$GITOPS_REPO" in *vermeer-gitops-prod*) → exit 1`), et le step « Bumper le tag dev et staging » vérifie **avant d'écrire** que chaque fichier contient **exactement une** ligne `tag: "…"` — zéro, deux ou plus → abandon (l. 175 : « mieux vaut un train cassé qu'un `sed` qui touche la mauvaise ligne »).
+
+Soit **deux familles** : **cinq gardes de diff** (`2a`–`2e`, un seul step, l. 200) qui valident ce qui a été produit, et **deux gardes d'amont** (l. 151, l. 175) qui bornent ce qui peut l'être. C'est cet ensemble qui rend le chemin déterministe — et donc conforme à l'invariant du §4.
 - **Jamais les tags Git de version.** Le `if` du job exige `head_branch == 'main'` : les releases taguées `v0.10.x` sont nativement exclues et suivent la procédure de déploiement documentée en [`CLAUDE.md` §12](../CLAUDE.md).
 
 > **Le train auto-merge sa PR, et c'est conforme — pas une exception.** OBSERVED (`release-train.yml`, étape « Ouvrir et merger la PR gitops », 29/07/2026) : le train ouvre puis merge sa propre PR sur `vermeer-gitops` (`gh pr merge --squash --delete-branch`). Au regard de l'invariant du §4 — *aucune sortie de modèle n'atteint le réel sans merge humain* — cette PR est **conforme** : il n'y a **aucun modèle dans sa boucle** (aucune étape `claude-code-action` dans ce workflow), le diff est **mécanique** (un `sed` sur une seule ligne), il est **borné à la ligne de version**, **vérifié par les cinq gardes ci-dessus avant la poussée**, et **limité à dev et staging**.
@@ -266,7 +268,17 @@ C'est la formulation exacte de l'invariant, et elle vaut mieux que « aucun merg
 
 L'écluse est le point où une proposition devient réalité. C'est un geste **humain**, et c'est le seul.
 
-### L'écluse de la production — ruleset « Écluse main — prod »
+### Trois régimes d'écluse, un par dépôt
+
+Les trois dépôts ne sont pas protégés de la même façon, et ce n'est pas une négligence : chacun a un usage et des co-usagers différents. La règle est identique partout — **le merge est humain** ; ce qui varie, c'est **ce qui l'impose techniquement**.
+
+| Dépôt | Régime | Ruleset | Check requis | Ce qui tient la règle |
+|---|---|---|---|---|
+| `vermeer-gitops-prod` | **Écluse complète** | « Écluse main — prod » (`9169830`) | **`yaml-valide`** | Le serveur : PR obligatoire **et** YAML validé avant que le bouton s'ouvre |
+| `vermeer-text` | **Écluse jumelle, sans check** | « Écluse main » (`19987595`) | *aucun* — dette CI (issue 86) | Le serveur pour la PR ; la relecture humaine pour le contenu |
+| `vermeer-gitops` | **Écluse conventionnelle** — dépôt **partagé** | *aucun* | *aucun* | Les interdits codés des agents + le merge humain. **Aucune barrière technique côté dépôt** |
+
+### Régime 1 — `vermeer-gitops-prod` : écluse complète
 
 **OBSERVED — source : `gh api repos/POPAISTUDIO/vermeer-gitops-prod/rulesets/9169830`, relevé le 29/07/2026.**
 
@@ -289,31 +301,60 @@ Le check `yaml-valide` est publié par `checks-digest.yml` du même dépôt : jo
 
 **OBSERVED, et à savoir : `vermeer-gitops-prod` est un dépôt partagé.** D'autres équipes y ouvrent des PRs de promotion (`abstraction-layer`, frontend) — `gh pr list -R POPAISTUDIO/vermeer-gitops-prod --state all`, 29/07/2026. Le ruleset et le check `yaml-valide` s'appliquent donc **à elles aussi**. Toute évolution de l'écluse prod se pense comme une décision inter-équipes, jamais comme un réglage interne Vermeer.
 
-### Doctrine du bypass
+### Doctrine du bypass — commune aux régimes 1 et 2
+
+Les deux rulesets portent **le même** `bypass_actors` : `RepositoryRole` `actor_id: 5`, `bypass_mode: always`. La doctrine qui suit s'applique donc identiquement à `vermeer-gitops-prod` et à `vermeer-text`.
 
 1. **Le bypass est réservé aux urgences.** Une urgence, c'est un service dégradé ou une correction qui ne peut pas attendre le circuit normal. Ce n'est ni la commodité, ni la fatigue, ni « le check met trois minutes ».
 2. **Chaque usage est tracé dans une issue dédiée**, ouverte sur le dépôt concerné, contenant : la date, la PR concernée, ce qui empêchait le circuit normal, ce qui a été merdé sans le contrôle, et la règle ou le correctif qui en découle. Le premier exemplaire de cette trace est l'issue d'incident citée en §7.
 3. **Le bypass ne se normalise pas.** Deux bypass pour la même cause, c'est une cause à corriger — pas un troisième bypass. La revue mensuelle est l'endroit où ce comptage se fait.
 
-> **Limite assumée, à connaître exactement.** Le bypass est attaché au **rôle Admin du dépôt** (`RepositoryRole`, `actor_id: 5`), pas à une personne nominative — et `bypass_mode: always` couvre **aussi les poussées directes sur `main`**, pas seulement le bouton merge des PRs. Conséquences, sans euphémisme : (a) toute personne portant le rôle Admin sur `vermeer-gitops-prod` — y compris hors équipe Vermeer, le dépôt étant partagé — dispose du même pouvoir ; (b) la discipline de traçage est **conventionnelle, pas technique** : rien n'empêche mécaniquement un bypass non tracé.
+> **Limite assumée, à connaître exactement.** Le bypass est attaché au **rôle Admin du dépôt** (`RepositoryRole`, `actor_id: 5`), pas à une personne nominative — et `bypass_mode: always` couvre **aussi les poussées directes sur `main`**, pas seulement le bouton merge des PRs. Conséquences, sans euphémisme : (a) toute personne portant le rôle Admin dispose du même pouvoir — sur `vermeer-gitops-prod`, dépôt partagé, cela inclut des porteurs hors équipe Vermeer ; (b) la discipline de traçage est **conventionnelle, pas technique** : rien n'empêche mécaniquement un bypass non tracé.
 >
-> C'est un choix, pas un oubli : en solo, un bypass verrouillé plus finement produirait un blocage dur sans recours un jour de MEP. **Le contrepoids est donc humain et périodique** : la revue mensuelle (§7) confronte les merges de `main` sur `vermeer-gitops-prod` aux issues de traçage, et tout écart est un incident de gouvernance.
+> C'est un choix, pas un oubli : en solo, un bypass verrouillé plus finement produirait un blocage dur sans recours un jour de MEP. **Le contrepoids est donc humain et périodique** : la revue mensuelle (§7) confronte les merges de `main` **des deux dépôts sous ruleset** aux issues de traçage, et tout écart est un incident de gouvernance.
 
-### L'écluse des deux autres dépôts
+### Régime 2 — `vermeer-text` : écluse jumelle, sans check requis
 
-Sur `vermeer-text` et `vermeer-gitops`, l'écluse est **le merge humain des PRs d'agents**. Le review count 0 est assumé en solo — et il faut en tirer la conséquence sans la diluer :
+**OBSERVED — source : `gh api repos/POPAISTUDIO/vermeer-text/rulesets/19987595`, relevé le 29/07/2026 immédiatement après création.**
+
+| Champ | Valeur observée |
+|---|---|
+| Nom / id | **« Écluse main »** / `19987595` |
+| Dépôt | `POPAISTUDIO/vermeer-text` (`source_type: Repository`) |
+| Enforcement | `active` |
+| Cible | `~DEFAULT_BRANCH`, aucune exclusion — **`main` seule ; les branches restent libres** |
+| Règle `deletion` | Suppression de `main` **bloquée** |
+| Règle `non_fast_forward` | Réécriture d'historique **bloquée** |
+| Règle `pull_request` | PR **obligatoire** · `required_approving_review_count: 0` · `dismiss_stale_reviews_on_push: false` · `require_code_owner_review: false` · `require_last_push_approval: false` · `required_review_thread_resolution: false` · `allowed_merge_methods: [merge, squash, rebase]` |
+| `required_status_checks` | **Aucune règle de ce type** — divergence assumée avec la prod, voir ci-dessous |
+| `bypass_actors` | Un seul : `actor_type: RepositoryRole`, `actor_id: 5` (**rôle Admin du dépôt**), `bypass_mode: always` |
+| Créé le | `2026-07-29T19:31:41+02:00` |
+
+**Pourquoi pas de check requis ici.** La dette CI du dépôt (**issue 86**) fait qu'un gate CI n'est pas fiable aujourd'hui : l'imposer comme *required status check* produirait un blocage **sans signal** — exactement le défaut que l'incident du 28/07 a démontré au §7 (un contrôle qu'on ne peut pas satisfaire n'est pas un contrôle). L'écluse impose donc la **PR**, et c'est la relecture humaine qui juge le contenu. **Candidat naturel dès que la dette 86 est soldée : passer le gate CI en check requis**, ce qui alignerait ce régime sur celui de la prod.
+
+**Trace historique — un deuxième exemple vivant du §7.** L'absence d'écluse sur ce dépôt n'a pas été détectée par un incident mais **par la rédaction du présent document, le 29/07/2026** : décrire l'étage 4 a obligé à aller lire l'état réel (`gh api …/rulesets` → vide), et l'écart a été **fermé le jour même** par le ruleset ci-dessus. C'est exactement le mécanisme du §7 — un manque de gouvernance constaté devient une règle opposable — à ceci près qu'ici l'écriture de la règle a précédé le dommage au lieu de le suivre.
+
+**Ce que la pose de cette écluse ne casse pas — vérifié avant, pas après.** OBSERVED (29/07/2026) : balayage des **24** fichiers de `.github/workflows/` (`grep -nE "git push|git commit|create-pull-request|gh pr merge|git/refs/heads/main|--admin"`) — **aucun workflow n'écrit sur le `main` de ce dépôt**. La seule écriture Git de tout le parc est celle du release train, et elle cible une **branche** (`bump/sha-*`) d'un **autre** dépôt (l. 288), suivie d'un merge de PR (l. 319). Côté humain, 11 des 12 derniers commits de `main` étaient déjà des merges de PR ; le douzième était une poussée directe de documentation, désormais couverte par le bypass du rôle Admin — et donc soumise à la doctrine de traçage ci-dessus.
+
+### Régime 3 — `vermeer-gitops` : dépôt partagé, écluse conventionnelle
+
+**Aucun ruleset, et c'est une décision, pas un oubli.** OBSERVED, 29/07/2026 : `gh api repos/POPAISTUDIO/vermeer-gitops/rulesets` → tableau vide ; `…/branches/main/protection` → HTTP 404 « Branch not protected ».
+
+**La raison : sur ce dépôt, la poussée directe sur `main` est le régime de travail normal d'autres équipes.** OBSERVED (`gh api …/commits?sha=main`, 29/07/2026) : sur les 12 derniers commits, **un seul** est un merge de PR — celui du release train (`chore(dev+staging): bump image vers sha-a4902c6 (#84)`) ; les onze autres sont des poussées directes signées `jaks`, `Arnaud Rocca`, `Sheoak`, `arthurgoldfr` et `gitops-bot`. Cette dernière identité est celle de `deploy-staging.yml`, dont le script `scripts/hotswap.sh` fait `git commit` (l. 181) puis `git push` **sans argument de branche** (l. 204) sur la branche par défaut — le `actions/checkout@v4` du workflow n'a pas de `ref:` et le dépôt a `default_branch: main`. Ce pipeline sert `*/app/` et `abstraction-layer`, pas Vermeer-LLM.
+
+Un ruleset exigeant la PR **couperait ces flux** : le `GITHUB_TOKEN` de ce workflow ne porte pas le rôle Admin, donc le bypass ne le couvrirait pas, et **9 des 27 collaborateurs sont `push: true` / `admin: false`** (`gh api …/collaborators`). **Régulariser est une décision multi-équipes, pas un geste unilatéral** — à ouvrir en conversation avec les co-usagers du dépôt et à tracer au backlog. Hors périmètre du chantier 3.
+
+**Le flux Vermeer, lui, passe intégralement par PR** — vérifié, pas supposé. OBSERVED : l'agent config (`claude.yml`) n'a aucune écriture Git dans son workflow et son prompt lui interdit huit fois la poussée sur `main` (§3) ; le release train pousse une branche `bump/sha-*` puis merge une PR. Aucun des deux ne pousse sur `main`.
+
+> **Risque résiduel, sans euphémisme.** L'agent config tourne avec `permissions: contents: write` sur un dépôt **sans barrière technique**. Ce qui l'empêche de pousser sur `main`, ce sont ses **interdits codés** (§3) et le **merge humain** — rien du côté serveur. Si son prompt régressait, si un merge upstream écrasait ses consignes, ou si un jeton était réutilisé hors de son cadre, il n'y aurait **aucun filet**. C'est le seul endroit du système où la règle repose entièrement sur la convention. La contrepartie est un point de vigilance mensuel dédié (§7) : le flux Vermeer sur ce dépôt est-il **toujours** à 100 % en PR ?
+
+### La relecture de PR, dans les trois régimes
+
+Le review count est à 0 partout, assumé en solo. Il faut en tirer la conséquence sans la diluer :
 
 > **La relecture de PR est l'unique contrôle qualité humain de la boucle continue.** Avec la désignation automatique (§2), personne n'a relu l'issue en amont : le modèle a jugé un rouge, il a désigné, un autre agent a codé. Le premier — et le seul — regard humain est celui posé sur le diff. Il se donne en conséquence : diff lu ligne à ligne, argumentaire confronté au code, effet attendu vérifiable. Un diff trop gros pour être relu se renvoie ; il ne se merge pas au bénéfice du doute.
 
-> **Limite assumée — OBSERVED, 29/07/2026** (`gh api repos/POPAISTUDIO/{vermeer-text,vermeer-gitops}/rulesets` → tableau vide ; `…/branches/main/protection` → HTTP 404 « Branch not protected ») : **ces deux dépôts n'ont ni ruleset ni protection de branche sur `main`.** L'interdiction de merger et de pousser sur `main` n'y vit **que dans les prompts** des agents (§3) et dans le garde-fou de [`CLAUDE.md` §6](../CLAUDE.md). Or les deux jobs `claude.yml` tournent avec `permissions: contents: write` : **techniquement, un agent pourrait y pousser sur `main`** ; seule sa consigne l'en empêche. C'est le principal contrepoids manquant du système à ce jour, inscrit comme point de vigilance permanent de la revue mensuelle (§7).
->
-> **Les deux dépôts ne sont pas dans la même situation — relevé du 29/07/2026, préalable à toute pose d'écluse.**
->
-> **`vermeer-text` est prêt.** OBSERVED : balayage des **24** fichiers de `.github/workflows/` (`grep -nE "git push|git commit|create-pull-request|gh pr merge|git/refs/heads/main|--admin"`) — **aucun workflow ne pousse ni ne merge sur le `main` de ce dépôt**. La seule écriture Git de tout le parc est celle du release train, et elle cible une **branche** (`bump/sha-*`) d'un **autre** dépôt (`git push --force origin "$branch"`, l. 288), suivie d'un merge de PR (l. 319). Côté humain, 11 des 12 derniers commits de `main` sont des merges de PR ; le douzième est une poussée directe de documentation (`docs: architecture cible v2 … [skip ci]`, 29/07 à 14h34), couverte par le bypass du rôle Admin. Une écluse ici ne casse aucun flux.
->
-> **`vermeer-gitops` ne l'est pas.** OBSERVED : `main` y reçoit des **poussées directes de routine, par des acteurs extérieurs à Vermeer-LLM**. Sur les 12 derniers commits (`gh api …/commits?sha=main`), **un seul** est un merge de PR — celui du release train (`chore(dev+staging): bump image vers sha-a4902c6 (#84)`) ; les onze autres sont des poussées directes signées `jaks`, `Arnaud Rocca`, `Sheoak`, `arthurgoldfr` et `gitops-bot`. Cette dernière identité est celle de `deploy-staging.yml`, dont le script `scripts/hotswap.sh` fait `git commit` puis `git push` (l. 181 et 204) **sur la branche par défaut** — le `actions/checkout@v4` du workflow n'a pas de `ref:`, et le dépôt a `default_branch: main`. Ce n'est pas un défaut à corriger côté Vermeer : c'est le pipeline de déploiement staging d'autres produits (`*/app/`, `abstraction-layer`). **Un ruleset exigeant la PR y couperait ces flux**, d'autant que le `GITHUB_TOKEN` de ce workflow n'est pas couvert par un bypass attaché au **rôle** Admin, et que plusieurs contributeurs qui poussent sur `main` sont `admin=false` (`gh api …/collaborators` : 27 collaborateurs, dont 9 en `push` sans `admin`).
->
-> **Conclusion documentée** : poser l'écluse sur `vermeer-text` est une décision interne, sans effet de bord. La poser sur `vermeer-gitops` est une **décision inter-équipes** qui suppose au préalable soit la migration de `deploy-staging.yml` vers un flux de PR, soit un bypass explicitement étendu à ses acteurs. *(Aucune configuration modifiée par le chantier 3 sans arbitrage explicite.)*
+Ce que les rulesets ajoutent n'est pas un jugement, c'est une **garantie de passage** : ils rendent impossible de contourner l'endroit où ce regard se pose. Le régime 3 ne l'a pas — d'où la vigilance dédiée.
 
 ---
 
@@ -420,7 +461,10 @@ Une fois par mois, 30 minutes, cette liste dans l'ordre. Elle n'est pas un audit
 1. **Registre à jour** — [`registre-identites.md`](registre-identites.md) confronté à `gh secret list` sur les trois dépôts. Tout secret présent hors registre, ou inscrit mais disparu, est un écart. Vérifier les échéances qui approchent (moins de 3 mois → planifier la rotation).
 2. **Tests de garde verts** — les tests du §3 qui existent ont tourné et sont verts. Ceux qui n'existent pas encore sont nommés et rattachés à un chantier.
 3. **Bypass utilisés et tracés** — merges de `main` sur `vermeer-gitops-prod` du mois confrontés aux issues de traçage. Un merge sans trace est un incident à ouvrir. Deux bypass de même cause → corriger la cause.
-4. **Point de vigilance permanent** — `vermeer-text` et `vermeer-gitops` sont-ils toujours sans écluse technique (§4) ? Si oui : décision reportée, notée, ou prise. Ce point ne se raye pas de la checklist tant qu'il n'est pas résolu.
+4. **Intégrité des écluses** — deux vérifications, l'une mécanique, l'autre par lecture (§4) :
+   - **Les deux rulesets sont-ils intacts ?** `gh api repos/POPAISTUDIO/vermeer-gitops-prod/rulesets/9169830` et `gh api repos/POPAISTUDIO/vermeer-text/rulesets/19987595` → confronter `enforcement`, `rules` et `bypass_actors` aux tableaux du §4. Un ruleset désactivé, une règle disparue ou un `bypass_actors` élargi est un **incident de gouvernance**, pas un réglage.
+   - **Le flux Vermeer sur `vermeer-gitops` est-il toujours à 100 % en PR ?** Ce dépôt n'a pas de ruleset (régime 3, décision multi-équipes). Vérification par lecture : `git log` / `gh api …/commits?sha=main` sur les derniers commits touchant le **périmètre Vermeer** (`dev/llm/`, `staging/llm/`) → chacun doit être un merge de PR. Une poussée directe dans ce périmètre est un incident. Les commits des autres équipes hors de ce périmètre ne sont pas concernés.
+   - **Si la dette CI (issue 86) est soldée** : passer le gate CI en `required_status_checks` sur `vermeer-text`, ce qui aligne le régime 2 sur le régime 1.
 5. **Budgets dépassés** — runs sortis en timeout ou en épuisement de `--max-turns` sur le mois. Un dépassement récurrent est un budget mal taillé ou une tâche mal découpée, jamais une raison d'élargir sans réfléchir.
 6. **Faux positifs du triage désignateur** — issues `claude-fix` créées automatiquement qui n'étaient pas des bugs, ou boucles stoppées au plafond (⏳4). Chacune est un incident : combien d'agents mis en marche pour rien, et quelle porte manquait.
 7. **Rouges d'habitude** — cas rouges au verdict depuis plus de deux semaines sans tag `@known-issue-N` ni PR en cours (§5).

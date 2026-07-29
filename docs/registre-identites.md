@@ -21,6 +21,8 @@
 | `gh variable list` sur les trois dépôts | **Aucune variable de dépôt** définie nulle part — OBSERVED. *(À noter : `release-train.yml` lit `vars.FLUX_WAIT_MINUTES` avec un défaut à `8` ; la variable n'étant pas définie, c'est le défaut qui s'applique.)* | 29/07/2026 |
 | Fichiers de workflow des trois dépôts (`.github/workflows/`, local + `gh api …/contents/…`) | Quel secret est consommé par quel job, permissions déclarées, budgets | 29/07/2026 |
 | `gh api repos/POPAISTUDIO/vermeer-gitops-prod/rulesets/9169830` | Écluse de production, bypass actors | 29/07/2026 |
+| `gh api repos/POPAISTUDIO/vermeer-text/rulesets/19987595` | Écluse « Écluse main » de `vermeer-text`, relue en GET après création — **OBSERVED** | 29/07/2026 |
+| `gh api repos/POPAISTUDIO/vermeer-gitops/{rulesets,collaborators,commits}` | Absence de ruleset, 27 collaborateurs (9 en `push` sans `admin`), régime de poussée directe sur `main` — **OBSERVED** | 29/07/2026 |
 | `gh auth status` (Mac de l'atelier) | Scopes du `gh` local | 29/07/2026 |
 | `ls -la ~/hermes-workspace/{bin,secrets}` + lecture des wrappers | Wrappers Loki et noms des fichiers de jetons Grafana (**contenu jamais lu**) | 29/07/2026 |
 
@@ -57,7 +59,7 @@
 | **Expiration** | **INFERRED** ~juillet 2027 (jeton OAuth Claude Code, rotation du 29/07/2026). Durée réelle **UNKNOWN** — non exposée par l'API |
 | **Permis** | Lire tout le dépôt · créer une branche `fix/issue-N` · committer dessus · ouvrir une PR référençant l'issue · commenter issues et PRs · faire tourner `typecheck` et les tests unitaires |
 | **Interdits** | **Merger une PR** (quelle qu'elle soit) · pousser sur `main` · ouvrir une PR sans avoir identifié la cause racine avec confiance (→ commentaire d'analyse à la place) · fix symptomatique · introduire une régression par rapport aux baselines de `CLAUDE.md` · toucher aux dépôts gitops (hors de son atteinte) |
-| **Fiabilité** | **Écriture forte, garde-fou faible.** `contents: write` **sans** ruleset ni protection de branche sur `main` (**OBSERVED** — `gh api …/rulesets` vide, `…/branches/main/protection` → 404) : l'interdiction de pousser sur `main` ne vit que dans son prompt. Contrepoids réel = la relecture humaine de PR ([GOVERNANCE.md §4](GOVERNANCE.md#4--lécluse)) |
+| **Fiabilité** | **Écriture forte, désormais bornée côté serveur.** Le jeton reste en `contents: write`, mais depuis le **29/07/2026** le ruleset **« Écluse main »** (`19987595`) rend `main` inatteignable sans PR — **OBSERVED**, `gh api repos/POPAISTUDIO/vermeer-text/rulesets/19987595`. L'interdiction de pousser sur `main` ne repose donc plus sur le seul prompt : elle est opposable par le serveur. La relecture humaine de PR reste le contrôle du **contenu** ([GOVERNANCE.md §4, régime 2](GOVERNANCE.md#4--lécluse)) |
 
 ### 2. Agent config — `vermeer-gitops`
 
@@ -70,7 +72,7 @@
 | **Expiration** | **INFERRED** ~juillet 2027. Durée réelle **UNKNOWN** |
 | **Permis** | Éditer, **uniquement sous `dev/llm/` et `staging/llm/`** : `helm-release.yaml` (hors ligne de tag), `librechat.yaml`, `kustomization.yaml`, `external-secrets.yaml`, `oci-repository.yaml` · branche `config/issue-N` · PR argumentée · commenter l'issue · valider la syntaxe YAML de chaque fichier touché |
 | **Interdits** | La clé `image.tag` de `dev/llm/` et `staging/llm/helm-release.yaml` · l'annotation `kubectl.kubernetes.io/restartedAt` · **tout fichier hors `dev/llm/` et `staging/llm/`** (`*/app/`, `alpha/`, `abstraction-layer`, `scripts/`) · **toute demande touchant la prod** (→ refus + commentaire, pas de PR) · merger · pousser sur `main` · restructurer, réordonner, reformater un YAML · supprimer un commentaire existant, en particulier `# Vermeer:` |
-| **Fiabilité** | **Mêmes réserves que l'agent codeur** (`contents: write`, aucune protection de branche — **OBSERVED**), aggravées par la nature du dépôt : un `librechat.yaml` invalide fait sortir le process en code 1, **application down sans mode dégradé**. D'où l'exigence d'édition chirurgicale + validation `yaml.safe_load` inscrite au prompt |
+| **Fiabilité** | **C'est le point faible du système — le seul acteur en écriture sans barrière technique.** `contents: write` sur un dépôt **sans ruleset** (**OBSERVED**, 29/07/2026 : `gh api …/rulesets` → vide, `…/branches/main/protection` → 404) : ici l'interdiction de pousser sur `main` ne vit **que dans son prompt** et dans le merge humain. `vermeer-gitops` est un dépôt **partagé** où la poussée directe est le régime de travail d'autres équipes, donc y poser un ruleset est une décision multi-équipes — voir [GOVERNANCE.md §4, régime 3](GOVERNANCE.md#4--lécluse) et le point de vigilance mensuel dédié. Réserve aggravée par la nature du dépôt : un `librechat.yaml` invalide fait sortir le process en code 1, **application down sans mode dégradé**. D'où l'exigence d'édition chirurgicale + validation `yaml.safe_load` inscrite au prompt |
 
 ### 3. QA nightly — `vermeer-text`
 
@@ -121,8 +123,8 @@
 | **Stockage** | `GITOPS_PUSH_TOKEN` : secret Actions de `vermeer-text` — **OBSERVED** (mis à jour `2026-07-26T15:31:41Z`) |
 | **Expiration** | **INFERRED** ~juillet 2027 |
 | **Permis** | Résoudre le tag `sha-<7>` depuis le SHA de build · cloner `vermeer-gitops` · éditer **la seule ligne `tag:`** de `dev/llm/helm-release.yaml` et `staging/llm/helm-release.yaml` · pousser `bump/sha-*` (`--force` assumé : contenu reproductible, aucun autre auteur sur ces branches) · ouvrir la PR · **la merger en squash** — **cas conforme** à l'invariant, pas une exception : aucun modèle dans la boucle, diff mécanique borné à la ligne de version ([GOVERNANCE.md §3](GOVERNANCE.md#release-train-vermeer-text--vermeer-gitops)) · attendre Flux · dispatcher la QA staging · ouvrir/commenter l'issue `release-train` en cas d'échec |
-| **Interdits** | Tout diff autre que des lignes de tag (**cinq gardes**, abandon du job sur chacun) · tout fichier hors des deux `helm-release.yaml` · **tout chemin contenant `prod`** (ceinture et bretelles) · partir sur autre chose qu'un build vert issu d'un `push` sur `main` (les tags `v0.10.x` sont nativement exclus) · **tout retry automatique** — il trace et s'arrête, la reprise est une décision humaine |
-| **Fiabilité** | **La plus haute du registre.** Aucun modèle dans la boucle, cinq gardes indépendants **avant** la poussée, vérification de l'état final, aucun retry, échec tracé en issue. Limite connue et documentée dans le fichier : si le job dépasse `timeout-minutes` (25), il est annulé et l'étape de rapport d'échec **peut ne pas s'exécuter** — surveiller aussi l'onglet Actions |
+| **Interdits** | Tout diff autre que des lignes de tag (**cinq gardes de diff**, abandon du job sur chacune) · tout fichier hors des deux `helm-release.yaml` · **tout chemin contenant `prod`** (ceinture et bretelles) · partir sur autre chose qu'un build vert issu d'un `push` sur `main` (les tags `v0.10.x` sont nativement exclus) · **tout retry automatique** — il trace et s'arrête, la reprise est une décision humaine |
+| **Fiabilité** | **La plus haute du registre.** Aucun modèle dans la boucle, deux familles de gardes — cinq de diff, deux d'amont — **avant** la poussée, vérification de l'état final, aucun retry, échec tracé en issue. Limite connue et documentée dans le fichier : si le job dépasse `timeout-minutes` (25), il est annulé et l'étape de rapport d'échec **peut ne pas s'exécuter** — surveiller aussi l'onglet Actions |
 
 ### 7. Checks digest — `vermeer-gitops-prod`
 
@@ -162,7 +164,7 @@
 | **Stockage** | Keyring macOS. **Aucun jeton dans un fichier du dépôt, aucun dans l'environnement du shell** |
 | **Expiration** | **UNKNOWN** |
 | **Permis** | Tout ce que l'humaine demande explicitement dans la session : créer une branche, committer, ouvrir une PR, ouvrir une issue, lire l'état des dépôts |
-| **Interdits** | Pousser sur `main` sans revue (garde-fou [`CLAUDE.md` §6](../CLAUDE.md)) · committer le `.env` · écrire une clé en clair dans un fichier versionné · **utiliser le bypass admin sans issue de traçage** ([GOVERNANCE.md §4](GOVERNANCE.md#doctrine-du-bypass)) |
+| **Interdits** | Pousser sur `main` sans revue (garde-fou [`CLAUDE.md` §6](../CLAUDE.md)) · committer le `.env` · écrire une clé en clair dans un fichier versionné · **utiliser le bypass admin sans issue de traçage** ([GOVERNANCE.md §4](GOVERNANCE.md#4--lécluse)) |
 | **Fiabilité** | **C'est l'identité la plus puissante du système, et la moins bridée techniquement.** C'est cohérent — c'est celle de l'humaine à l'écluse — mais il faut le nommer : la sûreté de l'ensemble repose sur la discipline de cette session, pas sur une configuration. C'est aussi elle qui porte le pouvoir de bypass prod |
 
 ### 10. Flux — dev et staging
