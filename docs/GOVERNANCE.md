@@ -148,7 +148,7 @@ Aucun autre acteur ne pose de label déclencheur. Toute extension de cette liste
 | 2 — déduplication | **Câblé partiellement.** La dédup se fait par **identifiant de cas** (`GEN-02`, `FILE-01`…) confronté au même symptôme, via `gh issue list --label claude-fix --state all --limit 50`, avec commentaire sur l'existante. Ce n'est pas encore une signature d'échec au sens strict *(assertion + fichier + cas)* |
 | 3 — exclusion `@known-issue-N` | **Non câblé.** Seul le SKIP motivé `CTX-02` est nommément exclu ; le mécanisme de tag générique n'existe pas encore |
 | 4 — plafond de 2 tentatives | **Non câblé.** Aucun comptage de tentatives, aucun retrait de label, aucune notification de plafond |
-| 5 — veto par exception | **Vivant par construction** — retirer le label empêche tout nouveau déclenchement (le job `claude-autofix` ne se déclenche que sur l'action `labeled`) |
+| 5 — veto par exception | **Vivant par construction** — retirer le label empêche tout nouveau déclenchement (le job `claude-autofix` ne se déclenche que sur l'action `labeled`). **Premier exercice réel le 29/07/2026** : retrait du label sur l'issue 114 (§7) |
 | 6 — plafond 3 dossiers / run | **Câblé.** « PLAFOND : 3 issues maximum pour ce run » ; au-delà, les 3 plus graves puis une liste au Dossier QA |
 
 ⏳ **Les garde-fous 2 (signature stricte), 3 et 4 entrent en vigueur au chantier 4.** Jusque-là, **la désignation automatique tourne sans plafond de tentatives et sans mécanisme d'exclusion générique** : c'est un pouvoir en fonctionnement avec deux contrepoids manquants. Conséquence opérationnelle, à tenir jusqu'au chantier 4 : un cas rouge récurrent doit être soit corrigé, soit sorti du verdict à la main, soit surveillé — sous peine de relancer l'agent codeur chaque nuit sur le même mur (§5, règle du rouge d'habitude).
@@ -453,6 +453,14 @@ Un incident de gouvernance, ce n'est pas un bug applicatif : c'est le système d
 - **Traçage rétroactif** : issue **`POPAISTUDIO/vermeer-gitops-prod` n° 69** — « Incident de gouvernance — bypass merge MEP v0.10.23 », ouverte à l'issue du chantier 3. C'est le **premier exemplaire** de la trace exigée par la doctrine du bypass (§4) ; les suivantes prennent le même format : date, PR concernée, ce qui empêchait le circuit normal, ce qui a été mergé sans le contrôle, la règle qui en découle.
 
 **La règle née de l'incident**, et c'est tout l'intérêt de la traçer : **une exigence de contrôle qu'un seul humain ne peut pas satisfaire n'est pas un contrôle, c'est un bypass déguisé.** Elle produit deux effets pervers : elle rend le contournement routinier, et elle masque les vrais contrôles derrière un rituel qu'on apprend à sauter. Le contrôle utile en solo est celui qu'une machine vérifie (`yaml-valide`) doublé d'un geste que l'humain **peut** poser (le merge). Voir §4 (doctrine du bypass) et §3 (interdits testés).
+
+### Le premier exercice du veto par exception — issue 114, 29/07/2026
+
+Le garde-fou **5** du triage désignateur (§2) prévoit que *retirer un label rendort l'issue à tout moment*. **Il a été exercé pour la première fois le 29/07/2026** : retrait du label `claude-fix` de l'**issue 114 de `vermeer-text`** (« [QA] WEB-01 — recherche web non déclenchée malgré toggle ON (GPT-5.2) »), par l'humaine, à la main.
+
+**Le motif est une question de séquence, pas de gravité** : ce cas est celui que [`architecture-cible-v2.md` §6](architecture-cible-v2.md#6-qa--actualisation-post-v01023) destine au tag `@known-issue-114` — un défaut connu et dépriorisé, à sortir du verdict P0 **et** de la désignation automatique, le temps que WEB-01 phase 2 (observabilité, puis correctif) livre. Laisser le label posé, c'était garder du travail désigné sur un cas dont on a décidé qu'il attendrait.
+
+**Ce que ce cas enseigne, et qui devient une règle** : le veto n'est pas un désaveu de l'agent ni du triage. C'est **l'instrument par lequel la priorité humaine s'exerce par exception** — et il devient d'autant plus nécessaire que les garde-fous **3** (exclusion `@known-issue-N`) et **4** (plafond de 2 tentatives) ne sont pas encore câblés (⏳ chantier 4). Tant qu'ils ne le sont pas, **tout cas connu et dépriorisé doit voir son label retiré à la main** : c'est la seule chose qui l'empêche de remettre la machine en marche. Une fois le chantier 4 livré, le tag `@known-issue-N` fera ce travail automatiquement, et le veto redeviendra ce qu'il doit être : rare.
 
 ### Revue mensuelle — 30 minutes, checklist
 
