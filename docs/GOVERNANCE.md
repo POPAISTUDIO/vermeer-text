@@ -333,8 +333,8 @@ Corollaire déjà éprouvé (§3, régime 3) : toute évolution de l'écluse pro
 Les deux rulesets portent **le même** `bypass_actors` : `RepositoryRole` `actor_id: 5`, `bypass_mode: always`. La doctrine qui suit s'applique identiquement aux deux dépôts — **pour les usages relevant du flux Vermeer Chat**. Le rôle Admin de `vermeer-gitops-prod` est porté par des personnes hors équipe Vermeer : leurs éventuels bypass sur `prod/app/` ne relèvent ni de cette doctrine ni de ce traçage. On ne trace que ce dont on est responsable.
 
 1. **Le bypass est réservé aux urgences.** Une urgence, c'est un service dégradé ou une correction qui ne peut pas attendre le circuit normal. Ce n'est ni la commodité, ni la fatigue, ni « le check met trois minutes ».
-2. **Chaque usage est tracé dans une issue dédiée**, ouverte sur le dépôt concerné, contenant : la date, la PR concernée, ce qui empêchait le circuit normal, ce qui a été merdé sans le contrôle, et la règle ou le correctif qui en découle. Le premier exemplaire de cette trace est l'issue d'incident citée en §7.
-3. **Le bypass ne se normalise pas.** Deux bypass pour la même cause, c'est une cause à corriger — pas un troisième bypass. La revue mensuelle est l'endroit où ce comptage se fait.
+2. **Chaque usage est tracé dans une issue dédiée**, ouverte sur le dépôt concerné, contenant : la date, la PR concernée, ce qui empêchait le circuit normal, ce qui a été mergé sans le contrôle, et la règle ou le correctif qui en découle. Le premier exemplaire de cette trace est l'issue d'incident citée en §7.
+3. **Le bypass ne se normalise pas.** Deux bypass pour la même cause, c'est une cause à corriger — pas un troisième bypass. La revue mensuelle est l'endroit où ce comptage se fait. *(L'incident fondateur en a compté **trois** : deux subis, et un troisième assumé pour installer le correctif — §7. C'est la seule figure où un troisième bypass se justifie : celui qui supprime la cause des deux premiers.)*
 
 > **Limite assumée, à connaître exactement.** Le bypass est attaché au **rôle Admin du dépôt** (`RepositoryRole`, `actor_id: 5`), pas à une personne nominative — et `bypass_mode: always` couvre **aussi les poussées directes sur `main`**, pas seulement le bouton merge des PRs. Conséquences, sans euphémisme : (a) toute personne portant le rôle Admin dispose du même pouvoir — sur `vermeer-gitops-prod`, dépôt partagé, cela inclut des porteurs hors équipe Vermeer ; (b) la discipline de traçage est **conventionnelle, pas technique** : rien n'empêche mécaniquement un bypass non tracé.
 >
@@ -474,12 +474,12 @@ Un incident de gouvernance, ce n'est pas un bug applicatif : c'est le système d
 **OBSERVED — `gh pr list -R POPAISTUDIO/vermeer-gitops-prod` et `gh api …/rulesets/9169830`, relevés le 29/07/2026.**
 
 - **28/07/2026, 16h09 UTC** — PR **64** (« MEP v0.10.23 — image + 7 alignements de config certifiés staging ») mergée sur `main` de `vermeer-gitops-prod`. Le ruleset exigeait alors **2 approbations**, exigence **intenable en solo** : personne ne pouvait approuver. Le merge est passé par le **bypass admin**.
-- **29/07/2026, 08h14 UTC** — PR **66** (`HELP_AND_FAQ_URL` en variable d'environnement) mergée dans les **mêmes conditions**. Deuxième bypass pour la même cause : le signal que la cause devait être corrigée, pas contournée une troisième fois.
-- **29/07/2026, 16h01 UTC** — PR **67** (« CI : check yaml-valide sur les PR vers main ») mergée : le check devient publiable.
+- **29/07/2026, 08h14 UTC** — PR **66** (`HELP_AND_FAQ_URL` en variable d'environnement) mergée dans les **mêmes conditions**. Deuxième bypass pour la même cause : le signal que la cause devait être corrigée à la source. Elle l'a été le jour même — mais au prix d'un troisième bypass (ci-dessous).
+- **29/07/2026, 16h01:49 UTC** — PR **67** (« CI : check yaml-valide sur les PR vers main ») mergée : le check devient publiable. **C'est le troisième et dernier bypass de l'incident** — et le plus révélateur. OBSERVED (`gh pr view 67 …--json mergedAt,mergedBy,reviews`, 29/07/2026) : `reviews: []`, `reviewDecision` vide, mergée par `Loisetoscer` **quinze secondes avant** la reconfiguration du ruleset (`16:02:04 UTC`). L'exigence de 2 approbations était donc encore active : sans review, seul le bypass admin pouvait ouvrir ce merge. **Il a fallu contourner le contrôle pour installer le correctif qui le rend satisfaisable** — la démonstration la plus nette qu'un contrôle inapplicable ne protège rien : il bloque jusqu'à sa propre réparation.
 - **29/07/2026, 18h02 (heure de Paris)** — ruleset **9169830** reconfiguré : approbations à **0**, required status check **`yaml-valide`**, bypass réservé aux urgences et tracé. La cause racine — une exigence d'approbation inapplicable en solo, qui transformait le bypass en passage obligé — est supprimée.
 - **Traçage rétroactif** : issue **`POPAISTUDIO/vermeer-gitops-prod` n° 69** — « Incident de gouvernance — bypass merge MEP v0.10.23 », ouverte à l'issue du chantier 3. C'est le **premier exemplaire** de la trace exigée par la doctrine du bypass (§4) ; les suivantes prennent le même format : date, PR concernée, ce qui empêchait le circuit normal, ce qui a été mergé sans le contrôle, la règle qui en découle.
 
-**La règle née de l'incident**, et c'est tout l'intérêt de la traçer : **une exigence de contrôle qu'un seul humain ne peut pas satisfaire n'est pas un contrôle, c'est un bypass déguisé.** Elle produit deux effets pervers : elle rend le contournement routinier, et elle masque les vrais contrôles derrière un rituel qu'on apprend à sauter. Le contrôle utile en solo est celui qu'une machine vérifie (`yaml-valide`) doublé d'un geste que l'humain **peut** poser (le merge). Voir §4 (doctrine du bypass) et §3 (interdits testés).
+**La règle née de l'incident**, et c'est tout l'intérêt de la tracer : **une exigence de contrôle qu'un seul humain ne peut pas satisfaire n'est pas un contrôle, c'est un bypass déguisé.** Elle produit deux effets pervers : elle rend le contournement routinier, et elle masque les vrais contrôles derrière un rituel qu'on apprend à sauter. Le contrôle utile en solo est celui qu'une machine vérifie (`yaml-valide`) doublé d'un geste que l'humain **peut** poser (le merge). Voir §4 (doctrine du bypass) et §3 (interdits testés).
 
 ### Le premier exercice du veto par exception — issue 114, 29/07/2026
 
@@ -532,10 +532,16 @@ gh issue list -R POPAISTUDIO/vermeer-gitops --label claude-fix --state open \
   --json number --jq '.[].number' \
   | xargs -I{} gh issue edit {} -R POPAISTUDIO/vermeer-gitops --remove-label claude-fix
 
-# ── 4. Annuler ce qui tourne encore (les jobs en cours ne s'arrêtent pas tout seuls)
+# ── 4. Annuler ce qui tourne encore ET ce qui attend son tour.
+#    Désactiver un workflow n'annule pas les runs déjà créés : un run `queued`
+#    démarrera quand un runner se libère, même workflow désactivé.
 gh run list -R POPAISTUDIO/vermeer-text   --status in_progress --json databaseId \
   --jq '.[].databaseId' | xargs -I{} gh run cancel {} -R POPAISTUDIO/vermeer-text
+gh run list -R POPAISTUDIO/vermeer-text   --status queued      --json databaseId \
+  --jq '.[].databaseId' | xargs -I{} gh run cancel {} -R POPAISTUDIO/vermeer-text
 gh run list -R POPAISTUDIO/vermeer-gitops --status in_progress --json databaseId \
+  --jq '.[].databaseId' | xargs -I{} gh run cancel {} -R POPAISTUDIO/vermeer-gitops
+gh run list -R POPAISTUDIO/vermeer-gitops --status queued      --json databaseId \
   --jq '.[].databaseId' | xargs -I{} gh run cancel {} -R POPAISTUDIO/vermeer-gitops
 
 # ── 5. Vérifier — tout doit afficher `disabled_manually`
