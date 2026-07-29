@@ -1,0 +1,14 @@
+[
+  {
+    "number": 118,
+    "title": "[QA] GEN-02 — aucun titre généré pour la conversation (Opus 4.8)",
+    "state": "OPEN",
+    "labels": [{ "name": "claude-fix" }]
+  },
+  {
+    "number": 113,
+    "title": "[QA] FILE-03/NEG-03 — bouton d'envoi bloqué en disabled (régression issue #20)",
+    "state": "CLOSED",
+    "labels": [{ "name": "claude-fix" }]
+  }
+]

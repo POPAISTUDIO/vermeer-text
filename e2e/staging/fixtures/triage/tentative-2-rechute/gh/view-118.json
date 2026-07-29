@@ -1,0 +1,30 @@
+{
+  "number": 118,
+  "title": "[QA] GEN-02 — aucun titre généré pour la conversation (Opus 4.8)",
+  "state": "OPEN",
+  "labels": [{ "name": "claude-fix" }],
+  "assignees": [],
+  "body": "<!-- signature: GEN-02 | e2e/staging/tests/core.spec.ts | expect(polling).not.toMatch(/Nouvelle discussion|New chat/i) -->\n\n**Assertion cassée, citée depuis le rapport :**\n\n> Anthropic /Opus 4\\.8/ — aucun titre généré pour la conversation <uuid> (elle reste sans titre dans la sidebar).\n> Timed out 60000ms waiting for expect(polling).not.toMatch(expected)\n> Expected pattern: /Nouvelle discussion|New chat/i — Received string: \"Nouvelle discussion\"\n\n**Run :** https://github.com/POPAISTUDIO/vermeer-text/actions/runs/30111111111\n\n**Analyse :** GEN-02 asservit la génération de titre pour la conversation du test (item actif de la sidebar, ancré sur l'URL — README §4.2). Le titre reste « Nouvelle discussion » : la génération de titre ne revient pas.\n\n**Fichiers suspects :** `api/server/services/Endpoints/anthropic/`, `packages/api/src/endpoints/anthropic/llm.ts`.",
+  "comments": [
+    {
+      "createdAt": "2026-07-22T04:52:11Z",
+      "author": { "login": "github-actions" },
+      "body": "<!-- tentative: 1 -->\n\n22/07/2026 — première désignation. Run : https://github.com/POPAISTUDIO/vermeer-text/actions/runs/30111111111"
+    },
+    {
+      "createdAt": "2026-07-22T06:14:02Z",
+      "author": { "login": "github-actions" },
+      "body": "**Claude finished @github-actions's task** — PR ouverte : https://github.com/POPAISTUDIO/vermeer-text/pull/119"
+    },
+    {
+      "createdAt": "2026-07-23T04:49:37Z",
+      "author": { "login": "github-actions" },
+      "body": "<!-- tentative: 2 -->\n\n23/07/2026 — la signature rechute après la PR 119. Deuxième et dernière désignation (cycle du label). Run : https://github.com/POPAISTUDIO/vermeer-text/actions/runs/30122222222"
+    },
+    {
+      "createdAt": "2026-07-23T06:41:55Z",
+      "author": { "login": "github-actions" },
+      "body": "**Claude finished @github-actions's task** — PR ouverte : https://github.com/POPAISTUDIO/vermeer-text/pull/121"
+    }
+  ]
+}

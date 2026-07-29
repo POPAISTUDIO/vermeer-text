@@ -1,0 +1,14 @@
+{
+  "description": "Cas tagué @known-issue-114 rouge (garde-fou 3) — aucune issue, aucun label, aucun commentaire sur l'issue 114, une seule ligne au Dossier QA 112",
+  "interdits": [
+    "issue +create",
+    "--add-label",
+    "--remove-label",
+    "--add-assignee",
+    "--assignee",
+    "issue +comment +114"
+  ],
+  "requis": [
+    "issue +comment +112"
+  ]
+}

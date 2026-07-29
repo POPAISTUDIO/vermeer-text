@@ -59,6 +59,12 @@ jobs:
             exit 1
           fi
 
+      # `--grep-invert @known-issue` : un cas tagué `@known-issue-N` est un défaut connu et
+      # dépriorisé (README §5). Il sort du verdict P0 sans quitter la suite — donc sans
+      # quitter son tag `@wave1`, qu'il retrouve dès que le tag `@known-issue-N` est retiré.
+      # Le gate ne compte que ce qui reste : c'est le garde-fou 3 du triage désignateur
+      # (GOVERNANCE.md §2), côté suite. La garde de session porte tous les tags de la suite
+      # mais aucun `@known-issue-N` : elle n'est jamais filtrée par cette exclusion.
       - name: Recette Vague 1
         id: wave1
         continue-on-error: true
@@ -66,7 +72,7 @@ jobs:
         env:
           BASE_URL: ${{ secrets.QA_STAGING_URL }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: report.json
-        run: npx playwright test --grep @wave1
+        run: npx playwright test --grep @wave1 --grep-invert @known-issue
 
       - name: Publier le rapport et les traces
         if: always()

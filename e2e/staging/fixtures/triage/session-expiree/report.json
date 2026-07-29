@@ -1,0 +1,153 @@
+{
+  "config": {
+    "rootDir": "/home/runner/work/vermeer-text/vermeer-text/e2e/staging",
+    "workers": 1,
+    "projects": [
+      { "id": "guard", "name": "guard" },
+      { "id": "chromium", "name": "chromium" }
+    ]
+  },
+  "suites": [
+    {
+      "title": "guard.setup.ts",
+      "file": "guard.setup.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "GUARD — la session QA est valide et authentifiée",
+          "ok": false,
+          "tags": ["guard", "wave1", "canary", "extra"],
+          "tests": [
+            {
+              "timeout": 150000,
+              "expectedStatus": "passed",
+              "projectId": "guard",
+              "projectName": "guard",
+              "status": "unexpected",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "status": "failed",
+                  "duration": 3812,
+                  "retry": 0,
+                  "startTime": "2026-07-24T04:31:07.412Z",
+                  "error": {
+                    "message": "Error: Session QA expirée — régénérer QA_STORAGE_STATE (voir e2e/staging/README.md)\nLe mur d'authentification est servi sur https://vermeer-staging.example/login.\nPOST /api/auth/refresh → HTTP 401 Refresh token expired or not found for this user",
+                    "stack": "Error: Session QA expirée — régénérer QA_STORAGE_STATE (voir e2e/staging/README.md)\n    at /home/runner/work/vermeer-text/vermeer-text/e2e/staging/tests/guard.setup.ts:31:11"
+                  },
+                  "errors": [
+                    {
+                      "message": "Error: Session QA expirée — régénérer QA_STORAGE_STATE (voir e2e/staging/README.md)\nPOST /api/auth/refresh → HTTP 401 Refresh token expired or not found for this user"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "attachments": []
+                }
+              ]
+            }
+          ],
+          "id": "guard-setup-guard-session",
+          "file": "guard.setup.ts",
+          "line": 13,
+          "column": 5
+        }
+      ],
+      "suites": []
+    },
+    {
+      "title": "core.spec.ts",
+      "file": "core.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "GEN — génération",
+          "file": "core.spec.ts",
+          "line": 19,
+          "column": 6,
+          "specs": [
+            {
+              "title": "GEN-01 — l'application s'ouvre authentifiée, titre et historique en place",
+              "ok": true,
+              "tags": ["wave1"],
+              "tests": [
+                {
+                  "timeout": 150000,
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "status": "skipped",
+                  "results": []
+                }
+              ],
+              "id": "core-gen-01",
+              "file": "core.spec.ts",
+              "line": 20,
+              "column": 7
+            },
+            {
+              "title": "GEN-02 — les modèles Anthropic répondent en streaming, avec titre généré",
+              "ok": true,
+              "tags": ["wave1", "canary"],
+              "tests": [
+                {
+                  "timeout": 150000,
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "status": "skipped",
+                  "results": []
+                }
+              ],
+              "id": "core-gen-02",
+              "file": "core.spec.ts",
+              "line": 48,
+              "column": 7
+            }
+          ],
+          "suites": []
+        }
+      ]
+    },
+    {
+      "title": "websearch.spec.ts",
+      "file": "websearch.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "WEB-01a — recherche web : réponse appuyée sur le web et annoncée comme telle, puis relance sans erreur 400",
+          "ok": true,
+          "tags": ["wave1"],
+          "tests": [
+            {
+              "timeout": 300000,
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "status": "skipped",
+              "results": []
+            }
+          ],
+          "id": "websearch-web-01a",
+          "file": "websearch.spec.ts",
+          "line": 29,
+          "column": 5
+        }
+      ],
+      "suites": []
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-24T04:31:03.118Z",
+    "duration": 4102,
+    "expected": 0,
+    "skipped": 12,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

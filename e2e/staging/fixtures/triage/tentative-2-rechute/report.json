@@ -1,0 +1,137 @@
+{
+  "config": {
+    "rootDir": "/home/runner/work/vermeer-text/vermeer-text/e2e/staging",
+    "workers": 1,
+    "projects": [
+      { "id": "guard", "name": "guard" },
+      { "id": "chromium", "name": "chromium" }
+    ]
+  },
+  "suites": [
+    {
+      "title": "guard.setup.ts",
+      "file": "guard.setup.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "GUARD — la session QA est valide et authentifiée",
+          "ok": true,
+          "tags": ["guard", "wave1", "canary", "extra"],
+          "tests": [
+            {
+              "timeout": 150000,
+              "expectedStatus": "passed",
+              "projectId": "guard",
+              "projectName": "guard",
+              "status": "expected",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "status": "passed",
+                  "duration": 3980,
+                  "retry": 0,
+                  "startTime": "2026-07-24T04:31:07.412Z",
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "attachments": []
+                }
+              ]
+            }
+          ],
+          "id": "guard-setup-guard-session",
+          "file": "guard.setup.ts",
+          "line": 13,
+          "column": 5
+        }
+      ],
+      "suites": []
+    },
+    {
+      "title": "core.spec.ts",
+      "file": "core.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "GEN — génération",
+          "file": "core.spec.ts",
+          "line": 19,
+          "column": 6,
+          "specs": [
+            {
+              "title": "GEN-02 — les modèles Anthropic répondent en streaming, avec titre généré",
+              "ok": false,
+              "tags": ["wave1", "canary"],
+              "tests": [
+                {
+                  "timeout": 150000,
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "status": "unexpected",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "status": "failed",
+                      "duration": 92418,
+                      "retry": 0,
+                      "startTime": "2026-07-24T04:32:02.331Z",
+                      "error": {
+                        "message": "Error: Anthropic /Opus 4\\.8/ — aucun titre généré pour la conversation 8f2c41ba-19d7-4e6f-9a15-c0b7e5d3a204 (elle reste sans titre dans la sidebar).\n\nTimed out 60000ms waiting for expect(polling).not.toMatch(expected)\n\nExpected pattern: /Nouvelle discussion|New chat/i\nReceived string:  \"Nouvelle discussion\"",
+                        "stack": "Error: expect(polling).not.toMatch(expected)\n    at expectGeneratedTitle (/home/runner/work/vermeer-text/vermeer-text/e2e/staging/lib/app.ts:214:6)\n    at /home/runner/work/vermeer-text/vermeer-text/e2e/staging/tests/core.spec.ts:59:9"
+                      },
+                      "errors": [
+                        {
+                          "message": "Error: Anthropic /Opus 4\\.8/ — aucun titre généré pour la conversation 8f2c41ba-19d7-4e6f-9a15-c0b7e5d3a204 (elle reste sans titre dans la sidebar).\n\nTimed out 60000ms waiting for expect(polling).not.toMatch(expected)"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "attachments": []
+                    },
+                    {
+                      "workerIndex": 0,
+                      "status": "failed",
+                      "duration": 90112,
+                      "retry": 1,
+                      "startTime": "2026-07-24T04:33:41.884Z",
+                      "error": {
+                        "message": "Error: Anthropic /Opus 4\\.8/ — aucun titre généré pour la conversation d51a77e0-3b64-4c02-8ef1-6a2249b0cc93 (elle reste sans titre dans la sidebar).\n\nTimed out 60000ms waiting for expect(polling).not.toMatch(expected)\n\nExpected pattern: /Nouvelle discussion|New chat/i\nReceived string:  \"Nouvelle discussion\"",
+                        "stack": "Error: expect(polling).not.toMatch(expected)\n    at expectGeneratedTitle (/home/runner/work/vermeer-text/vermeer-text/e2e/staging/lib/app.ts:214:6)\n    at /home/runner/work/vermeer-text/vermeer-text/e2e/staging/tests/core.spec.ts:59:9"
+                      },
+                      "errors": [
+                        {
+                          "message": "Error: Anthropic /Opus 4\\.8/ — aucun titre généré pour la conversation d51a77e0-3b64-4c02-8ef1-6a2249b0cc93 (elle reste sans titre dans la sidebar)."
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "attachments": []
+                    }
+                  ]
+                }
+              ],
+              "id": "core-gen-02",
+              "file": "core.spec.ts",
+              "line": 48,
+              "column": 7
+            }
+          ],
+          "suites": []
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-24T04:31:03.118Z",
+    "duration": 288741,
+    "expected": 11,
+    "skipped": 1,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

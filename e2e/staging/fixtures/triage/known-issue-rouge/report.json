@@ -1,0 +1,140 @@
+{
+  "config": {
+    "rootDir": "/home/runner/work/vermeer-text/vermeer-text/e2e/staging",
+    "workers": 1,
+    "projects": [
+      { "id": "guard", "name": "guard" },
+      { "id": "chromium", "name": "chromium" }
+    ]
+  },
+  "suites": [
+    {
+      "title": "guard.setup.ts",
+      "file": "guard.setup.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "GUARD — la session QA est valide et authentifiée",
+          "ok": true,
+          "tags": ["guard", "wave1", "canary", "extra"],
+          "tests": [
+            {
+              "timeout": 150000,
+              "expectedStatus": "passed",
+              "projectId": "guard",
+              "projectName": "guard",
+              "status": "expected",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "status": "passed",
+                  "duration": 4210,
+                  "retry": 0,
+                  "startTime": "2026-07-24T04:31:07.412Z",
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "attachments": []
+                }
+              ]
+            }
+          ],
+          "id": "guard-setup-guard-session",
+          "file": "guard.setup.ts",
+          "line": 13,
+          "column": 5
+        }
+      ],
+      "suites": []
+    },
+    {
+      "title": "websearch.spec.ts",
+      "file": "websearch.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "WEB-01a — recherche web : réponse appuyée sur le web et annoncée comme telle, puis relance sans erreur 400",
+          "ok": true,
+          "tags": ["wave1"],
+          "tests": [
+            {
+              "timeout": 300000,
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "status": "expected",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "status": "passed",
+                  "duration": 71204,
+                  "retry": 0,
+                  "startTime": "2026-07-24T04:33:11.006Z",
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "attachments": []
+                }
+              ]
+            }
+          ],
+          "id": "websearch-web-01a",
+          "file": "websearch.spec.ts",
+          "line": 29,
+          "column": 5
+        },
+        {
+          "title": "WEB-01b — recherche web : citations affichées dans la réponse",
+          "ok": false,
+          "tags": ["wave1", "known-issue-114"],
+          "tests": [
+            {
+              "timeout": 300000,
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "status": "unexpected",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "status": "failed",
+                  "duration": 68411,
+                  "retry": 0,
+                  "startTime": "2026-07-24T04:34:29.118Z",
+                  "error": {
+                    "message": "Error: La réponse n'affiche aucune citation cliquable (défaut connu #114). Liens détectés : 0. Réponse : Si vous n'avez encore rien fait pour votre déclaration de revenus, ce n'est pas nécessairement grave…\n\nexpect(received).toBe(expected) // Object.is equality\n\nExpected: true\nReceived: false",
+                    "stack": "Error: expect(received).toBe(expected)\n    at /home/runner/work/vermeer-text/vermeer-text/e2e/staging/tests/websearch.spec.ts:70:8"
+                  },
+                  "errors": [
+                    {
+                      "message": "Error: La réponse n'affiche aucune citation cliquable (défaut connu #114). Liens détectés : 0.\n\nexpect(received).toBe(expected) // Object.is equality\n\nExpected: true\nReceived: false"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "attachments": []
+                }
+              ]
+            }
+          ],
+          "id": "websearch-web-01b",
+          "file": "websearch.spec.ts",
+          "line": 61,
+          "column": 5
+        }
+      ],
+      "suites": []
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-24T04:31:03.118Z",
+    "duration": 214518,
+    "expected": 12,
+    "skipped": 1,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

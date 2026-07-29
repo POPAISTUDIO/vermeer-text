@@ -1,0 +1,8 @@
+[
+  {
+    "number": 112,
+    "title": "Dossier QA nightly",
+    "state": "OPEN",
+    "labels": [{ "name": "qa-nightly" }]
+  }
+]

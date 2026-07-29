@@ -1,0 +1,13 @@
+{
+  "description": "Session QA expirée (garde en échec, 12 cas non exécutés) — aucune issue, aucun label, une ligne au Dossier QA 112",
+  "interdits": [
+    "issue +create",
+    "--add-label",
+    "--remove-label",
+    "--add-assignee",
+    "--assignee"
+  ],
+  "requis": [
+    "issue +comment +112"
+  ]
+}

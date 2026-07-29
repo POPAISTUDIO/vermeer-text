@@ -6,7 +6,8 @@
   "scripts": {
     "fixtures": "node fixtures/make.mjs",
     "test": "playwright test",
-    "test:wave1": "playwright test --grep @wave1",
+    "test:wave1": "playwright test --grep @wave1 --grep-invert @known-issue",
+    "test:known-issues": "playwright test --grep @known-issue",
     "test:canary": "playwright test --grep @canary",
     "typecheck": "npx -y -p typescript -p @types/node tsc --noEmit",
     "report": "playwright show-report"

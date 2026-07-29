@@ -15,3 +15,8 @@ node_modules/
 # Fixtures volumineuses générées à la demande (voir fixtures/make.mjs)
 fixtures/sample-1.5mb.png
 fixtures/sample-8mb.png
+
+# Exception aux règles « Artefacts d'exécution » ci-dessus : sous fixtures/triage/, les
+# rapports et contextes d'erreur sont des fixtures ARCHIVÉES, versionnées à dessein — ce sont
+# les tests de garde du triage désignateur (voir fixtures/triage/README.md).
+!fixtures/triage/**

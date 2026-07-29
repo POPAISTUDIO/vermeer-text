@@ -34,13 +34,19 @@ npx playwright install chromium      # une fois
 export BASE_URL="https://<hôte-de-l-environnement>"   # jamais committé
 # placer la session QA dans e2e/staging/auth.json (cf. §3)
 
-npx playwright test --grep @wave1    # porte de release : les 12 cas de la Vague 1
+npx playwright test --grep @wave1 --grep-invert @known-issue   # porte de release (12 cas)
 npx playwright test --grep @canary   # sous-ensemble rapide (4 cas)
-npx playwright test                  # tout, y compris les cas @extra
+npx playwright test --grep @known-issue   # les seuls défauts connus, hors verdict (§5)
+npx playwright test                  # tout, y compris @extra et @known-issue
 npx playwright show-report           # rapport HTML du dernier run
 ```
 
-Raccourcis équivalents : `npm run test:wave1`, `npm run test:canary`.
+Raccourcis équivalents : `npm run test:wave1`, `npm run test:canary`,
+`npm run test:known-issues`.
+
+> **Le `--grep-invert @known-issue` n'est pas optionnel sur la porte de release** : c'est le
+> filtre exact de `qa-nightly.yml`. Sans lui, un run local compte des cas que la CI ne compte
+> pas — donc un verdict qui n'est pas celui de la porte (§5).
 
 La suite tourne sur **chromium uniquement**, en **série** (`workers: 1`) : un seul compte QA, et
 chaque cas déclenche de vrais appels LLM facturés.
@@ -292,10 +298,41 @@ existence et non une conversation précise).
 | `@wave1` | Les 12 cas de la **Vague 1 — porte de release** de la recette triée. C'est la porte de release. | oui |
 | `@canary` | Sous-ensemble court et représentatif (4 cas) pour une vérification fréquente et peu coûteuse. | oui (tous aussi `@wave1`) |
 | `@extra` | Cas hors Vague 1, implémentés parce qu'ils étaient faussement au vert dans le script exploratoire. Hors porte de release. | oui |
+| `@known-issue-N` | **Défaut connu et dépriorisé**, tracé par l'issue GitHub **N**. Sort le cas du verdict P0 **et** de la désignation automatique. | oui — et il **prime sur tous les autres tags** |
 | `@guard` | Garde de session uniquement. Porte aussi tous les autres tags pour ne jamais être filtré. | — |
 
 Le filtrage se fait exclusivement par `--grep` : la CI ne connaît que des tags, jamais des chemins de
 fichiers.
+
+### La règle du rouge et le tag `@known-issue-N`
+
+> **Tout cas rouge est soit un bug qui déclenche la boucle, soit un défaut connu tracé
+> `@known-issue-N` hors verdict. Jamais un rouge d'habitude.**
+> — [`docs/GOVERNANCE.md` §5](../../docs/GOVERNANCE.md)
+
+Un cas qui échoue en permanence n'apporte aucun signal : il habitue l'œil au rouge et, depuis la
+désignation automatique, **il remet un agent en marche chaque nuit**. Un cas qui vérifie une
+promesse que le produit ne tient pas encore se **scinde** — la part tenue reste au verdict, la
+part non tenue prend le tag — il ne se supprime pas et ne se laisse pas rougir.
+
+**Ce que le tag produit, mécaniquement, aux deux bouts de la chaîne :**
+
+| Où | Effet |
+|---|---|
+| Suite / CI | `qa-nightly.yml` filtre `--grep @wave1 --grep-invert @known-issue` : le cas ne tourne pas et ne compte pas dans le verdict. Il garde son tag `@wave1` — c'est le tag `@known-issue-N` qui l'en sort |
+| Triage désignateur | Étape 0 de `qa-triage.yml` (garde-fou 3) : **ni issue, ni label**, et pas de commentaire sur l'issue N — seulement une ligne au Dossier QA avec renvoi à N. Second filet, pour les runs lancés à la main ou filtrés autrement |
+
+**Conventions d'emploi :**
+
+- `N` est un **numéro d'issue GitHub existant et instruit**. Un tag sans issue derrière est un cas
+  supprimé en douce — exactement ce que la règle interdit.
+- **Le cas garde ses tags d'origine** (`@wave1`, `@canary`). Retirer le seul `@known-issue-N` le
+  réintègre entièrement au verdict : c'est un diff d'un mot, le jour où le correctif livre.
+- **Un seul `@known-issue-N` par cas.** Deux défauts connus sur un même cas = un cas à scinder.
+- **Poser ou retirer ce tag est une décision humaine**, prise en PR. Aucun agent ne le pose : c'est
+  le veto persistant de l'humain (GOVERNANCE.md §2, garde-fou 3).
+- Le tag n'est pas un `test.skip` : le cas reste exécutable à la demande
+  (`npm run test:known-issues`) et c'est lui qui prouvera le correctif.
 
 ---
 
@@ -315,12 +352,18 @@ fichiers.
 | NEG-03 | `@wave1` | Bouton d'envoi désactivé pendant l'hydratation d'une conversation, puis envoi porteur du **`conversationId` de la conversation ouverte** + d'un `parentMessageId` (pas de branche sans contexte). La conversation est **créée par le test** (2 complétions, cf. §9.5). |
 | FILE-01 | `@wave1` | Statut HTTP réel de l'upload, vignette visible, et réponse du modèle **décrivant le contenu visuel** de l'image. |
 | FILE-03 | `@wave1` | Image **sans texte** : pas de 400 ; puis message de suite : pas de 400 (non-régression #20). |
-| WEB-01 | `@wave1` | Réponse sourcée, puis **relance sans 400** (`user messages must have non-empty content`). |
+| WEB-01a | `@wave1` | Réponse **annoncée comme appuyée sur le web** (mention de sources dans la réponse), puis **relance sans 400** (`user messages must have non-empty content`). Ne vérifie **pas** l'affichage des citations — c'est WEB-01b. |
 | SAV-01 | `@wave1` | « Signaler un problème » ouvre un onglet dont l'URL correspond au `reportIssueURL` **lu depuis `/api/config`** (aucune URL en dur). |
 
 ### `@canary` (4 cas)
 
 `GEN-02`, `GEN-03`, `GEN-06`, `SEL-01` — tous également `@wave1`.
+
+### `@known-issue-N` — hors verdict et hors désignation (1 cas)
+
+| Cas | Tags | Issue | Ce qui est asservi, et pourquoi c'est hors verdict |
+|---|---|---|---|
+| WEB-01b | `@wave1` `@known-issue-114` | **114** | Les **citations sont affichées** dans la réponse (au moins un lien cliquable). Scindé de WEB-01 le 29/07/2026 : le cas historique asservissait dans une seule assertion (`links > 0 \|\| sourcesAffordance > 0`) une promesse tenue et une promesse non tenue. L'affichage des citations relève du défaut connu #114, dépriorisé le temps de WEB-01 phase 2 (observabilité puis correctif) — il ne doit donc plus ni rougir la porte de release, ni désigner du travail d'agent. Retirer le tag le jour où le correctif livre. |
 
 ### `@extra` — hors porte de release (3 cas)
 
@@ -338,9 +381,10 @@ Trois workflows, dans `.github/workflows/` :
 
 | Workflow | Nom affiché | Déclencheur | Filtre | Rôle |
 |---|---|---|---|---|
-| `qa-nightly.yml` | `QA Nightly — Staging` | cron `30 4 * * 1-5` (06h30 Paris été) + manuel | `--grep @wave1` | Porte de release. Rouge = pas de release. Analyse du rapport et tenue du **Dossier QA nightly** (label `qa-nightly`). |
-| `canary-providers.yml` | `Canary Providers` | cron `0 5 * * 1-5` + manuel | `--grep @canary` | Garde-fou court (4 cas, ~4 min). Ouvre une issue `canary`/`infra` si rouge. |
-| `qa-triage.yml` | `QA Triage` | `workflow_run` sur la nightly **en échec** | — | Classe les échecs et n'ouvre des issues `claude-fix` que pour les vrais bugs produit. |
+| `qa-nightly.yml` | `QA Nightly — Staging` | cron `30 4 * * 1-5` (06h30 Paris été) + manuel | `--grep @wave1 --grep-invert @known-issue` | Porte de release. Rouge = pas de release. Analyse du rapport et tenue du **Dossier QA nightly** (label `qa-nightly`). |
+| `canary-providers.yml` | `Canary Providers` | cron `0 5 * * 1-5` + manuel | `--grep @canary` | Garde-fou court (4 cas, ~4 min). Ouvre une issue `canary`/`infra` si rouge. Aucun cas `@canary` n'est aujourd'hui tagué `@known-issue-N` ; le jour où il y en aurait un, ce filtre est à aligner sur celui de la nightly. |
+| `qa-triage.yml` | `QA Triage` | `workflow_run` sur la nightly **en échec** | — | Classe les échecs et n'ouvre des issues `claude-fix` que pour les vrais bugs produit. **Second désignateur** : ses six garde-fous sont prescrits par [`GOVERNANCE.md` §2](../../docs/GOVERNANCE.md). |
+| `qa-triage-replay.yml` | `QA Triage — rejeu sur fixtures` | `workflow_dispatch` | — | **Test de garde** du triage : rejeu du prompt vivant sur fixtures archivées, en dry-run vis-à-vis de GitHub. Mode d'emploi : [`fixtures/triage/README.md`](fixtures/triage/README.md). |
 
 Les cas `@extra` (FILE-02, FILE-04, SKL-01c) ne sont dans **aucun** workflow planifié : ils
 se lancent à la main (`npx playwright test` sans filtre), étant hors porte de release.
@@ -362,8 +406,20 @@ QA Nightly (échec) ──workflow_run──> QA Triage ──label claude-fix�
 Un échec de la **garde de session** ne produit jamais d'issue `claude-fix` : il est reporté
 en une ligne actionnable sur le Dossier QA. Une expiration de session n'est pas un bug.
 
-Le triage plafonne à **3 issues par run** et vérifie la non-duplication sur les
-identifiants de cas présents dans les titres existants, avant d'en créer une nouvelle.
+Le triage plafonne à **3 issues créées par run**. Trois bornes de plus encadrent sa
+désignation (chantier 4, détail en [`GOVERNANCE.md` §2](../../docs/GOVERNANCE.md)) :
+
+- **Déduplication par signature d'échec** en deux passes — filtre grossier par identifiant de
+  cas dans les titres, puis confrontation de la signature
+  `<!-- signature: cas | fichier | assertion normalisée -->` inscrite dans le corps de l'issue.
+  Signature identique → commentaire sur l'existante ; signature différente sur le même cas →
+  nouvelle issue, c'est un autre échec.
+- **Exclusion des cas `@known-issue-N`** (§5) — ni issue, ni label.
+- **Plafond de 2 tentatives** — compté dans les marqueurs `<!-- tentative: X -->` des
+  commentaires de l'issue. À la première rechute, le triage repose le label pour relancer
+  l'agent (retrait + re-pose : l'agent ne se réveille que sur l'événement de pose). À la
+  seconde, il retire le label définitivement, écrit une synthèse et assigne l'issue à
+  l'humaine. Un label retiré à la main n'est **jamais** reposé.
 
 ---
 
@@ -380,6 +436,10 @@ npm run fixtures      # (re)génère fixtures/sample-*.png
 | `sample-8mb.png` | bruit déterministe, 8,00 Mo | non (générée) |
 
 `lib/fixtures.ts` génère à la demande toute fixture absente, donc rien à préparer en CI.
+
+`fixtures/triage/` n'a rien à voir avec les images : ce sont les **rapports archivés** qui
+servent de tests de garde au triage désignateur — voir
+[`fixtures/triage/README.md`](fixtures/triage/README.md).
 
 Les fixtures historiques de `~/qa-staging-vermeer/shots/sample-*.png` **n'ont pas été reprises** :
 ce ne sont pas des images (signature PNG suivie d'un remplissage d'espaces — `file` les identifie
@@ -448,6 +508,19 @@ masquerait le sujet réel des cas FILE (limite de taille, prise en compte du con
      (`ESTSAUTHPERSISTENT`, ~3 mois de validité) permettent de reminter une session en visitant
      `/oauth/openid` sans saisir d'identifiant. Vérifié manuellement contre staging. Non implémenté
      ici : cela masquerait l'expiration de session que la garde doit précisément rendre visible.
+- **WEB-01a peut rester rouge — à surveiller sur les premiers runs après la scission.**
+  OBSERVED (Dossier QA #112, runs des 27, 28 et 29/07/2026) : sur **chaque** échec archivé de
+  l'ancien WEB-01, le message porte *« Liens détectés : 0. Mentions de sources : 0 »* — les
+  **deux** compteurs à zéro, et non les seuls liens. La lecture « la recherche web rend bien des
+  réponses sourcées, seul l'affichage des citations manque » n'est donc pas ce que montrent les
+  rapports : quand le cas casse, la recherche web ne semble pas déclenchée du tout. L'échec est
+  par ailleurs **intermittent** — run 30481771442 : tentative 1 échouée, retry passé.
+  Conséquence : la scission sort du verdict la part *citations* (WEB-01b), mais si WEB-01a
+  rougit à son tour, ce n'est pas un défaut de la scission — c'est que le défaut #114 couvre
+  aussi la part conservée. La décision serait alors humaine : tagger WEB-01a `@known-issue-114`
+  à son tour (et assumer qu'il ne reste plus rien de WEB-01 au verdict), ou traiter #114 en
+  priorité. Ne pas laisser le cas rougir sans trancher — c'est précisément le rouge d'habitude
+  que la règle du rouge (§5) interdit.
 - **Anomalie ouverte sur l'upload de 1,5 Mo (FILE-02).** La vignette apparaît dans le
   composer mais **aucun POST d'upload n'est émis** (observé sur 20 s, sans toast d'erreur),
   alors que l'image de 8 Mo (FILE-04) est bien envoyée et acceptée. Le redimensionnement
