@@ -165,6 +165,7 @@
 | **Expiration** | **UNKNOWN** |
 | **Permis** | Tout ce que l'humaine demande explicitement dans la session : créer une branche, committer, ouvrir une PR, ouvrir une issue, lire l'état des dépôts |
 | **Interdits** | Pousser sur `main` sans revue (garde-fou [`CLAUDE.md` §6](../CLAUDE.md)) · committer le `.env` · écrire une clé en clair dans un fichier versionné · **utiliser le bypass admin sans issue de traçage** ([GOVERNANCE.md §4](GOVERNANCE.md#4--lécluse)) |
+| **Hors mandat** | Porter le rôle Admin sur un dépôt partagé **n'en fait pas la garante des contributions des autres équipes**. Les promotions `prod/app/` et `*/app/` relèvent de leurs relecteurs ; le devoir de traçage du bypass ne couvre que ses propres usages, sur le périmètre Vermeer Chat |
 | **Fiabilité** | **C'est l'identité la plus puissante du système, et la moins bridée techniquement.** C'est cohérent — c'est celle de l'humaine à l'écluse — mais il faut le nommer : la sûreté de l'ensemble repose sur la discipline de cette session, pas sur une configuration. C'est aussi elle qui porte le pouvoir de bypass prod |
 
 ### 10. Flux — dev et staging
@@ -191,7 +192,7 @@
 | **Expiration** | **UNKNOWN** |
 | **Permis** | Appliquer l'état mergé sur `main` de `vermeer-gitops-prod`. Intervalle de réconciliation : **UNKNOWN** (non relevé ; à préciser lors du chantier 5, où le smoke automatique devra l'attendre) |
 | **Interdits** | Aucune initiative, comme ci-dessus |
-| **Fiabilité** | **Machinerie déterministe.** C'est le **seul** chemin par lequel un changement atteint la production — et il ne part que d'un merge humain protégé par l'écluse ([GOVERNANCE.md §4](GOVERNANCE.md#4--lécluse)) |
+| **Fiabilité** | **Machinerie déterministe.** C'est le **seul** chemin par lequel un changement atteint la production — et il ne part que d'un merge protégé par le ruleset ([GOVERNANCE.md §4, régime 1](GOVERNANCE.md#4--lécluse)). Il réconcilie `prod/llm/` **et** `prod/app/` : pour le premier, le merge est relu selon cette gouvernance ; pour le second, il relève des relectures des autres équipes. Flux ne fait pas la différence — la gouvernance, si |
 
 ### 12. `gitops-bot` — hotswap staging (acteur hors périmètre)
 

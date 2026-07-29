@@ -16,6 +16,18 @@ Tout ce qui ne porte pas ce marqueur est **vivant aujourd'hui** et opposable dè
 
 **Étiquettes de preuve.** Les constats factuels portent leur étiquette : **OBSERVED** (avec sa source et sa date), **INFERRED**, **UNKNOWN**. Une affirmation sans étiquette est une *règle*, pas un constat — elle n'a pas à être prouvée, elle a à être respectée.
 
+**Ce qu'il régit, et ce qu'il ne régit pas.** Ce document gouverne le **système d'orchestration agentique de Vermeer Chat** : ses agents, ses jetons, ses écluses. Deux des trois dépôts sont **partagés avec d'autres équipes** — `vermeer-gitops` (`*/app/`, `abstraction-layer`) et `vermeer-gitops-prod` (`prod/app/`). Sur ceux-là, les règles ci-dessous ne s'appliquent qu'au **périmètre Vermeer Chat** :
+
+| Dépôt | Périmètre régi par ce document | Hors périmètre |
+|---|---|---|
+| `vermeer-text` | tout le dépôt | — |
+| `vermeer-gitops` | `dev/llm/` · `staging/llm/` | `*/app/`, `abstraction-layer`, `scripts/` |
+| `vermeer-gitops-prod` | `prod/llm/` | `prod/app/` |
+
+*(OBSERVED — `gh api repos/POPAISTUDIO/vermeer-gitops-prod/contents/prod` → `prod/app`, `prod/llm`, 29/07/2026.)*
+
+Ce que les rulesets imposent aux autres équipes — la PR, et sur la prod le check `yaml-valide` — leur est **techniquement** opposable. Ce que ce document prescrit **en plus** — qui relit, qui merge, sous quelles conditions — ne concerne **que le flux Vermeer Chat**. Les promotions des autres équipes relèvent de **leurs** relectures et de **leurs** merges.
+
 **Les workflows ne sont pas décrits ici.** Leur représentation canonique — portes de décision, acteurs, chemins de retour — est l'annexe de l'architecture cible : [`architecture-cible-v2.md` — Annexe, Workflows formalisés](architecture-cible-v2.md#annexe--workflows-formalisés-portes-de-décision-et-acteurs), circuits **A** (désignation), **B** (exécution), **C** (préparation MEP), **D** (post-merge MEP + comm'), **E** (observation). Ce document y **renvoie** et ne les recopie pas : un schéma dupliqué est un schéma qui divergera.
 
 ---
@@ -25,6 +37,8 @@ Tout ce qui ne porte pas ce marqueur est **vivant aujourd'hui** et opposable dè
 Les agents **réagissent** sur événement, **proposent** en PR, et **rien de ce qu'ils produisent n'atteint le réel sans un merge humain**.
 
 Formulé comme un invariant opposable (§4) : **aucune sortie de modèle n'atteint le réel sans merge humain.** La machinerie déterministe — celle qui n'a aucun modèle dans sa boucle — n'est pas visée : elle ne juge pas, elle applique.
+
+**Portée de l'invariant** : les agents de **ce** système, sur le périmètre Vermeer Chat défini ci-dessus. Il ne dit rien du travail des autres équipes des dépôts partagés — leurs promotions ne sortent pas d'un modèle de ce système, et leur relecture leur appartient.
 
 Chaque pouvoir d'agent traverse **sept étages** pour atteindre le réel. Un étage manquant est une faille, pas un raccourci.
 
@@ -262,6 +276,8 @@ Un interdit non testé s'érode : le prompt évolue, le modèle change, le fichi
 
 **Règle fondatrice : aucune sortie de modèle n'atteint le réel sans merge humain.**
 
+*Portée : les agents de ce système, sur le périmètre Vermeer Chat (voir « Ce qu'il régit, et ce qu'il ne régit pas », en tête). Sur les dépôts partagés, les contributions des autres équipes sont soumises aux rulesets, pas à l'écluse humaine décrite ici.*
+
 C'est la formulation exacte de l'invariant, et elle vaut mieux que « aucun merge automatique, jamais » — qu'elle remplace dans tout ce document. Ce qui est dangereux n'est pas l'automatisation d'un merge : c'est l'automatisation d'un **jugement**. Un `sed` sur une ligne de version, vérifié par des gardes mécaniques, ne juge rien ; un diff produit par un modèle juge à chaque ligne. La règle porte donc sur la nature de ce qui franchit l'écluse, pas sur le geste qui l'ouvre.
 
 **Conséquence directe** : le release train est un cas **conforme**, et non une exception (§3). Machinerie déterministe, aucun modèle dans la boucle, diff mécanique borné à la ligne de version, gardes vérifiés avant la poussée. À l'inverse, **toute PR contenant du texte produit par un modèle** — code, configuration, documentation, comm' — **se merge par un humain, sans exception d'aucune sorte**.
@@ -299,11 +315,22 @@ Le check `yaml-valide` est publié par `checks-digest.yml` du même dépôt : jo
 
 **Ce que cette configuration produit, en clair :** un agent qui pousse une branche et ouvre une PR peut aller jusque-là et pas plus loin. Le bouton merge ne s'ouvre que si le YAML est valide, et il ne s'actionne que par un humain. `required_approving_review_count: 0` n'affaiblit pas l'écluse : la PR reste **obligatoire**, et en solo une exigence d'approbation ne fait qu'ajouter un bypass de plus à chaque MEP — c'est précisément ce que l'incident du 28/07 a démontré (§7).
 
-**OBSERVED, et à savoir : `vermeer-gitops-prod` est un dépôt partagé.** D'autres équipes y ouvrent des PRs de promotion (`abstraction-layer`, frontend) — `gh pr list -R POPAISTUDIO/vermeer-gitops-prod --state all`, 29/07/2026. Le ruleset et le check `yaml-valide` s'appliquent donc **à elles aussi**. Toute évolution de l'écluse prod se pense comme une décision inter-équipes, jamais comme un réglage interne Vermeer.
+**Où s'arrête l'écluse décrite ici — la distinction à ne pas confondre.** OBSERVED : `vermeer-gitops-prod` est un dépôt **partagé**, structuré en `prod/llm/` (Vermeer Chat) et `prod/app/` (autres produits) — `gh api …/contents/prod`, 29/07/2026 ; d'autres équipes y ouvrent régulièrement des PRs de promotion `abstraction-layer` et frontend — `gh pr list -R POPAISTUDIO/vermeer-gitops-prod --state all`, 29/07/2026.
+
+Deux choses s'y superposent, et elles n'ont pas la même portée :
+
+| | Portée | Qui l'impose |
+|---|---|---|
+| **Le ruleset `9169830`** — PR obligatoire + check `yaml-valide` | **tout le dépôt**, toutes les équipes | GitHub, mécaniquement |
+| **L'écluse humaine décrite dans ce document** — qui relit, comment, sous quelles conditions | **le seul périmètre `prod/llm/`** | Cette gouvernance |
+
+Autrement dit : le ruleset s'applique aux promotions des autres équipes, **la relecture prescrite ici non**. Leurs PRs relèvent de **leurs** relecteurs et de **leurs** merges — ce document ne désigne aucun garant de leurs promotions, et n'a pas à en désigner. Ce qu'il garantit, c'est que **rien ne franchit `main` sans PR ni YAML valide**, quelle que soit l'équipe ; et que **sur `prod/llm/`**, la PR est en outre relue ligne à ligne selon le §4 avant merge.
+
+Corollaire déjà éprouvé (§3, régime 3) : toute évolution de l'écluse prod est une **décision inter-équipes**, jamais un réglage interne Vermeer.
 
 ### Doctrine du bypass — commune aux régimes 1 et 2
 
-Les deux rulesets portent **le même** `bypass_actors` : `RepositoryRole` `actor_id: 5`, `bypass_mode: always`. La doctrine qui suit s'applique donc identiquement à `vermeer-gitops-prod` et à `vermeer-text`.
+Les deux rulesets portent **le même** `bypass_actors` : `RepositoryRole` `actor_id: 5`, `bypass_mode: always`. La doctrine qui suit s'applique identiquement aux deux dépôts — **pour les usages relevant du flux Vermeer Chat**. Le rôle Admin de `vermeer-gitops-prod` est porté par des personnes hors équipe Vermeer : leurs éventuels bypass sur `prod/app/` ne relèvent ni de cette doctrine ni de ce traçage. On ne trace que ce dont on est responsable.
 
 1. **Le bypass est réservé aux urgences.** Une urgence, c'est un service dégradé ou une correction qui ne peut pas attendre le circuit normal. Ce n'est ni la commodité, ni la fatigue, ni « le check met trois minutes ».
 2. **Chaque usage est tracé dans une issue dédiée**, ouverte sur le dépôt concerné, contenant : la date, la PR concernée, ce qui empêchait le circuit normal, ce qui a été merdé sans le contrôle, et la règle ou le correctif qui en découle. Le premier exemplaire de cette trace est l'issue d'incident citée en §7.
@@ -350,7 +377,7 @@ Un ruleset exigeant la PR **couperait ces flux** : le `GITHUB_TOKEN` de ce workf
 
 ### La relecture de PR, dans les trois régimes
 
-Le review count est à 0 partout, assumé en solo. Il faut en tirer la conséquence sans la diluer :
+Le review count est à 0 sur les deux rulesets, assumé en solo. La relecture décrite ci-dessous est celle du **flux Vermeer Chat** — les PRs des autres équipes sur les dépôts partagés ont leurs propres relecteurs. Pour ce qui nous concerne, il faut en tirer la conséquence sans la diluer :
 
 > **La relecture de PR est l'unique contrôle qualité humain de la boucle continue.** Avec la désignation automatique (§2), personne n'a relu l'issue en amont : le modèle a jugé un rouge, il a désigné, un autre agent a codé. Le premier — et le seul — regard humain est celui posé sur le diff. Il se donne en conséquence : diff lu ligne à ligne, argumentaire confronté au code, effet attendu vérifiable. Un diff trop gros pour être relu se renvoie ; il ne se merge pas au bénéfice du doute.
 
@@ -440,7 +467,7 @@ La désignation reste humaine sur cette voie. La raison est de fond, pas de prud
 
 Un incident de gouvernance, ce n'est pas un bug applicatif : c'est le système de contrôle qui a cédé, été contourné, ou s'est révélé intenable. Le traiter comme une fatalité l'installe ; le traiter comme un bug le supprime.
 
-**Sont des incidents de gouvernance** : un bypass utilisé · un bypass non tracé · un agent qui dépasse son périmètre · un jeton créé hors registre ou trop large · un budget dépassé sans échec bruyant · **une sortie de modèle mergée sans relecture humaine** · un rouge d'habitude installé au verdict · **et les ratés de la désignation automatique** — faux positif labellisé (un agent mis en marche pour rien), boucle stoppée au plafond de tentatives, cas connu non exclu qui relance l'agent chaque nuit.
+**Sont des incidents de gouvernance** — pour les acteurs et le périmètre régis par ce document, jamais pour le travail des autres équipes des dépôts partagés : un bypass utilisé · un bypass non tracé · un agent qui dépasse son périmètre · un jeton créé hors registre ou trop large · un budget dépassé sans échec bruyant · **une sortie de modèle mergée sans relecture humaine** · un rouge d'habitude installé au verdict · **et les ratés de la désignation automatique** — faux positif labellisé (un agent mis en marche pour rien), boucle stoppée au plafond de tentatives, cas connu non exclu qui relance l'agent chaque nuit.
 
 ### Le premier cas réel — le bypass de la MEP v0.10.23
 
@@ -468,7 +495,7 @@ Une fois par mois, 30 minutes, cette liste dans l'ordre. Elle n'est pas un audit
 
 1. **Registre à jour** — [`registre-identites.md`](registre-identites.md) confronté à `gh secret list` sur les trois dépôts. Tout secret présent hors registre, ou inscrit mais disparu, est un écart. Vérifier les échéances qui approchent (moins de 3 mois → planifier la rotation).
 2. **Tests de garde verts** — les tests du §3 qui existent ont tourné et sont verts. Ceux qui n'existent pas encore sont nommés et rattachés à un chantier.
-3. **Bypass utilisés et tracés** — merges de `main` sur `vermeer-gitops-prod` du mois confrontés aux issues de traçage. Un merge sans trace est un incident à ouvrir. Deux bypass de même cause → corriger la cause.
+3. **Bypass utilisés et tracés** — les merges de `main` du mois **touchant le périmètre Vermeer Chat** (`prod/llm/` sur `vermeer-gitops-prod`, tout le dépôt sur `vermeer-text`) confrontés aux issues de traçage. Un merge sans trace est un incident à ouvrir. Deux bypass de même cause → corriger la cause. **Les promotions des autres équipes (`prod/app/`) ne sont pas auditées ici** : elles relèvent de leurs propres relectures.
 4. **Intégrité des écluses** — deux vérifications, l'une mécanique, l'autre par lecture (§4) :
    - **Les deux rulesets sont-ils intacts ?** `gh api repos/POPAISTUDIO/vermeer-gitops-prod/rulesets/9169830` et `gh api repos/POPAISTUDIO/vermeer-text/rulesets/19987595` → confronter `enforcement`, `rules` et `bypass_actors` aux tableaux du §4. Un ruleset désactivé, une règle disparue ou un `bypass_actors` élargi est un **incident de gouvernance**, pas un réglage.
    - **Le flux Vermeer sur `vermeer-gitops` est-il toujours à 100 % en PR ?** Ce dépôt n'a pas de ruleset (régime 3, décision multi-équipes). Vérification par lecture : `git log` / `gh api …/commits?sha=main` sur les derniers commits touchant le **périmètre Vermeer** (`dev/llm/`, `staging/llm/`) → chacun doit être un merge de PR. Une poussée directe dans ce périmètre est un incident. Les commits des autres équipes hors de ce périmètre ne sont pas concernés.
