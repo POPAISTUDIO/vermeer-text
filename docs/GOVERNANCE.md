@@ -22,7 +22,9 @@ Tout ce qui ne porte pas ce marqueur est **vivant aujourd'hui** et opposable dè
 
 ## Le principe, en une phrase
 
-Les agents **réagissent** sur événement, **proposent** en PR, et **rien n'atteint le réel sans un merge humain**.
+Les agents **réagissent** sur événement, **proposent** en PR, et **rien de ce qu'ils produisent n'atteint le réel sans un merge humain**.
+
+Formulé comme un invariant opposable (§4) : **aucune sortie de modèle n'atteint le réel sans merge humain.** La machinerie déterministe — celle qui n'a aucun modèle dans sa boucle — n'est pas visée : elle ne juge pas, elle applique.
 
 Chaque pouvoir d'agent traverse **sept étages** pour atteindre le réel. Un étage manquant est une faille, pas un raccourci.
 
@@ -184,16 +186,18 @@ La voie humaine (Loïse via Hermes) est vivante et sans réserve.
 
 *OBSERVED — cinq gardes successifs dans `release-train.yml`, étape « Verifier que le diff est strictement limite aux lignes de tag », 29/07/2026.*
 
-- **La ligne de version, et rien d'autre.** Tout autre diff = abandon du job, pas de tentative de correction :
-  - **(a)** aucun fichier hors liste blanche (`dev/llm/helm-release.yaml`, `staging/llm/helm-release.yaml`) ;
-  - **(b)** aucun chemin contenant `prod`, en ceinture et bretelles — le dépôt n'en a pas, mais s'il en avait un le job devrait s'arrêter net plutôt que d'y toucher ;
-  - **(c)** chaque ligne ajoutée ou supprimée est une ligne `tag: "…"` — un commentaire, une variable d'environnement, une annotation font échouer le job ;
-  - **(d)** volumétrie exacte : une suppression + un ajout par fichier touché ;
-  - **(e)** état final : les **deux** fichiers portent le tag visé.
-- **Avant d'écrire** : chaque fichier doit contenir exactement **une** ligne `tag: "…"`. Zéro ou deux et plus → abandon (« mieux vaut un train cassé qu'un `sed` qui touche la mauvaise ligne »).
+- **La ligne de version, et rien d'autre.** Tout autre diff = abandon du job, pas de tentative de correction. **Les cinq gardes, vérifiées une par une dans le fichier — OBSERVED, `release-train.yml`, 29/07/2026** : elles vivent toutes dans le step nommé **« Verifier que le diff est strictement limite aux lignes de tag »** (l. 200), que le fichier annote lui-même `# --- Garde-fou 2 : le diff ne contient QUE les deux lignes de tag` (l. 199), et sont numérotées à la source :
+  - **`2a`** (l. 211, `# 2a. Aucun fichier hors de la liste blanche`) — aucun fichier hors liste blanche (`dev/llm/helm-release.yaml`, `staging/llm/helm-release.yaml`) ; tolère qu'un seul des deux bouge, jamais un troisième ;
+  - **`2b`** (l. 226, `# 2b. Aucun chemin touche ne releve de la prod`) — aucun chemin contenant `prod`, en ceinture et bretelles : le dépôt n'en a pas, mais s'il en avait un le job s'arrêterait net plutôt que d'y toucher ;
+  - **`2c`** (l. 234, `# 2c. Chaque ligne ajoutee/supprimee est une ligne de tag`) — un commentaire, une variable d'environnement, une annotation font échouer le job ;
+  - **`2d`** (l. 246, `# 2d. Volumetrie : 1 suppression + 1 ajout par fichier touche`) — volumétrie exacte, en-têtes de diff déduits ;
+  - **`2e`** (l. 255, `# 2e. Etat final : les DEUX fichiers portent le tag vise`) — état final vérifié, qu'un fichier ait été modifié à l'instant ou qu'il y soit déjà.
+- **Deux gardes mécaniques supplémentaires existent en amont**, hors de ce décompte de cinq mais du même ordre — OBSERVED : le fichier nomme **`Garde-fou 1`** (l. 151) qui **refuse catégoriquement de cloner le dépôt gitops de prod** (`case "$GITOPS_REPO" in *vermeer-gitops-prod*) → exit 1`), et le step « Bumper le tag dev et staging » vérifie **avant d'écrire** que chaque fichier contient **exactement une** ligne `tag: "…"` — zéro, deux ou plus → abandon (l. 175 : « mieux vaut un train cassé qu'un `sed` qui touche la mauvaise ligne »). Soit **sept** vérifications mécaniques au total sur ce chemin.
 - **Jamais les tags Git de version.** Le `if` du job exige `head_branch == 'main'` : les releases taguées `v0.10.x` sont nativement exclues et suivent la procédure de déploiement documentée en [`CLAUDE.md` §12](../CLAUDE.md).
 
-> **Exception assumée à « aucun merge automatique » — à connaître.** OBSERVED (`release-train.yml`, étape « Ouvrir et merger la PR gitops », 29/07/2026) : le train **auto-merge sa propre PR** sur `vermeer-gitops` (`gh pr merge --squash --delete-branch`). C'est la seule exception du système, et elle est bornée : diff **mécanique** (un `sed` sur une ligne) · vérifié par les cinq gardes ci-dessus **avant** la poussée · limité à **dev et staging** · sans aucun jugement de modèle dans la boucle (pas d'agent Claude sur ce workflow). Elle ne s'étend à rien d'autre : **aucune PR contenant du texte produit par un modèle ne se merge sans humain**, et l'exception ne franchit jamais la frontière de la production. Toute extension de cette exception est un amendement explicite de ce document.
+> **Le train auto-merge sa PR, et c'est conforme — pas une exception.** OBSERVED (`release-train.yml`, étape « Ouvrir et merger la PR gitops », 29/07/2026) : le train ouvre puis merge sa propre PR sur `vermeer-gitops` (`gh pr merge --squash --delete-branch`). Au regard de l'invariant du §4 — *aucune sortie de modèle n'atteint le réel sans merge humain* — cette PR est **conforme** : il n'y a **aucun modèle dans sa boucle** (aucune étape `claude-code-action` dans ce workflow), le diff est **mécanique** (un `sed` sur une seule ligne), il est **borné à la ligne de version**, **vérifié par les cinq gardes ci-dessus avant la poussée**, et **limité à dev et staging**.
+>
+> Ce qui est automatisé ici, c'est un geste déterministe, pas un jugement. Le corollaire est strict et ne se négocie pas : **toute PR contenant du texte produit par un modèle se merge par un humain**, et rien de ce chemin ne franchit jamais la frontière de la production. Retirer un seul des cinq gardes, élargir le diff au-delà de la ligne de version, ou introduire une étape de modèle dans ce workflow le ferait basculer hors conformité — et exigerait alors un merge humain.
 
 #### Agent codeur (`vermeer-text`)
 
@@ -254,7 +258,11 @@ Un interdit non testé s'érode : le prompt évolue, le modèle change, le fichi
 
 ## §4 — L'écluse
 
-**Règle fondatrice : aucun merge automatique, jamais.** *(Unique exception, bornée et sans modèle dans la boucle : la PR de bump du release train sur dev/staging — §3.)*
+**Règle fondatrice : aucune sortie de modèle n'atteint le réel sans merge humain.**
+
+C'est la formulation exacte de l'invariant, et elle vaut mieux que « aucun merge automatique, jamais » — qu'elle remplace dans tout ce document. Ce qui est dangereux n'est pas l'automatisation d'un merge : c'est l'automatisation d'un **jugement**. Un `sed` sur une ligne de version, vérifié par des gardes mécaniques, ne juge rien ; un diff produit par un modèle juge à chaque ligne. La règle porte donc sur la nature de ce qui franchit l'écluse, pas sur le geste qui l'ouvre.
+
+**Conséquence directe** : le release train est un cas **conforme**, et non une exception (§3). Machinerie déterministe, aucun modèle dans la boucle, diff mécanique borné à la ligne de version, gardes vérifiés avant la poussée. À l'inverse, **toute PR contenant du texte produit par un modèle** — code, configuration, documentation, comm' — **se merge par un humain, sans exception d'aucune sorte**.
 
 L'écluse est le point où une proposition devient réalité. C'est un geste **humain**, et c'est le seul.
 
@@ -383,7 +391,7 @@ La désignation reste humaine sur cette voie. La raison est de fond, pas de prud
 
 Un incident de gouvernance, ce n'est pas un bug applicatif : c'est le système de contrôle qui a cédé, été contourné, ou s'est révélé intenable. Le traiter comme une fatalité l'installe ; le traiter comme un bug le supprime.
 
-**Sont des incidents de gouvernance** : un bypass utilisé · un bypass non tracé · un agent qui dépasse son périmètre · un jeton créé hors registre ou trop large · un budget dépassé sans échec bruyant · un merge automatique hors de l'exception du §3 · un rouge d'habitude installé au verdict · **et les ratés de la désignation automatique** — faux positif labellisé (un agent mis en marche pour rien), boucle stoppée au plafond de tentatives, cas connu non exclu qui relance l'agent chaque nuit.
+**Sont des incidents de gouvernance** : un bypass utilisé · un bypass non tracé · un agent qui dépasse son périmètre · un jeton créé hors registre ou trop large · un budget dépassé sans échec bruyant · **une sortie de modèle mergée sans relecture humaine** · un rouge d'habitude installé au verdict · **et les ratés de la désignation automatique** — faux positif labellisé (un agent mis en marche pour rien), boucle stoppée au plafond de tentatives, cas connu non exclu qui relance l'agent chaque nuit.
 
 ### Le premier cas réel — le bypass de la MEP v0.10.23
 
