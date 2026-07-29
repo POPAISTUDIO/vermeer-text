@@ -1,0 +1,9 @@
+{
+  "number": 114,
+  "title": "[QA] WEB-01 — recherche web non déclenchée malgré toggle ON (GPT-5.2)",
+  "state": "OPEN",
+  "labels": [],
+  "assignees": [],
+  "body": "Reproduit manuellement sur staging : nouvelle conversation GPT-5.2, toggle web search ON, question d'actualité → réponse sans aucune source ni lien. Défaut connu, dépriorisé le temps de WEB-01 phase 2 (observabilité puis correctif). Label `claude-fix` retiré à la main le 29/07/2026 (veto par exception, GOVERNANCE.md §7).",
+  "comments": []
+}

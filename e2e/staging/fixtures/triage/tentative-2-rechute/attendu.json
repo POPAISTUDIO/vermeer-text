@@ -1,0 +1,13 @@
+{
+  "description": "Signature déjà connue rechutant sur l'issue 118, qui porte déjà <!-- tentative: 2 --> (garde-fou 4, plafond) — retrait définitif du label, PAS de re-pose, synthèse et assignation à l'humaine, ligne au Dossier QA",
+  "interdits": [
+    "issue +create",
+    "--add-label"
+  ],
+  "requis": [
+    "issue +edit +118 .*--remove-label +claude-fix",
+    "issue +comment +118",
+    "issue +edit +118 .*--(add-)?assignee +Loisetoscer",
+    "issue +comment +112"
+  ]
+}
