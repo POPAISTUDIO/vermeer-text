@@ -1,0 +1,15 @@
+{
+  "description": "Ni PR ni marqueur — reproduction du run 77 du 30/07/2026 : annonce d'implementation, puis rien. Rouge + commentaire + assignation. Cas (c), inchange par le verdict draft/ready.",
+  "issue": 141,
+  "code_sortie": 1,
+  "requis": [
+    "^gh pr list --repo POPAISTUDIO/vermeer-text --state open --limit 100 --json number,url,headRefName,body,isDraft$",
+    "^gh api repos/POPAISTUDIO/vermeer-text/issues/141/comments",
+    "^gh issue comment 141 --repo POPAISTUDIO/vermeer-text --body-file <texte>$",
+    "^gh issue edit 141 --repo POPAISTUDIO/vermeer-text --add-assignee Loisetoscer$"
+  ],
+  "interdits": [
+    "^gh pr edit",
+    "--add-reviewer"
+  ]
+}

@@ -113,14 +113,63 @@ Chaque agent déclare, dans son propre fichier de workflow : **son déclencheur*
 
 | Workflow (fichier) | Déclencheur | Budget | Timeout | Comportement en échec |
 |---|---|---|---|---|
-| **Claude Code** — mode interactif (`claude.yml`, job `claude-interactive`) | `issue_comment` / `pull_request_review_comment` / `issues` (opened, assigned) contenant `@claude` ; exclut `github-actions[bot]` **et `claude[bot]`** (runs en écho sur ses propres commentaires — OBSERVED 30/07/2026, runs 79 et 81) | `--max-turns 40` | 45 min | **Étape « Échec bruyant »** (`if: failure()`) — **OBSERVED, `claude.yml`, 30/07/2026**. Job rouge **plus** un canal que Loïse reçoit : commentaire sur le fil d'origine (avec le lien du run et le conseil de relancer par cycle de label — 80 tours — plutôt que par `@claude` — 40 tours) **et assignation à `Loisetoscer`**. Sur une PR : commentaire + demande de review, avec repli sur l'assignation si Loïse en est l'autrice (GitHub refuse une review de l'auteur). L'épuisement de `--max-turns` fait bien sortir ce job en erreur — **OBSERVED, run 80 du 30/07/2026** : le motif de l'incident n'était pas un job vert, c'était un rouge que personne ne recevait |
-| **Claude Code** — mode autonome (`claude.yml`, job `claude-autofix`) | `issues` action `labeled`, label **exactement** `claude-fix` ; exclut `claude[bot]` | `--max-turns 80` | 60 min | **Gate « Verdict livrable »** (`if: always()`, après l'étape d'agent) — **OBSERVED, `claude.yml`, 30/07/2026**. Le job ne peut plus être vert sans livrable : soit une **PR ouverte** (branche `fix/issue-N`, suffixe toléré, ou corps référençant l'issue), soit un **verdict d'analyse explicite** — dernier commentaire de `claude[bot]` portant le marqueur `<!-- verdict: analyse-seule -->`. **PR trouvée ⇒ review demandée à `Loisetoscer`** : c'est le seul canal qui notifie à coup sûr l'ouverture d'une PR, et il dit la vérité du système — **toute PR d'agent attend la relecture de l'écluse** ([§4](#4--lécluse)). Erreur ignorée : au second passage la review est déjà demandée, ce qui est le cas nominal. À défaut, l'étape **commente l'issue** avec la procédure de relance, **l'assigne à `Loisetoscer`** et sort en **erreur** : le rouge trace, le commentaire et l'assignation notifient (règle 4 ci-dessus). Si l'une des deux lectures d'API échoue, le verdict est déclaré **indéterminable** → rouge **sans** commentaire, plutôt qu'une accusation fausse |
+| **Claude Code** — mode interactif (`claude.yml`, job `claude-interactive`) | `issue_comment` / `pull_request_review_comment` / `issues` (opened, assigned) contenant `@claude` ; exclut `github-actions[bot]` **et `claude[bot]`** (runs en écho sur ses propres commentaires — OBSERVED 30/07/2026, runs 79 et 81) | `--max-turns 40` | 45 min | **Étape « Échec bruyant »** (`if: failure()`) — **OBSERVED, `claude.yml`, 30/07/2026**. Job rouge **plus** un canal que Loïse reçoit : commentaire sur le fil d'origine (avec le lien du run et le conseil de relancer par cycle de label — 150 tours — plutôt que par `@claude` — 40 tours) **et assignation à `Loisetoscer`**. Sur une PR : commentaire + demande de review, avec repli sur l'assignation si Loïse en est l'autrice (GitHub refuse une review de l'auteur). L'épuisement de `--max-turns` fait bien sortir ce job en erreur — **OBSERVED, run 80 du 30/07/2026** : le motif de l'incident n'était pas un job vert, c'était un rouge que personne ne recevait |
+| **Claude Code** — mode autonome (`claude.yml`, job `claude-autofix`) | `issues` action `labeled`, label **exactement** `claude-fix` ; exclut `claude[bot]` | `--max-turns 150` | 90 min | **Séquence draft-first** (prompt + `--append-system-prompt`) **et gate « Verdict livrable »** à trois verdicts — **OBSERVED, `claude.yml`, 30/07/2026**. Détail ci-dessous |
 | **QA Nightly — Staging** (`qa-nightly.yml`, job `wave1`) | `schedule` `30 4 * * 1-5` (04h30 UTC = **06h30 Paris** en heure d'été) + `workflow_dispatch` | `--max-turns 25` (étape d'analyse Claude uniquement) | 40 min | Gate final « la Vague 1 est la porte de release » : `exit 1` si Playwright n'est pas `success`. L'analyse tourne en `if: always()` et journalise au Dossier QA **avant** le gate |
 | **QA Triage** (`qa-triage.yml`, job `triage`) | `workflow_run` sur `["QA Nightly — Staging"]`, `types: [completed]`, gardé par `conclusion == 'failure'` | `--max-turns 70` | 25 min | Job rouge. Si les artefacts sont absents ou `report.json` illisible : **ne devine pas** — commentaire au Dossier QA puis arrêt |
-| **QA Triage — rejeu sur fixtures** (`qa-triage-replay.yml`, jobs `fixtures` + `rejeu`) | `workflow_dispatch` seul | `--max-turns 70` | 5 min (recensement) · 25 min (rejeu, un job par fixture) | **Test de garde du triage**, pas un acteur : rejoue le prompt **vivant** du triage sur fixtures archivées, en **dry-run** vis-à-vis de GitHub (shim `gh`, `permissions: contents: read` seul). Verdict = code de sortie du vérificateur ; `fail-fast: false` pour que chaque fixture rende son verdict |
+| **QA Triage — rejeu sur fixtures** (`qa-triage-replay.yml`, jobs `fixtures` + `rejeu`) | `workflow_dispatch` seul | `--max-turns 70` | 5 min (recensement) · 25 min (rejeu, un job par fixture) | **Test de garde du triage**, pas un acteur : rejoue le prompt **vivant** du triage sur fixtures archivées, en **dry-run** vis-à-vis de GitHub (shim `gh`, `permissions: contents: read` seul). Verdict = code de sortie du vérificateur ; `fail-fast: false` pour que chaque fixture rende son verdict. **⚠️ OBSERVED 30/07/2026 — ce harnais n'a jamais pu être vert.** Son premier et unique run ([30580016629](https://github.com/POPAISTUDIO/vermeer-text/actions/runs/30580016629)) échoue sur les 3 fixtures : `permissions: contents: read` **seul** empêche `anthropics/claude-code-action@v1` d'obtenir son jeton OIDC (« Could not fetch an OIDC token… `id-token: write` »), donc le modèle ne tourne pas, donc le journal est vide, donc tous les `requis` manquent. Le durcissement dry-run a coupé l'authentification de l'agent qu'il devait éprouver. Faux **rouge** (direction sûre), mais un test qui ne peut pas passer ne garde rien. **Correctif : ajouter `id-token: write` aux permissions du job de rejeu** — hors périmètre de la PR qui a fait ce constat (`claude.yml` seul autorisé) |
 | **Canary Providers** (`canary-providers.yml`, job `canary`) | `schedule` `0 5 * * 1-5` (05h00 UTC = **07h00 Paris** en heure d'été) + `workflow_dispatch` | *aucun agent Claude — assertions déterministes seules* | 20 min | Issue `canary` + `infra` ouverte si rouge, puis gate « un canary rouge doit être rouge » : `exit 1` |
 | **Release Train — dev + staging** (`release-train.yml`, job `propagate`) | `workflow_run` sur `["Build & Push Vermeer Custom Image to ECR"]`, gardé par `conclusion == 'success'` **et** `event == 'push'` **et** `head_branch == 'main'` | *aucun agent Claude — shell déterministe* | 25 min | **Aucun retry.** Étape `if: failure() \|\| cancelled()` → issue `release-train` (créée ou commentée), avec l'étape en échec, le tag visé et l'URL de la PR gitops éventuellement restée ouverte |
 | **Build & Push … to ECR** (`vermeer-prod-image.yml`) | `push` sur `branches: ["**"]` et `tags: ["*"]` | *machinerie de build* | *non déclaré au niveau du job* | Job rouge ; le train ne part pas (son `if` exige `conclusion == 'success'`) |
+
+##### `claude-autofix` — la séquence draft-first et les trois verdicts
+
+**OBSERVED — `claude.yml`, 30/07/2026.** Ce job porte deux dispositifs distincts, écrits le même
+jour après trois runs consécutifs sans PR sur l'issue 141.
+
+**Le principe : le travail d'un agent ne doit jamais être invisible, perdu ou non reprenable.**
+Incident fondateur, le run 83 du 30/07/2026 : **67 tours, 9m38 de modèle, 3,90 $, conclusion
+Success, et aucune trace** — ni branche poussée, ni PR, ni même un commentaire. Le run 77 du même
+jour avait au moins laissé une analyse ; le 83 n'a rien laissé. Un budget consommé sans trace
+n'est pas un échec technique, c'est un défaut de conception : rien n'obligeait l'agent à rendre
+son travail visible avant de l'avoir fini.
+
+**Séquence imposée** (prompt **et** `--append-system-prompt`, les deux, pour qu'aucun des deux
+chemins ne l'affaiblisse) : (1) branche `fix/issue-N` ; (2) premier commit minimal ; (3) **PR en
+DRAFT ouverte immédiatement**, référençant l'issue, **avant toute implémentation
+substantielle** ; (4) implémentation par commits réguliers poussés — jamais plus de quelques
+minutes de travail non poussé ; (5) description complétée puis **PR passée ready for review**.
+Une PR laissée en draft est un état **légitime** : elle dit « travail inachevé », et se reprend
+par un `@claude continue` sur la PR — le contexte du diff y est déjà.
+
+**Budget dimensionné pour des features, pas pour des retouches** : `--max-turns 150` / 90 min.
+Le run 83 avait consommé 67 tours sur un bouton de thème sous un plafond de 80 — donc au bord,
+et la séquence draft-first coûte des tours de `git` et de `gh` en plus de l'implémentation.
+`claude-interactive` reste à 40 tours : reprises et petits gestes.
+
+**Gate « Verdict livrable »** (`if: always()`) — **trois** verdicts, plus deux :
+
+| Ce que le gate trouve | Verdict | Canal |
+|---|---|---|
+| **PR ready** référençant l'issue | **vert** | Review demandée à `Loisetoscer` — seul canal qui notifie à coup sûr l'ouverture d'une PR, et il dit la vérité du système : **toute PR d'agent attend la relecture de l'écluse** ([§4](#4--lécluse)) |
+| **PR draft** | **rouge** | Le contrat n'est pas rempli, mais le travail est visible : commentaire sur l'issue « ⚠️ Travail partiel visible en PR #N (draft). Reprise : commenter @claude continue sur la PR. » + assignation à `Loisetoscer`. **Le rouge dit désormais OÙ est le travail** au lieu de constater une disparition. Aucune review demandée sur un brouillon |
+| Ni PR, ni marqueur | **rouge** | Commentaire de relance sur l'issue + assignation à `Loisetoscer` |
+| Dernier commentaire de `claude[bot]` portant `<!-- verdict: analyse-seule -->` | **vert** | Arrêt réfléchi, aucune écriture |
+| Une lecture d'API en échec | **rouge sans commentaire** | Verdict déclaré **indéterminable** — plutôt qu'une accusation fausse |
+
+La PR est reconnue par sa **branche** `fix/issue-N` (suffixe toléré) ou, à défaut, par un corps
+qui référence l'issue. **La branche prime** : les deux signaux ne valent pas pareil, un corps
+pouvant mentionner « #N » en prose sans être la PR de l'issue. Défaut trouvé par le rejeu du
+verdict, pas par une relecture — voir ci-dessous.
+
+**Test de garde** : `.github/scripts/verdict-replay/rejouer.sh`, 4 fixtures sous
+`e2e/staging/fixtures/verdict/`. Le gate est du **shell**, donc directement exécutable, donc
+directement testable — contrairement à un prompt, qui ne se teste qu'en rejouant un modèle. Le
+shell testé est **extrait** de `claude.yml`, jamais recopié. Dès son premier passage, ce rejeu a
+trouvé le défaut d'ordonnancement branche/corps décrit ci-dessus : la fixture `pr-ready` place un
+leurre (branche `fix/issue-1410`, corps mentionnant `#141`) que l'ancien `select(A or B) | first`
+sélectionnait avant la vraie PR. **Reste à câbler en CI** — la création d'un workflow de rejeu
+sortait du périmètre autorisé de la PR qui a introduit ce harnais.
 
 #### `POPAISTUDIO/vermeer-gitops`
 
@@ -275,9 +324,10 @@ Un interdit non testé s'érode : le prompt évolue, le modèle change, le fichi
 
 | Interdit | Test de garde | État |
 |---|---|---|
-| Triage — pas de label sur doute | Rejeu du triage sur un run archivé à session expirée → aucune issue `claude-fix` créée, aucun label posé | **Implémenté** — `qa-triage-replay.yml`, fixture `session-expiree` *(OBSERVED, 29/07/2026)* |
-| Triage — exclusion `@known-issue-N` (garde-fou 3) | Rejeu sur un run où un cas tagué `@known-issue-N` est rouge → ni issue, ni label, ni commentaire sur l'issue N ; une ligne au Dossier QA | **Implémenté** — `qa-triage-replay.yml`, fixture `known-issue-rouge` *(OBSERVED, 29/07/2026)* |
-| Triage — plafond de 2 tentatives (garde-fou 4) | Rejeu sur une rechute de signature contre une issue portant déjà `<!-- tentative: 2 -->` → retrait du label, **pas de re-pose**, synthèse et assignation à l'humaine | **Implémenté** — `qa-triage-replay.yml`, fixture `tentative-2-rechute` *(OBSERVED, 29/07/2026)* |
+| Triage — pas de label sur doute | Rejeu du triage sur un run archivé à session expirée → aucune issue `claude-fix` créée, aucun label posé | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `session-expiree`. Voir la mise en garde ci-dessous *(OBSERVED, 30/07/2026)* |
+| Triage — exclusion `@known-issue-N` (garde-fou 3) | Rejeu sur un run où un cas tagué `@known-issue-N` est rouge → ni issue, ni label, ni commentaire sur l'issue N ; une ligne au Dossier QA | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `known-issue-rouge` *(OBSERVED, 30/07/2026)* |
+| Triage — plafond de 2 tentatives (garde-fou 4) | Rejeu sur une rechute de signature contre une issue portant déjà `<!-- tentative: 2 -->` → retrait du label, **pas de re-pose**, synthèse et assignation à l'humaine | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `tentative-2-rechute` *(OBSERVED, 30/07/2026)* |
+| Agent codeur — un run ne peut pas finir sans livrable visible | Rejeu du gate « Verdict livrable » **extrait de `claude.yml`** sur 4 situations figées : PR ready → vert + review ; PR draft → rouge qui dit où est le travail ; marqueur d'analyse → vert sans écriture ; rien → rouge + relance. Verdict = code de sortie **et** journal des `gh` | **Implémenté et vert (4/4)** — `.github/scripts/verdict-replay/rejouer.sh`, fixtures sous `e2e/staging/fixtures/verdict/`. Tourne en local, sans jeton ni modèle. **Reste à câbler en CI** *(OBSERVED, 30/07/2026)* |
 | Agent config — ligne de tag d'image / `restartedAt` | Check de PR sur `vermeer-gitops` : échec si le diff touche une ligne `tag:` ou l'annotation `restartedAt` sous `*/llm/` | *à câbler* |
 | Agent config — périmètre `dev/llm/` + `staging/llm/` | Check de PR : `git diff --name-only` entièrement inclus dans la liste blanche, sinon échec | *à câbler* |
 | Agent config — prod hors de portée | Check de PR : échec si un chemin du diff matche `prod` (insensible à la casse) | *à câbler* |
@@ -290,6 +340,25 @@ Un interdit non testé s'érode : le prompt évolue, le modèle change, le fichi
 | Agent comm' — écriture limitée à `docs/comm/` ⏳8 | Check de PR : `git diff --name-only` entièrement sous `docs/comm/`, sinon échec | *à câbler ⏳8* |
 
 **Comment tournent les trois tests implémentés.** Un seul workflow, `qa-triage-replay.yml`, en `workflow_dispatch` (`gh workflow run "QA Triage — rejeu sur fixtures"`, éventuellement `-f cas=<fixture>`). Il rejoue le prompt **extrait de `qa-triage.yml`** — jamais une copie, qui divergerait et ne testerait plus le désignateur réel — sur les rapports Playwright archivés de `e2e/staging/fixtures/triage/`. Le rejeu est en **dry-run vis-à-vis de GitHub** : un shim `gh` journalise et simule toute commande `gh issue` d'écriture, sert des réponses figées aux lectures, et le job ne porte que `contents: read`. C'est un test du **raisonnement** du triage, pas un test qui pollue le tracker. Le verdict est un **code de sortie** : le journal des commandes est confronté aux `interdits` / `requis` de la fixture. À lancer **à la revue mensuelle** (§7, point 2) et **après toute modification du prompt de triage**. Limite assumée, écrite dans `e2e/staging/fixtures/triage/README.md` : un rejeu vert prouve que le triage a raisonné juste **sur ces trois situations**, pas sur toutes — et le modèle n'étant pas déterministe, un rejeu rouge **deux fois de suite** sur la même fixture est un incident de gouvernance (§7), pas un aléa.
+
+**⚠️ OBSERVED 30/07/2026 — ces trois tests n'ont jamais pu être verts.** Premier et unique run du
+harnais, [30580016629](https://github.com/POPAISTUDIO/vermeer-text/actions/runs/30580016629),
+déclenché le 30/07 : **échec sur les 3 fixtures**, pour une raison qui n'a rien à voir avec le
+raisonnement du triage. `permissions: contents: read` **seul** empêche
+`anthropics/claude-code-action@v1` d'obtenir son jeton OIDC (« Could not fetch an OIDC token. Did
+you remember to add `id-token: write`… »), donc le modèle ne tourne pas, donc le journal reste
+vide, donc tous les `requis` manquent — tandis que tous les `interdits` passent trivialement. Le
+durcissement dry-run a coupé l'authentification de l'agent qu'il devait éprouver. La direction de
+l'erreur est sûre (faux **rouge**, jamais faux vert), mais **un test qui ne peut pas passer ne
+garde rien** : les trois lignes ci-dessus doivent se lire « écrit », pas « couvert ».
+**Correctif : ajouter `id-token: write` aux `permissions` du job de rejeu** — un jeton OIDC ne
+donne aucun droit d'écriture sur le dépôt, la propriété dry-run est préservée. Hors périmètre de
+la PR qui a fait ce constat (`claude.yml` seul autorisé côté workflows).
+
+**Le rejeu du verdict de livrable, lui, ne dépend d'aucun modèle** — le gate est du shell. Il
+tourne en local, sans jeton, et son verdict est déterministe :
+`.github/scripts/verdict-replay/rejouer.sh`. Détail et limites :
+`e2e/staging/fixtures/verdict/README.md`.
 
 ---
 
@@ -524,7 +593,7 @@ Reste que le tag et le retrait de label ne couvrent pas la même chose : le tag 
 Une fois par mois, 30 minutes, cette liste dans l'ordre. Elle n'est pas un audit : c'est le moment où les règles vivantes sont confrontées au réel, et où les règles en attente (⏳) sont regardées pour ce qu'elles sont — des trous connus.
 
 1. **Registre à jour** — [`registre-identites.md`](registre-identites.md) confronté à `gh secret list` sur les trois dépôts. Tout secret présent hors registre, ou inscrit mais disparu, est un écart. Vérifier les échéances qui approchent (moins de 3 mois → planifier la rotation).
-2. **Tests de garde verts** — les tests du §3 qui existent ont tourné et sont verts. Ceux qui n'existent pas encore sont nommés et rattachés à un chantier. **Geste concret du mois** : `gh workflow run "QA Triage — rejeu sur fixtures" -R POPAISTUDIO/vermeer-text --ref main`, puis lire les trois verdicts (un job par fixture, `fail-fast: false`). Il rejoue le prompt vivant du triage en dry-run — il n'écrit rien, il ne touche pas le tracker. À relancer aussi **hors revue, après toute modification du prompt de triage**. Rouge deux fois de suite sur la même fixture = incident, pas aléa. Contrôler dans la même minute les `--allowedTools` de `qa-nightly.yml` et `qa-triage.yml` (audit de la ligne « lecture seule » du §3).
+2. **Tests de garde verts** — les tests du §3 qui existent ont tourné et sont verts. Ceux qui n'existent pas encore sont nommés et rattachés à un chantier. **Geste concret du mois** : `gh workflow run "QA Triage — rejeu sur fixtures" -R POPAISTUDIO/vermeer-text --ref main`, puis lire les trois verdicts (un job par fixture, `fail-fast: false`). Il rejoue le prompt vivant du triage en dry-run — il n'écrit rien, il ne touche pas le tracker. À relancer aussi **hors revue, après toute modification du prompt de triage**. Rouge deux fois de suite sur la même fixture = incident, pas aléa. **⚠️ Tant que `id-token: write` n'est pas ajouté aux permissions de ce workflow, ce geste rend un rouge structurel qui ne dit rien du triage** (§3, mise en garde du 30/07/2026). Second geste du mois, celui-là déterministe et local : `.github/scripts/verdict-replay/rejouer.sh` (4 fixtures, gate de livrable de `claude.yml`). Contrôler dans la même minute les `--allowedTools` de `qa-nightly.yml` et `qa-triage.yml` (audit de la ligne « lecture seule » du §3).
 3. **Bypass utilisés et tracés** — les merges de `main` du mois **touchant le périmètre Vermeer Chat** (`prod/llm/` sur `vermeer-gitops-prod`, tout le dépôt sur `vermeer-text`) confrontés aux issues de traçage. Un merge sans trace est un incident à ouvrir. Deux bypass de même cause → corriger la cause. **Les promotions des autres équipes (`prod/app/`) ne sont pas auditées ici** : elles relèvent de leurs propres relectures.
 4. **Intégrité des écluses** — deux vérifications, l'une mécanique, l'autre par lecture (§4) :
    - **Les deux rulesets sont-ils intacts ?** `gh api repos/POPAISTUDIO/vermeer-gitops-prod/rulesets/9169830` et `gh api repos/POPAISTUDIO/vermeer-text/rulesets/19987595` → confronter `enforcement`, `rules` et `bypass_actors` aux tableaux du §4. Un ruleset désactivé, une règle disparue ou un `bypass_actors` élargi est un **incident de gouvernance**, pas un réglage.

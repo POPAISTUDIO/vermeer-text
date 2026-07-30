@@ -73,7 +73,7 @@ jobs:
             exit 0
           fi
 
-          MESSAGE="⚠️ Run interrompu (budget épuisé ou erreur) — [voir le run]($RUN_URL). Si la demande était une implémentation, relance par cycle du label « claude-fix » (budget 80 tours) plutôt que par @claude (40 tours)."
+          MESSAGE="⚠️ Run interrompu (budget épuisé ou erreur) — [voir le run]($RUN_URL). Si la demande était une implémentation, relance par cycle du label « claude-fix » (budget 150 tours) plutôt que par @claude (40 tours)."
 
           if [ "$EST_PR" = "true" ]; then
             gh pr comment "$NUM" --repo "$REPO" --body "$MESSAGE" \
@@ -95,6 +95,11 @@ jobs:
 
   # Mode autonome — label claude-fix
   claude-autofix:
+    # Budget dimensionne pour des FEATURES, pas pour des retouches (OBSERVED 30/07/2026,
+    # run 83 sur l'issue 141 : 67 tours et 9m38 de modele consommes sur un bouton de theme,
+    # sous un plafond de 80 tours — donc au bord). 150 tours / 90 min laissent la place a la
+    # sequence draft-first, qui coute des tours de git et de gh en plus de l'implementation.
+    # claude-interactive reste a 40 tours : reprises et petits gestes.
     # ⚠️ La garde claude[bot] ci-dessous est defensive, pas fonctionnelle : ce job ne repond
     # qu'a issues/labeled, donc aucun issue_comment ne l'atteint. Elle est la pour le jour ou
     # le declencheur s'elargirait. A SAVOIR AVANT DE LA GARDER : si la pose de claude-fix
@@ -108,7 +113,7 @@ jobs:
       github.event.label.name == 'claude-fix' &&
       github.actor != 'claude[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -117,16 +122,32 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Traite l'issue #${{ github.event.issue.number }} de bout en bout :
-            1. Lis l'issue et établis ta compréhension du bug — SANS la commenter. Elle ira
-               dans la description de la PR, pas dans un commentaire préalable.
-            2. Localise la cause racine dans le code (pas de fix symptomatique).
-            3. Implémente la correction sur une branche fix/issue-${{ github.event.issue.number }}.
-            4. Fais tourner typecheck et les tests unitaires concernés ; compare aux
-               baselines connues (erreurs TS et échecs Jest préexistants documentés
-               dans CLAUDE.md) — n'introduis aucune régression nouvelle.
-            5. Ouvre une PR qui référence l'issue (Fixes #${{ github.event.issue.number }}),
-               avec : cause racine, correction, comment vérifier en staging.
+            Traite l'issue #${{ github.event.issue.number }} de bout en bout.
+
+            ORDRE IMPÉRATIF — la PR draft AVANT l'implémentation :
+            1. Crée la branche fix/issue-${{ github.event.issue.number }}.
+            2. Fais un premier commit minimal.
+            3. OUVRE IMMÉDIATEMENT une PR en DRAFT référençant l'issue
+               (Closes #${{ github.event.issue.number }}) — AVANT toute implémentation
+               substantielle. Une description d'une ligne suffit à ce stade.
+            4. Implémente en poussant des commits réguliers sur la branche — jamais plus de
+               quelques minutes de travail non poussé.
+            5. À la fin : complète la description de la PR (analyse, changements, comment
+               vérifier en staging), puis passe la PR READY FOR REVIEW.
+
+            Une PR laissée en DRAFT signifie : travail inachevé, reprenable par un commentaire
+            @claude sur la PR. C'est un état légitime — pas un échec à camoufler. Ne passe une
+            PR ready que si le travail est réellement fini.
+
+            Le travail lui-même, à mener dans le cadre de cette séquence :
+            - Établis ta compréhension du bug SANS la commenter sur l'issue. Elle ira dans la
+              description de la PR, pas dans un commentaire préalable.
+            - Localise la cause racine dans le code (pas de fix symptomatique).
+            - Garde le diff minimal : uniquement le code lié au bug.
+            - Fais tourner typecheck et les tests unitaires concernés ; compare aux baselines
+              connues (erreurs TS et échecs Jest préexistants documentés dans CLAUDE.md) —
+              n'introduis aucune régression nouvelle.
+
             Si tu ne parviens pas à identifier la cause racine avec confiance, n'ouvre PAS de
             PR : commente l'issue avec ton analyse et ce qui te bloque, et termine ce
             commentaire par cette ligne exacte, seule sur sa ligne :
@@ -134,16 +155,21 @@ jobs:
             Ce marqueur est ce qui distingue un arrêt réfléchi d'un run mort en cours de
             route : sans lui, l'étape « Verdict livrable » fera sortir ce job en ROUGE.
           claude_args: |
-            --max-turns 80
-            --append-system-prompt "Respecte CLAUDE.md. Ne merge jamais. Ne modifie que le code lié au bug — aucun refactoring opportuniste. Ordre de travail impératif : implémente D'ABORD, commente ENSUITE. Ne publie pas de commentaire d'analyse préalable — ton analyse complète va dans la DESCRIPTION de la PR. Deux issues possibles et deux seulement : (1) une PR ouverte référençant l'issue ; (2) si et seulement si la cause racine n'est pas identifiée avec confiance, un unique commentaire d'analyse se terminant par le marqueur <!-- verdict: analyse-seule -->. Un commentaire qui annonce une implémentation à venir est interdit : au moment de l'écrire, ouvre la PR à la place."
+            --max-turns 150
+            --append-system-prompt "Respecte CLAUDE.md. Ne merge jamais. Ne modifie que le code lié au bug — aucun refactoring opportuniste. Ordre de travail impératif : (1) branche fix/issue-N ; (2) premier commit minimal ; (3) OUVRE IMMÉDIATEMENT une PR en DRAFT référençant l'issue (Closes #N), AVANT toute implémentation substantielle ; (4) implémente en poussant des commits réguliers sur la branche — jamais plus de quelques minutes de travail non poussé ; (5) à la fin : description de PR complétée (analyse, changements, comment vérifier), PR passée READY FOR REVIEW. Une PR laissée en draft signifie : travail inachevé, reprenable par un commentaire @claude sur la PR. Ne publie pas de commentaire d'analyse préalable — ton analyse complète va dans la DESCRIPTION de la PR. Deux issues possibles et deux seulement : (1) une PR ouverte référençant l'issue ; (2) si et seulement si la cause racine n'est pas identifiée avec confiance, un unique commentaire d'analyse se terminant par le marqueur <!-- verdict: analyse-seule -->. Un commentaire qui annonce une implémentation à venir est interdit : au moment de l'écrire, ouvre la PR draft à la place."
 
       # Garde-fou GOVERNANCE.md §2 regle 4 : « en depassement, echouer bruyamment ». Un run
       # d'agent codeur qui finit sans rien livrer doit etre ROUGE — rouge = notification GitHub
       # native, donc zero surveillance manuelle. Incident fondateur : run 77 du 30/07/2026 sur
       # l'issue 141 — long commentaire d'analyse, annonce d'implementation (« je pars sur la
       # branche fix/issue-141 »), puis fin en Success SANS branche poussee ni PR. Le vert a menti.
-      # Cette etape ne consomme que gh pr list + gh issue comment : rien a desserrer dans le
-      # bloc permissions du workflow.
+      # Second incident, run 83 du meme jour sur la meme issue : 67 tours, 9m38, Success, et
+      # AUCUNE trace — pas de branche, pas de PR, pas meme un commentaire. D'ou la sequence
+      # draft-first du prompt : le travail doit etre visible AVANT d'etre fini.
+      # Trois verdicts, pas deux : PR ready = vert ; PR draft = rouge qui dit OU est le travail ;
+      # ni PR ni marqueur = rouge qui constate une disparition.
+      # Cette etape ne consomme que gh pr list + gh issue comment/edit + gh pr edit : rien a
+      # desserrer dans le bloc permissions du workflow.
       - name: Verdict livrable
         if: always()
         env:
@@ -158,24 +184,54 @@ jobs:
           # (a) Une PR OUVERTE livre-t-elle le travail ? Deux facons de la reconnaitre : sa
           #     branche fix/issue-N (suffixe tolere — cf. fix/issue-137-renvois-workflow, sans
           #     jamais confondre #141 et #1410), ou un corps qui reference l'issue.
+          #     `gh pr list` retourne les brouillons comme les autres : un draft EST une PR
+          #     ouverte. C'est voulu — on veut le TROUVER, puis le traiter differemment.
           if ! gh pr list --repo "$REPO" --state open --limit 100 \
-                 --json number,url,headRefName,body > "$RUNNER_TEMP/prs.json"; then
+                 --json number,url,headRefName,body,isDraft > "$RUNNER_TEMP/prs.json"; then
             echo "::error::Impossible d'interroger les PR ouvertes — verdict indeterminable."
             exit 1
           fi
+          #     La branche PRIME sur le renvoi dans le corps : les deux signaux ne valent pas
+          #     pareil. Un corps peut mentionner « #N » en prose (« ne pas confondre avec
+          #     #141 ») sans etre la PR de l'issue ; une branche fix/issue-N, non. Avec un
+          #     `select(A or B) | first`, c'est l'ordre de `gh pr list` (le plus recent
+          #     d'abord) qui tranchait — donc une PR etrangere pouvait masquer la vraie et
+          #     faire lire le mauvais etat draft/ready. OBSERVED : defaut trouve par le rejeu
+          #     du verdict (fixture pr-ready, leurre #1410) le 30/07/2026.
           PR=$(jq -c \
             --arg branche "^fix/issue-${ISSUE}"'(-|$)' \
             --arg renvoi "(^|[^0-9])#${ISSUE}"'([^0-9]|$)' \
-            '[.[] | select((.headRefName | test($branche)) or ((.body // "") | test($renvoi)))]
-             | first // empty' "$RUNNER_TEMP/prs.json")
+            '([.[] | select(.headRefName | test($branche))] | first)
+             // ([.[] | select((.body // "") | test($renvoi))] | first)
+             // empty' "$RUNNER_TEMP/prs.json")
           if [ -n "$PR" ]; then
-            echo "Livrable : $(printf '%s' "$PR" | jq -r '.url')"
+            NUMERO=$(printf '%s' "$PR" | jq -r '.number')
+            URL=$(printf '%s' "$PR" | jq -r '.url')
+
+            # (a.1) PR en DRAFT : le contrat de la sequence draft-first n'est pas rempli — la
+            #       PR devait etre passee ready a la fin. Le travail EXISTE et il est VISIBLE,
+            #       ce qui est tout l'objet de la sequence ; mais il est inacheve, donc le run
+            #       sort ROUGE. Difference avec le cas (c) : le rouge dit desormais OU est le
+            #       travail, au lieu de constater une disparition. La reprise se fait sur la PR
+            #       (le contexte du diff y est) et non sur l'issue.
+            if [ "$(printf '%s' "$PR" | jq -r '.isDraft')" = "true" ]; then
+              gh issue comment "$ISSUE" --repo "$REPO" --body \
+                "⚠️ Travail partiel visible en PR #${NUMERO} (draft). Reprise : commenter « @claude continue » sur la PR." \
+                || echo "::warning::Commentaire impossible a poster sur l'issue $ISSUE."
+              gh issue edit "$ISSUE" --repo "$REPO" --add-assignee Loisetoscer \
+                || echo "::warning::Assignation impossible sur l'issue $ISSUE."
+              echo "::error::PR #${NUMERO} laissee en draft — travail inacheve, visible en $URL."
+              exit 1
+            fi
+
+            # (a.2) PR READY : livrable complet.
+            echo "Livrable : $URL"
             # La demande de review est le seul canal qui notifie a COUP SUR l'ouverture d'une PR
             # — et elle dit la verite du systeme : toute PR d'agent attend la relecture de
             # l'ecluse (GOVERNANCE.md §4). Erreur ignoree : sur un second passage la review est
             # deja demandee, ce qui est le cas nominal et non un defaut. Pas de risque de 422
             # « review from author » ici, l'autrice de cette PR etant l'agent, pas Loise.
-            gh pr edit "$(printf '%s' "$PR" | jq -r '.number')" --repo "$REPO" \
+            gh pr edit "$NUMERO" --repo "$REPO" \
               --add-reviewer Loisetoscer 2>/dev/null \
               || echo "::notice::Review deja demandee (ou non demandable) sur cette PR."
             exit 0

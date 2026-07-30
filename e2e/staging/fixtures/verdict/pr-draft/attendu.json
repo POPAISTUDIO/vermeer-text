@@ -1,0 +1,15 @@
+{
+  "description": "PR DRAFT trouvee pour l'issue 141 — contrat draft-first non rempli : rouge, mais le rouge dit OU est le travail (commentaire + assignation sur l'issue, aucune review demandee sur un brouillon).",
+  "issue": 141,
+  "code_sortie": 1,
+  "requis": [
+    "^gh pr list --repo POPAISTUDIO/vermeer-text --state open --limit 100 --json number,url,headRefName,body,isDraft$",
+    "^gh issue comment 141 --repo POPAISTUDIO/vermeer-text --body <texte>$",
+    "^gh issue edit 141 --repo POPAISTUDIO/vermeer-text --add-assignee Loisetoscer$"
+  ],
+  "interdits": [
+    "^gh pr edit",
+    "--add-reviewer",
+    "^gh api "
+  ]
+}
