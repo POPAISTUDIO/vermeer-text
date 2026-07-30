@@ -1,0 +1,16 @@
+{
+  "description": "PR READY trouvee pour l'issue 141 — livrable complet : vert + demande de review a Loisetoscer, aucune ecriture sur l'issue.",
+  "issue": 141,
+  "code_sortie": 0,
+  "requis": [
+    "^gh pr list --repo POPAISTUDIO/vermeer-text --state open --limit 100 --json number,url,headRefName,body,isDraft$",
+    "^gh pr edit 144 --repo POPAISTUDIO/vermeer-text --add-reviewer Loisetoscer$"
+  ],
+  "interdits": [
+    "^gh issue comment",
+    "^gh issue edit",
+    "--add-assignee",
+    "^gh pr edit 143 ",
+    "^gh api "
+  ]
+}

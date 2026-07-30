@@ -1,0 +1,9 @@
+[
+  {
+    "number": 145,
+    "url": "https://github.com/POPAISTUDIO/vermeer-text/pull/145",
+    "headRefName": "fix/issue-141",
+    "body": "Closes #141\n\nPremier commit minimal, implementation en cours.",
+    "isDraft": true
+  }
+]

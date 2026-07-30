@@ -1,0 +1,14 @@
+{
+  "description": "Aucune PR, mais le dernier commentaire de claude[bot] porte le marqueur d'analyse-seule — arret legitime : vert, aucune ecriture. Cas (b), inchange par le verdict draft/ready.",
+  "issue": 141,
+  "code_sortie": 0,
+  "requis": [
+    "^gh pr list --repo POPAISTUDIO/vermeer-text --state open --limit 100 --json number,url,headRefName,body,isDraft$",
+    "^gh api repos/POPAISTUDIO/vermeer-text/issues/141/comments"
+  ],
+  "interdits": [
+    "^gh issue comment",
+    "^gh issue edit",
+    "^gh pr edit"
+  ]
+}

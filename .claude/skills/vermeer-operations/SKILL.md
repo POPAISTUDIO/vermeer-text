@@ -121,6 +121,16 @@ Le greffier est **la plume de Loïse, pas une désignation automatique**.
   tour de boucle complet.
 - **Correctif à symptôme clair (« fix Y »)** : une question au plus, aucune si le symptôme parle
   de lui-même.
+- **Gabarit — une issue = un run.** La question à se poser au cadrage n'est pas « est-ce clair ? »
+  mais « est-ce livrable en un seul run d'agent ? ». Deux cas, et un seul aiguillage :
+  - **fix** — taille d'un run : label direct, l'issue part telle quelle.
+  - **feature** — la découper, **au cadrage**, en issues de taille fix, chacune livrable en un
+    run. Le découpage est du travail de greffier, pas du travail d'agent codeur : une issue
+    « feature » monolithique produit un run qui déborde son budget, et un run qui déborde ne
+    laisse rien derrière lui.
+  Si le chantier ne se découpe pas ainsi — dépendances croisées, périmètre encore flottant,
+  arbitrages produit à rendre — **ne pas ouvrir d'issue** : le signaler à Loïse comme relevant de
+  la **session atelier**, où le cadrage se fait avec elle avant tout label.
 - **Correctif touchant `.github/workflows/`** : le signaler **pendant** le cadrage. Ce chemin est
   **hors de portée de l'agent codeur** — la GitHub App n'a pas le scope `workflows`, donc tout
   push contenant un fichier de workflow est refusé côté serveur. C'est une barrière **délibérée**
