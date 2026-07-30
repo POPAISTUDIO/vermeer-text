@@ -7,12 +7,13 @@ import ToggleSwitch from '../ToggleSwitch';
 import { useLocalize } from '~/hooks';
 import store from '~/store';
 
-// V1 UX POP/BETC : refonte design system Vermeer (dark mode forcé).
-// Cache le ThemeSelector tant que FORCE_VERMEER_DARK=true dans App.jsx
-// pour éviter qu'un user passe en light et casse l'expérience visuelle
-// (les overrides Vermeer ne couvrent que .dark, pas le light upstream).
-// Synchro avec App.jsx — flipper les deux ensemble.
-const FORCE_VERMEER_DARK = true;
+// Vermeer: masque le sélecteur de thème à 3 options du panneau Paramètres.
+// La bascule jour/nuit voulue est binaire et vit dans le header
+// (Chat/Header.tsx) ; ce Dropdown expose en plus un mode « Système », qui la
+// contredirait. Flag autonome — ne dépend plus d'App.jsx. Ne PAS réduire les
+// options de ce composant à deux : le même `ThemeSelector` local est consommé
+// par ShareView.tsx (vue de partage).
+const SHOW_THEME_DROPDOWN = false;
 
 const toggleSwitchConfigs = [
   {
@@ -187,7 +188,7 @@ function General() {
 
   return (
     <div className="flex flex-col gap-3 p-1 text-sm text-text-primary">
-      {!FORCE_VERMEER_DARK && (
+      {SHOW_THEME_DROPDOWN && (
         <div className="pb-3">
           <ThemeSelector theme={theme} onChange={changeTheme} />
         </div>
