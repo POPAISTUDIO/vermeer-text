@@ -136,7 +136,10 @@ helm/**/.values.yaml
 *.cert
 
 # AI Assistants
-/.claude/
+# .claude/ est versionne : c'est l'outillage atelier (hooks, skills, agents, scripts), et un
+# pouvoir non versionne est un pouvoir non gouverne (docs/GOVERNANCE.md §1 regle 6).
+# Seuls les reglages de poste restent locaux.
+.claude/settings.local.json
 /.codex/
 /.cursor/
 /.copilot/
@@ -150,7 +153,6 @@ helm/**/.values.yaml
 hive-mind-prompt-*.txt
 
 # Claude Flow generated files
-.claude/settings.local.json
 .mcp.json
 claude-flow.config.json
 .swarm/
@@ -176,5 +178,4 @@ claude-flow
 .playwright-mcp/*
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt
-CLAUDE.md
 .gsd
