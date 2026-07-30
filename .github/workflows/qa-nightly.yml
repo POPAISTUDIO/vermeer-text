@@ -139,7 +139,7 @@ jobs:
             Sources de vérité, dans cet ordre :
               1. `e2e/staging/report.json` — rapport JSON Playwright du run.
               2. `e2e/staging/test-results/**/error-context.md` — contexte des échecs.
-              3. `e2e/staging/README.md` — §4 tags, §5 cas couverts, §8 divergences assumées.
+              3. `e2e/staging/README.md` — §5 tags, §6 cas couverts, §9 divergences assumées.
 
             Résultat de l'étape Playwright : ${{ steps.wave1.outcome }}
             Run : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -151,7 +151,7 @@ jobs:
               t'arrêtes là sur l'analyse des cas : la suite a probablement échoué avant de
               produire un rapport (config, session, installation).
             - Un test « skipped » n'est pas un test qui passe. CTX-02 est un SKIP motivé
-              connu (cf. README §8.3) : rappelle-le en une ligne, ce n'est pas une
+              connu (cf. README §9.3) : rappelle-le en une ligne, ce n'est pas une
               régression.
             - Tu distingues systématiquement trois natures d'échec :
                 * ÉCHEC PRODUIT — une assertion métier est fausse (statut HTTP, contenu,
