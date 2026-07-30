@@ -26,8 +26,15 @@ concurrency:
 jobs:
   # Mode interactif — @claude
   claude-interactive:
+    # L'exclusion de claude[bot] coupe les runs fantomes : les commentaires que l'agent poste
+    # lui-meme (suivi de progression, compte rendu) sont des evenements issue_comment qui le
+    # reveillent en echo. OBSERVED 30/07/2026 : runs 79 et 81 declenches avec
+    # github.actor == 'claude[bot]' — le 79 n'a ete epargne que parce que le corps du
+    # commentaire ne portait pas '@claude'. Filtrer sur l'acteur ne depend plus du contenu.
+    # Loise n'est pas un bot : un '@claude' de sa part declenche toujours.
     if: |
-      github.actor != 'github-actions[bot]' && (
+      github.actor != 'github-actions[bot]' &&
+      github.actor != 'claude[bot]' && (
         (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
         (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
         (github.event_name == 'issues' && github.event.action != 'labeled' && contains(github.event.issue.body, '@claude'))
@@ -47,10 +54,18 @@ jobs:
 
   # Mode autonome — label claude-fix
   claude-autofix:
+    # ⚠️ La garde claude[bot] ci-dessous est defensive, pas fonctionnelle : ce job ne repond
+    # qu'a issues/labeled, donc aucun issue_comment ne l'atteint. Elle est la pour le jour ou
+    # le declencheur s'elargirait. A SAVOIR AVANT DE LA GARDER : si la pose de claude-fix
+    # passait un jour sous l'identite claude[bot], cette ligne casserait silencieusement la
+    # designation automatique (GOVERNANCE.md §2, second designateur) — il faudrait alors la
+    # retirer. Aujourd'hui le risque est nul : le triage pose le label avec GITHUB_TOKEN, donc
+    # sous l'identite github-actions[bot] (OBSERVED — qa-triage.yml, GH_TOKEN du step).
     if: |
       github.event_name == 'issues' &&
       github.event.action == 'labeled' &&
-      github.event.label.name == 'claude-fix'
+      github.event.label.name == 'claude-fix' &&
+      github.actor != 'claude[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -62,7 +77,8 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Traite l'issue #${{ github.event.issue.number }} de bout en bout :
-            1. Lis l'issue et reproduis ta compréhension du bug en la commentant brièvement.
+            1. Lis l'issue et établis ta compréhension du bug — SANS la commenter. Elle ira
+               dans la description de la PR, pas dans un commentaire préalable.
             2. Localise la cause racine dans le code (pas de fix symptomatique).
             3. Implémente la correction sur une branche fix/issue-${{ github.event.issue.number }}.
             4. Fais tourner typecheck et les tests unitaires concernés ; compare aux
@@ -70,8 +86,76 @@ jobs:
                dans CLAUDE.md) — n'introduis aucune régression nouvelle.
             5. Ouvre une PR qui référence l'issue (Fixes #${{ github.event.issue.number }}),
                avec : cause racine, correction, comment vérifier en staging.
-            Si tu ne parviens pas à identifier la cause racine avec confiance,
-            n'ouvre PAS de PR : commente l'issue avec ton analyse et ce qui te bloque.
+            Si tu ne parviens pas à identifier la cause racine avec confiance, n'ouvre PAS de
+            PR : commente l'issue avec ton analyse et ce qui te bloque, et termine ce
+            commentaire par cette ligne exacte, seule sur sa ligne :
+            <!-- verdict: analyse-seule -->
+            Ce marqueur est ce qui distingue un arrêt réfléchi d'un run mort en cours de
+            route : sans lui, l'étape « Verdict livrable » fera sortir ce job en ROUGE.
           claude_args: |
             --max-turns 80
-            --append-system-prompt "Respecte CLAUDE.md. Ne merge jamais. Ne modifie que le code lié au bug — aucun refactoring opportuniste."
+            --append-system-prompt "Respecte CLAUDE.md. Ne merge jamais. Ne modifie que le code lié au bug — aucun refactoring opportuniste. Ordre de travail impératif : implémente D'ABORD, commente ENSUITE. Ne publie pas de commentaire d'analyse préalable — ton analyse complète va dans la DESCRIPTION de la PR. Deux issues possibles et deux seulement : (1) une PR ouverte référençant l'issue ; (2) si et seulement si la cause racine n'est pas identifiée avec confiance, un unique commentaire d'analyse se terminant par le marqueur <!-- verdict: analyse-seule -->. Un commentaire qui annonce une implémentation à venir est interdit : au moment de l'écrire, ouvre la PR à la place."
+
+      # Garde-fou GOVERNANCE.md §2 regle 4 : « en depassement, echouer bruyamment ». Un run
+      # d'agent codeur qui finit sans rien livrer doit etre ROUGE — rouge = notification GitHub
+      # native, donc zero surveillance manuelle. Incident fondateur : run 77 du 30/07/2026 sur
+      # l'issue 141 — long commentaire d'analyse, annonce d'implementation (« je pars sur la
+      # branche fix/issue-141 »), puis fin en Success SANS branche poussee ni PR. Le vert a menti.
+      # Cette etape ne consomme que gh pr list + gh issue comment : rien a desserrer dans le
+      # bloc permissions du workflow.
+      - name: Verdict livrable
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          MARQUEUR='<!-- verdict: analyse-seule -->'
+
+          # (a) Une PR OUVERTE livre-t-elle le travail ? Deux facons de la reconnaitre : sa
+          #     branche fix/issue-N (suffixe tolere — cf. fix/issue-137-renvois-workflow, sans
+          #     jamais confondre #141 et #1410), ou un corps qui reference l'issue.
+          if ! gh pr list --repo "$REPO" --state open --limit 100 \
+                 --json number,url,headRefName,body > "$RUNNER_TEMP/prs.json"; then
+            echo "::error::Impossible d'interroger les PR ouvertes — verdict indeterminable."
+            exit 1
+          fi
+          PR_URL=$(jq -r \
+            --arg branche "^fix/issue-${ISSUE}"'(-|$)' \
+            --arg renvoi "(^|[^0-9])#${ISSUE}"'([^0-9]|$)' \
+            '[.[] | select((.headRefName | test($branche)) or ((.body // "") | test($renvoi)))]
+             | first | .url // empty' "$RUNNER_TEMP/prs.json")
+          if [ -n "$PR_URL" ]; then
+            echo "Livrable : $PR_URL"
+            exit 0
+          fi
+
+          # (b) Arret legitime prevu par le prompt : le dernier commentaire de l'agent porte le
+          #     marqueur. REST obligatoire ici — l'API GraphQL derriere « gh issue view »
+          #     normalise l'auteur en « claude », le login exact « claude[bot] » n'est lisible
+          #     qu'en REST (OBSERVED 30/07/2026, issue 141).
+          if ! DERNIER=$(gh api \
+                 "repos/$REPO/issues/$ISSUE/comments?per_page=100&sort=created&direction=desc" \
+                 --jq '[.[] | select(.user.login == "claude[bot]")] | first | .body // empty'); then
+            echo "::error::Lecture des commentaires de l'issue $ISSUE impossible — verdict indeterminable."
+            exit 1
+          fi
+          if printf '%s' "$DERNIER" | grep -qF "$MARQUEUR"; then
+            echo "Livrable : verdict d'analyse explicite (marqueur present) — arret legitime."
+            exit 0
+          fi
+
+          # (c) Ni PR, ni verdict : ce run n'a rien livre. On le dit sur l'issue, et on sort rouge.
+          #     Le commentaire est poste par github-actions[bot] via GITHUB_TOKEN : GitHub ne
+          #     declenche aucun workflow sur ces evenements, et le job interactif exclut deja cet
+          #     acteur — le '@claude' de la phrase de relance ne peut donc pas boucler. Ne PAS
+          #     basculer cette etape sur un jeton personnel sans revoir ce point.
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file - <<EOF
+          ⚠️ Run terminé sans livrable (ni PR, ni verdict d'analyse). Épuisement de budget probable. Relance : commenter « @claude reprends et ouvre la PR ».
+
+          Run : $RUN_URL
+          EOF
+          echo "::error::Run termine sans livrable — ni PR ouverte, ni verdict d'analyse marque."
+          exit 1
