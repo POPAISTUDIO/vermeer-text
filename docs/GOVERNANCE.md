@@ -67,6 +67,7 @@ Un agent ne partage jamais l'identité d'un humain. Il ne réutilise jamais un j
 3. **Nommage explicite.** Le nom du secret dit ce qu'il ouvre (`GITOPS_PUSH_TOKEN`, `QA_STORAGE_STATE`). Un nom générique masque un pouvoir.
 4. **Aucune valeur de secret ne sort de son coffre.** Ni dans un document, ni dans une issue, ni dans un log, ni sous forme de fragment. La rotation d'un secret exposé — même partiellement, même dans un canal privé — n'est pas négociable.
 5. **Le registre est tenu à jour au moment où le pouvoir change**, pas à la revue suivante. Créer un jeton sans l'inscrire au registre est un incident de gouvernance (§7).
+6. **Tout support de gouvernance d'un acteur — mandat, prompt, skill — est un fichier persistant, identifié au registre : un pouvoir défini dans un texte volatil est un pouvoir non gouverné.** Incident fondateur : le mandat d'Hermes n'existait dans aucun fichier — il était collé en session — et le seul support persistant autorisait la désignation sans conditions ([issue 135](https://github.com/POPAISTUDIO/vermeer-text/issues/135), 30/07/2026).
 
 ### Le registre
 
@@ -182,7 +183,7 @@ Trois bornes, non négociables, parce que ce geste est un pouvoir de réveil :
 
 Cette extension ne change pas la liste des désignateurs : ils restent **deux**. Elle borne le second.
 
-La voie humaine (Loïse via Hermes) est vivante et sans réserve.
+La voie humaine (Loïse via Hermes) est vivante et sans réserve. **Greffier câblé le 30/07/2026 — OBSERVED** : sur ordre explicite d'elle seule, Hermes rédige un brouillon (repo, titre, corps, label), le lui soumet, et ne crée l'issue labellisée qu'après validation explicite ; le label part avec la création, porté par cette validation. Le réflexe de cadrage est obligatoire pour une fonctionnalité (comportement attendu, emplacement UI, critère d'acceptation). Rien de tout cela ne s'enclenche depuis une observation : cette voie-là ouvre une issue **sans label** (§6). Permis, contrepoids et support du mandat : [registre](registre-identites.md#8-hermes--capteur-interactif-mac-de-latelier).
 
 ---
 
