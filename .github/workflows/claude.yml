@@ -163,13 +163,21 @@ jobs:
             echo "::error::Impossible d'interroger les PR ouvertes — verdict indeterminable."
             exit 1
           fi
-          PR_URL=$(jq -r \
+          PR=$(jq -c \
             --arg branche "^fix/issue-${ISSUE}"'(-|$)' \
             --arg renvoi "(^|[^0-9])#${ISSUE}"'([^0-9]|$)' \
             '[.[] | select((.headRefName | test($branche)) or ((.body // "") | test($renvoi)))]
-             | first | .url // empty' "$RUNNER_TEMP/prs.json")
-          if [ -n "$PR_URL" ]; then
-            echo "Livrable : $PR_URL"
+             | first // empty' "$RUNNER_TEMP/prs.json")
+          if [ -n "$PR" ]; then
+            echo "Livrable : $(printf '%s' "$PR" | jq -r '.url')"
+            # La demande de review est le seul canal qui notifie a COUP SUR l'ouverture d'une PR
+            # — et elle dit la verite du systeme : toute PR d'agent attend la relecture de
+            # l'ecluse (GOVERNANCE.md §4). Erreur ignoree : sur un second passage la review est
+            # deja demandee, ce qui est le cas nominal et non un defaut. Pas de risque de 422
+            # « review from author » ici, l'autrice de cette PR etant l'agent, pas Loise.
+            gh pr edit "$(printf '%s' "$PR" | jq -r '.number')" --repo "$REPO" \
+              --add-reviewer Loisetoscer 2>/dev/null \
+              || echo "::notice::Review deja demandee (ou non demandable) sur cette PR."
             exit 0
           fi
 
