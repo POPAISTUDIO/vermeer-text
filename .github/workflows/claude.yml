@@ -52,6 +52,47 @@ jobs:
             --max-turns 40
             --append-system-prompt "Respecte CLAUDE.md. Ne merge jamais de PR. Toute modification passe par une branche + PR avec description structurée (contexte, changement, comment tester)."
 
+      # GOVERNANCE.md §2 regle 4 — « bruyant » veut dire : une notification que Loise RECOIT,
+      # sans aller la chercher dans l'onglet Actions. Incident du 30/07/2026, run 80 : ce job est
+      # mort a max-turns (40), le job est bien sorti ROUGE... et personne n'a rien recu. Un statut
+      # de run ne notifie personne. Le canal fiable est celui du plafond du triage (garde-fou 4) :
+      # commentaire sur le fil + ASSIGNATION. L'ordre compte — le commentaire d'abord, car c'est
+      # lui qui porte la notification ; l'assignation ensuite, meme si elle echoue.
+      - name: Échec bruyant
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUM: ${{ github.event.issue.number || github.event.pull_request.number }}
+          EST_PR: ${{ github.event_name == 'pull_request_review_comment' || github.event.issue.pull_request != null }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          if [ -z "${NUM:-}" ]; then
+            echo "::warning::Aucun numero d'issue ou de PR dans le contexte — pas de canal pour alerter."
+            exit 0
+          fi
+
+          MESSAGE="⚠️ Run interrompu (budget épuisé ou erreur) — [voir le run]($RUN_URL). Si la demande était une implémentation, relance par cycle du label « claude-fix » (budget 80 tours) plutôt que par @claude (40 tours)."
+
+          if [ "$EST_PR" = "true" ]; then
+            gh pr comment "$NUM" --repo "$REPO" --body "$MESSAGE" \
+              || echo "::warning::Commentaire impossible a poster sur la PR $NUM."
+            # Une review ne peut pas etre demandee a l'autrice de la PR (422) : repli sur
+            # l'assignation, qui accepte l'autrice. Le canal de notification est preserve.
+            if ! gh pr edit "$NUM" --repo "$REPO" --add-reviewer Loisetoscer 2>/dev/null; then
+              echo "::warning::Review non demandable (autrice de la PR ?) — repli sur l'assignation."
+              gh pr edit "$NUM" --repo "$REPO" --add-assignee Loisetoscer \
+                || echo "::warning::Assignation impossible sur la PR $NUM."
+            fi
+          else
+            gh issue comment "$NUM" --repo "$REPO" --body "$MESSAGE" \
+              || echo "::warning::Commentaire impossible a poster sur l'issue $NUM."
+            gh issue edit "$NUM" --repo "$REPO" --add-assignee Loisetoscer \
+              || echo "::warning::Assignation impossible sur l'issue $NUM."
+          fi
+          echo "::error::Run interrompu — $REPO#$NUM commente et confie a Loisetoscer."
+
   # Mode autonome — label claude-fix
   claude-autofix:
     # ⚠️ La garde claude[bot] ci-dessous est defensive, pas fonctionnelle : ce job ne repond
@@ -157,5 +198,11 @@ jobs:
 
           Run : $RUN_URL
           EOF
+          # L'assignation est ce qui rend l'echec BRUYANT : un rouge dans l'onglet Actions ne
+          # notifie personne (GOVERNANCE.md §2 regle 4, incident du 30/07/2026). Meme canal que le
+          # plafond du triage. Apres le commentaire : c'est lui qui porte la notification, et il
+          # ne doit pas etre perdu si l'assignation echoue.
+          gh issue edit "$ISSUE" --repo "$REPO" --add-assignee Loisetoscer \
+            || echo "::warning::Assignation impossible sur l'issue $ISSUE."
           echo "::error::Run termine sans livrable — ni PR ouverte, ni verdict d'analyse marque."
           exit 1
