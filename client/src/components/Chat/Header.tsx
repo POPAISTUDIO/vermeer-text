@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
 import { X } from 'lucide-react';
-import { useMediaQuery, TooltipAnchor } from '@librechat/client';
+import { useMediaQuery, TooltipAnchor, ThemeSelector } from '@librechat/client';
 import { getConfigDefaults, PermissionTypes, Permissions } from 'librechat-data-provider';
 import ModelSelector from './Menus/Endpoints/ModelSelector';
 import { useGetStartupConfig } from '~/data-provider';
@@ -26,6 +26,25 @@ const SHOW_PRESETS_BUTTON = false;
 // Commandes sont gatés par le meme flag (useHandleKeyUp.ts, Commands.tsx).
 // Reversible en passant a `true` ; aucune logique multi-convo supprimee.
 const SHOW_COMPARISON_BUTTON = false;
+
+// Vermeer: bascule jour/nuit. Réutilise `<ThemeSelector returnThemeOnly />`
+// d'upstream (bascule binaire clair/sombre, aria-label localisé, anti-rebond
+// 500 ms) ; le sélecteur à 3 options du panneau Paramètres reste masqué, aucun
+// mode « Système » n'est atteignable par ce bouton. Le défaut « sombre au
+// premier passage » est gardé dans App.jsx.
+const ThemeToggle = () => {
+  const localize = useLocalize();
+
+  return (
+    <TooltipAnchor
+      description={localize('com_ui_toggle_theme')}
+      side="bottom"
+      className="flex items-center"
+    >
+      <ThemeSelector returnThemeOnly />
+    </TooltipAnchor>
+  );
+};
 
 function Header() {
   const { data: startupConfig } = useGetStartupConfig();
@@ -119,6 +138,7 @@ function Header() {
                     isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
                   />
                   {hasAccessToTemporaryChat === true && <TemporaryChat />}
+                  <ThemeToggle />
                 </>
               )}
             </div>
@@ -131,6 +151,7 @@ function Header() {
               isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
             />
             {hasAccessToTemporaryChat === true && <TemporaryChat />}
+            <ThemeToggle />
           </div>
         )}
       </div>

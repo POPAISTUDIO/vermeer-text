@@ -14,13 +14,31 @@ import { initializeFontSize } from '~/store/fontSize';
 import { LiveAnnouncer } from '~/a11y';
 import { router } from './routes';
 
-// V1 UX POP/BETC : refonte design system Vermeer (dark mode + accent
-// rouge #E5384A). Force le thème dark au boot pour activer la palette
-// Vermeer définie dans style.css section .dark. Passer à false pour
-// revenir au thème system upstream LibreChat. Synchro avec le même
-// flag dans Nav/SettingsTabs/General/General.tsx (flipper les deux).
-// Cleanup atelier specs post-congé avec Antoine.
-const FORCE_VERMEER_DARK = true;
+// Vermeer: le sombre reste le thème par défaut (palette Vermeer de la section
+// .dark de style.css), mais UNIQUEMENT pour un utilisateur qui n'a jamais
+// choisi. `ThemeProvider` réapplique `initialTheme` à chaque montage et le
+// réécrit dans localStorage sous THEME_KEY (packages/client ThemeProvider.tsx) :
+// le passer en dur écraserait le choix de l'utilisateur à chaque rechargement,
+// et la bascule jour/nuit du header (Chat/Header.tsx) ne survivrait pas à un F5.
+const THEME_STORAGE_KEY = 'color-theme';
+
+const hasStoredTheme = () => {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) != null;
+  } catch {
+    return false;
+  }
+};
+
+const getThemeProviderProps = (envTheme) => {
+  if (envTheme) {
+    return { initialTheme: 'system', themeRGB: envTheme };
+  }
+  if (hasStoredTheme()) {
+    return {};
+  }
+  return { initialTheme: 'dark' };
+};
 
 const App = () => {
   const { setError } = useApiErrorBoundary();
@@ -56,14 +74,7 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <RecoilRoot>
         <LiveAnnouncer>
-          <ThemeProvider
-            // FORCE_VERMEER_DARK : force dark mode global Vermeer V1.
-            // Sinon : passe initialTheme/themeRGB depuis env si défini,
-            // sinon localStorage utilisateur (comportement upstream).
-            {...(FORCE_VERMEER_DARK
-              ? { initialTheme: 'dark' }
-              : envTheme && { initialTheme: 'system', themeRGB: envTheme })}
-          >
+          <ThemeProvider {...getThemeProviderProps(envTheme)}>
             {/* The ThemeProvider will automatically:
                 1. Apply dark/light mode classes
                 2. Apply custom theme colors if envTheme is provided
