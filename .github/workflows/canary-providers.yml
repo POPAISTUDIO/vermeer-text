@@ -14,8 +14,8 @@ permissions:
   contents: read
   issues: write
 
-# Groupe PARTAGÉ avec qa-nightly.yml : la session staging est à usage unique (rotation du
-# refresh token), les deux workflows ne doivent jamais tourner en même temps.
+# Groupe PARTAGÉ avec qa-nightly.yml : un seul compte de service, et chaque cas déclenche de
+# vrais appels LLM facturés — les deux workflows ne doivent jamais tourner en même temps.
 concurrency:
   group: qa-session
   cancel-in-progress: false
@@ -42,15 +42,9 @@ jobs:
         working-directory: e2e/staging
         run: npx playwright install --with-deps chromium
 
-      - name: Restaurer la session QA
-        env:
-          QA_STORAGE_STATE_B64: ${{ secrets.QA_STORAGE_STATE }}
-        run: |
-          echo "$QA_STORAGE_STATE_B64" | base64 -d > e2e/staging/auth.json
-          if [ ! -s e2e/staging/auth.json ]; then
-            echo "::error::Session QA vide — secret QA_STORAGE_STATE vide ou mal encodé. Régénérer : e2e/staging/README.md §3."
-            exit 1
-          fi
+      # Plus d'étape de restauration de session : la suite s'authentifie elle-même par login
+      # programmatique du compte de service. Un défaut d'identifiants fait échouer le TEST DE
+      # GARDE, que le triage classe « SESSION EXPIRÉE » — sa catégorie existante.
 
       - name: Canary fournisseurs
         id: canary
@@ -58,6 +52,8 @@ jobs:
         working-directory: e2e/staging
         env:
           BASE_URL: ${{ secrets.QA_STAGING_URL }}
+          QA_SERVICE_EMAIL: ${{ secrets.QA_SERVICE_EMAIL }}
+          QA_SERVICE_PASSWORD: ${{ secrets.QA_SERVICE_PASSWORD }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: report.json
         run: npx playwright test --grep @canary
 
@@ -72,32 +68,9 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-      # ── PERSISTANCE DE SESSION ────────────────────────────────────────────────────
-      # Même mécanique que la nightly : l'app régénère le refresh token au premier
-      # chargement, donc la session capturée est à USAGE UNIQUE. La fixture
-      # persistRotatedSession réécrit auth.json pendant le run ; sans republication du
-      # secret, le run suivant rejouerait un token mort. Voir e2e/staging/README.md §3.
-      - name: Persister la session rotatée dans QA_STORAGE_STATE
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.VERMEER_SECRETS_TOKEN }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::VERMEER_SECRETS_TOKEN absent — session rotatée NON republiée. Le prochain run échouera sur la garde (README §3)."
-            exit 0
-          fi
-          if [ ! -s e2e/staging/auth.json ]; then
-            echo "::warning::auth.json vide en fin de run — secret laissé intact (jamais écraser une session valide par du vide)."
-            exit 0
-          fi
-          if ! node -e 'JSON.parse(require("fs").readFileSync("e2e/staging/auth.json","utf8"))' 2>/dev/null; then
-            echo "::warning::auth.json n'est pas un JSON valide — secret laissé intact."
-            exit 0
-          fi
-          base64 -w0 e2e/staging/auth.json > auth.json.b64
-          gh secret set QA_STORAGE_STATE --repo "$GITHUB_REPOSITORY" < auth.json.b64
-          rm -f auth.json.b64
-          echo "Session rotatée republiée dans QA_STORAGE_STATE."
+      # Même évolution que la nightly : l'étape de persistance de session a disparu avec le
+      # storageState. Le compte de service se reconnecte à chaque test, il n'y a plus rien à
+      # republier — et plus besoin d'un jeton en écriture sur les secrets.
 
       - name: Ouvrir une alerte si le canary est rouge
         if: steps.canary.outcome != 'success'
@@ -123,8 +96,8 @@ jobs:
             echo
             echo "## Ensuite seulement"
             echo
-            echo "1. Si l'échec est le test de garde (\`GUARD\`), la session QA est expirée : régénérer"
-            echo "   \`QA_STORAGE_STATE\` (voir \`e2e/staging/README.md\` §3). Ce n'est pas un bug produit."
+            echo "1. Si l'échec est le test de garde (\`GUARD\`), le compte de service ne s'authentifie pas"
+            echo "   (voir \`e2e/staging/README.md\` §3). Ce n'est pas un bug produit."
             echo "2. Sinon, lire le rapport et les traces dans les artefacts du run (\`canary-report\`)."
             echo "3. GEN-06 en 403 → clé GCP à revérifier côté Ops."
             echo

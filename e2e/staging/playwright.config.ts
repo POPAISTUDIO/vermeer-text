@@ -1,13 +1,18 @@
 import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
-import { requireAuthState, requireBaseUrl } from './lib/env';
+import { requireBaseUrl, requireServiceCredentials } from './lib/env';
 
 /**
- * Les deux prérequis sont validés au chargement de la config : la suite échoue
- * immédiatement, avec un message explicite, plutôt qu'au milieu d'un test.
+ * Les prérequis sont validés au chargement de la config : la suite échoue immédiatement,
+ * avec un message explicite, plutôt qu'au milieu d'un test.
+ *
+ * `requireServiceCredentials()` est appelé ici pour sa seule valeur de garde — la session
+ * elle-même est obtenue test par test par la fixture `storageState` (`lib/test.ts`), qui
+ * relit les identifiants au moment du login. Aucun `storageState` n'est posé dans `use` :
+ * il n'y a plus de fichier de session, donc plus rien à capturer ni à republier.
  */
 const baseURL = requireBaseUrl();
-const storageState = requireAuthState();
+requireServiceCredentials();
 
 export default defineConfig({
   testDir: path.join(__dirname, 'tests'),
@@ -25,7 +30,6 @@ export default defineConfig({
   ],
   use: {
     baseURL,
-    storageState,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',

@@ -1,18 +1,29 @@
-# Recette Vague 1 (porte de release) jouée chaque nuit ouvrée contre staging.
+# Recette Vague 1 (porte de release) jouée contre staging, SUR DISPATCH MANUEL UNIQUEMENT
+# depuis la mise en standby du projet (31/07/2026) — voir le bloc `on:` ci-dessous.
 # Commandes et chemins : voir e2e/staging/README.md §6.
 #
-# La session QA est un storageState capturé à la main (SSO, aucun login par formulaire
-# possible). Deux conséquences structurantes, documentées dans e2e/staging/README.md §3 :
-#   - le test de garde tourne avant tout le reste ; s'il échoue, les 12 cas restent NON
+# La session QA est obtenue par LOGIN PROGRAMMATIQUE d'un compte de service local, à chaque
+# test (e2e/staging/lib/auth.ts). Deux conséquences, documentées dans e2e/staging/README.md §3 :
+#   - le test de garde tourne avant tout le reste ; s'il échoue, les cas restent NON
 #     exécutés et le motif est « session expirée », jamais un bug produit ;
-#   - l'application fait tourner le refresh token à chaque chargement, donc la session est
-#     à USAGE UNIQUE : d'où l'étape de persistance en fin de job.
+#   - il n'y a plus ni storageState à restaurer, ni session à republier en fin de job : la
+#     rotation du refresh token ne concerne plus personne, chaque test ouvre la sienne.
 name: QA Nightly — Staging
 
 on:
-  schedule:
-    # 04h30 UTC = 06h30 Paris (heure d'été), du lundi au vendredi.
-    - cron: '30 4 * * 1-5'
+  # MISE EN SOMMEIL — standby du projet, 31/07/2026. Le cron quotidien (04h30 UTC = 06h30
+  # Paris, du lundi au vendredi) est RETIRÉ : il n'y a plus de flux de dev à surveiller, et
+  # une recette qui tourne chaque nuit sur un produit figé ne produit que du bruit et de la
+  # consommation. La nightly ne se réveille plus que sur demande explicite.
+  #
+  # Pour la rejouer :  gh workflow run "QA Nightly — Staging" --repo POPAISTUDIO/vermeer-text
+  #
+  # Le canary (canary-providers.yml) GARDE son cron : il reste le seul œil automatique sur
+  # staging tant que la sonde de production n'existe pas. Son sort se règlera avec elle.
+  #
+  # À noter : ce retrait ne coupe pas le réveil post-train. `release-train.yml` déclenche ce
+  # workflow par `gh workflow run` (donc via workflow_dispatch, conservé ci-dessous) ; ce
+  # chemin ne se tait que parce que le train lui-même n'a plus rien à propager en standby.
   workflow_dispatch:
 
 permissions:
@@ -49,15 +60,11 @@ jobs:
         working-directory: e2e/staging
         run: npx playwright install --with-deps chromium
 
-      - name: Restaurer la session QA
-        env:
-          QA_STORAGE_STATE_B64: ${{ secrets.QA_STORAGE_STATE }}
-        run: |
-          echo "$QA_STORAGE_STATE_B64" | base64 -d > e2e/staging/auth.json
-          if [ ! -s e2e/staging/auth.json ]; then
-            echo "::error::Session QA vide — secret QA_STORAGE_STATE vide ou mal encodé. Régénérer : e2e/staging/README.md §3."
-            exit 1
-          fi
+      # Plus d'étape de restauration de session : la suite s'authentifie elle-même. Si les
+      # identifiants du compte de service manquent ou sont refusés, c'est le TEST DE GARDE
+      # qui échoue — et le triage le classe « SESSION EXPIRÉE », sa catégorie existante.
+      # Un exit 1 posé ici, avant Playwright, produirait un échec sans rapport à analyser :
+      # on laisse donc délibérément la garde porter ce cas.
 
       # `--grep-invert @known-issue` : un cas tagué `@known-issue-N` est un défaut connu et
       # dépriorisé (README §5). Il sort du verdict P0 sans quitter la suite — donc sans
@@ -71,6 +78,8 @@ jobs:
         working-directory: e2e/staging
         env:
           BASE_URL: ${{ secrets.QA_STAGING_URL }}
+          QA_SERVICE_EMAIL: ${{ secrets.QA_SERVICE_EMAIL }}
+          QA_SERVICE_PASSWORD: ${{ secrets.QA_SERVICE_PASSWORD }}
           PLAYWRIGHT_JSON_OUTPUT_NAME: report.json
         run: npx playwright test --grep @wave1 --grep-invert @known-issue
 
@@ -86,35 +95,9 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-      # ── PERSISTANCE DE SESSION ────────────────────────────────────────────────────
-      # Pourquoi cette étape existe : l'app régénère le refresh token au premier
-      # chargement (AuthService.setAuthTokens → generateRefreshToken), ce qui INVALIDE
-      # celui qui vient d'être présenté. La fixture persistRotatedSession (lib/test.ts)
-      # réécrit auth.json avec les cookies rotatés après chaque test — mais ce fichier vit
-      # dans le workspace du job et disparaît avec lui. Sans republication du secret, le
-      # run suivant rejouerait un token mort et se heurterait au mur de login.
-      # Le secret QA_STORAGE_STATE n'est donc PAS une valeur figée : c'est un relais.
-      - name: Persister la session rotatée dans QA_STORAGE_STATE
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.VERMEER_SECRETS_TOKEN }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::VERMEER_SECRETS_TOKEN absent — session rotatée NON republiée. Le prochain run échouera sur la garde (README §3)."
-            exit 0
-          fi
-          if [ ! -s e2e/staging/auth.json ]; then
-            echo "::warning::auth.json vide en fin de run — secret laissé intact (jamais écraser une session valide par du vide)."
-            exit 0
-          fi
-          if ! node -e 'JSON.parse(require("fs").readFileSync("e2e/staging/auth.json","utf8"))' 2>/dev/null; then
-            echo "::warning::auth.json n'est pas un JSON valide — secret laissé intact."
-            exit 0
-          fi
-          base64 -w0 e2e/staging/auth.json > auth.json.b64
-          gh secret set QA_STORAGE_STATE --repo "$GITHUB_REPOSITORY" < auth.json.b64
-          rm -f auth.json.b64
-          echo "Session rotatée republiée dans QA_STORAGE_STATE."
+      # L'étape « Persister la session rotatée » a disparu avec le storageState : le compte de
+      # service se reconnecte à chaque test, il n'y a donc plus de session à faire survivre
+      # d'un run au suivant. Le job n'a plus besoin d'un jeton en écriture sur les secrets.
 
       # Le label doit exister avant que l'analyse ne tente `gh issue create --label`.
       - name: Garantir le label qa-nightly
@@ -165,8 +148,9 @@ jobs:
             valide et authentifiée »), alors la session QA est morte et les 12 cas n'ont
             PAS tourné. Ce n'est pas un bug produit et il ne faut surtout pas le présenter
             comme tel. Le dossier doit contenir UNE ligne actionnable, du type :
-            « Session QA expirée — régénérer QA_STORAGE_STATE (e2e/staging/README.md §3),
-            aucun cas exécuté, aucune conclusion produit possible sur ce run. »
+            « Session QA indisponible — le compte de service ne s'authentifie pas
+            (e2e/staging/README.md §3), aucun cas exécuté, aucune conclusion produit
+            possible sur ce run. »
             N'analyse alors aucun autre échec : il n'y en a pas.
 
             CE QUE TU FAIS :
