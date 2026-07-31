@@ -20,6 +20,12 @@
 # Le cycle du label (retirer puis reposer `claude-fix`) est une DÉSIGNATION, pas un détail
 # technique : l'agent codeur ne se réveille que sur l'événement `labeled`. Il est borné par le
 # compteur, et il ne repose jamais un label qu'un humain a retiré (veto, garde-fou 5).
+#
+# ⚠️ Ce réveil n'a réellement lieu que depuis le 31/07/2026. Jusque-là, le label était posé
+# avec GITHUB_TOKEN, et GitHub n'émet AUCUN événement déclencheur pour ce jeton : la
+# désignation aboutissait sans jamais rien réveiller (OBSERVED, issue 143). Les gestes de
+# désignation passent désormais par un jeton dédié (secret TRIAGE_LABEL_TOKEN), routé à la
+# commande — voir l'étape « Installer le routeur gh » et GOVERNANCE.md §2.
 # Test de garde de tout ceci : qa-triage-replay.yml (rejeu dry-run sur fixtures archivées).
 name: QA Triage
 
@@ -67,10 +73,31 @@ jobs:
           gh label create claude-fix --color 5319e7 --description "À corriger par l'agent codeur" 2>/dev/null || true
           gh label create qa-nightly --color 1d76db --description "Dossier QA nightly" 2>/dev/null || true
 
+      # Jeton dédié : un événement `labeled` doit déclencher claude-autofix — GITHUB_TOKEN
+      # n'émet pas d'événements déclencheurs. Le routeur prend la place de `gh` en tête de
+      # PATH et fait le partage À LA COMMANDE : seuls les gestes du cycle de désignation
+      # (`gh issue edit|create` portant `claude-fix`) partent avec TRIAGE_LABEL_TOKEN ; tout le
+      # reste — commentaires, marqueurs `<!-- tentative -->`, lectures, Dossier QA,
+      # assignations — reste sur GITHUB_TOKEN. Un jeton par usage, périmètre minimal.
+      # La bascule ne peut PAS se faire par `env:` : ces commandes sont composées par le
+      # modèle, dans le step ci-dessous, qui ne porte qu'un seul GH_TOKEN.
+      - name: Installer le routeur gh (jeton de désignation)
+        run: |
+          set -euo pipefail
+          mkdir -p "$PWD/.routeur-bin"
+          cp .github/scripts/triage-designation/gh-designation.sh "$PWD/.routeur-bin/gh"
+          chmod +x "$PWD/.routeur-bin/gh"
+          echo "GH_REAL_BIN=$(command -v gh)" >> "$GITHUB_ENV"
+          echo "$PWD/.routeur-bin" >> "$GITHUB_PATH"
+
       - name: Classification des échecs
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Jeton dédié : un événement `labeled` doit déclencher claude-autofix — GITHUB_TOKEN
+          # n'émet pas d'événements déclencheurs. Lu par le seul routeur ci-dessus, et
+          # uniquement pour les gestes de désignation.
+          GH_DESIGNATION_TOKEN: ${{ secrets.TRIAGE_LABEL_TOKEN }}
           GH_REPO: ${{ github.repository }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
