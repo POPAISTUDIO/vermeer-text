@@ -70,6 +70,16 @@ jobs:
     name: Rejeu — ${{ matrix.cas }}
     needs: fixtures
     runs-on: ubuntu-latest
+    # `id-token: write` n'est PAS un droit d'écriture sur le dépôt : c'est la permission de
+    # demander un jeton OIDC à GitHub, dont `anthropics/claude-code-action@v1` a besoin pour
+    # s'authentifier. Sans elle, le modèle ne démarre pas (« Could not fetch an OIDC token »),
+    # le journal du shim reste vide, et les trois fixtures sortent rouges pour une raison qui
+    # n'a rien à voir avec le raisonnement du triage (GOVERNANCE.md §3, run 30580016629).
+    # `contents: read` est répété parce qu'un bloc de job REMPLACE celui du workflow.
+    # Aucune permission d'écriture ici : la propriété dry-run est intacte.
+    permissions:
+      contents: read
+      id-token: write
     timeout-minutes: 25
     strategy:
       fail-fast: false
