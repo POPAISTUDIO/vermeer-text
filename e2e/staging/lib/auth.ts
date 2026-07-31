@@ -7,6 +7,26 @@ import {
 
 import type { APIRequestContext, APIResponse } from '@playwright/test';
 
+/**
+ * ## Jumeau de production — `e2e/prod/lib/auth.mjs`
+ *
+ * La sonde de production porte une **copie assumée** de la logique de ce fichier (login
+ * programmatique puis acceptation des CGU). Ce n'est pas un oubli de factorisation : elle est un
+ * client HTTP pur, sans Playwright ni navigateur, pour rester exécutable par `node` seul — les
+ * deux ne manipulent pas le même objet de requête.
+ *
+ * **Dette assumée : « noyau partagé »**, à lever au réveil du développement. Tant qu'elle n'est
+ * pas levée, **toute correction ici doit être reportée là-bas, et réciproquement.**
+ *
+ * Une divergence est en revanche irréductible et ne doit **pas** être « alignée » : la sonde
+ * envoie un `User-Agent` de navigateur sur toutes ses requêtes (constante `BROWSER_UA`), parce
+ * que `uaParser` rejette tout client non-navigateur sur `routes/agents/index.js` — en `HTTP 200`
+ * porteur d'une trame SSE `event: error`, et au prix d'une violation de 20 points. Cette suite-ci
+ * n'a jamais eu à s'en soucier : **Playwright envoie un vrai UA de navigateur**, donc le
+ * prérequis y est satisfait sans que personne l'ait écrit. C'est exactement pourquoi il est
+ * écrit là-bas.
+ */
+
 type StorageState = Awaited<ReturnType<APIRequestContext['storageState']>>;
 
 type LoginResponse = {

@@ -274,27 +274,30 @@ Ces jetons sont portés par un compte personnel, donc **invisibles à `gh secret
 | **Note — le document Balance existe sans intervention admin** | **OBSERVED.** `GET /api/balance` répond un document complet pour ce compte neuf, sans qu'un admin ait eu à éditer un seuil. La limitation V1 décrite dans `CLAUDE.md` §9 (« BudgetCard visible seulement pour les users ayant un document Balance, à créer à la main par un admin ») **ne s'applique pas ici** : elle supposait `balance` commenté en config, ce qui n'est le cas ni en staging ni en production. Voir la dette n° 2 |
 | **Coût de création** | **1 seule tentative** sur les 5 autorisées par `registerLimiter` (5 par IP et par fenêtre de 60 min — `api/server/middleware/limiters/registerLimiter.js:6`, valeurs par défaut). Payload pré-validé hors ligne contre le schéma zod du dépôt (`api/strategies/validators.js`) précisément pour ne pas gaspiller d'essai |
 
+### 17. Sonde de production — `vermeer-text`
+
+*Numérotée 17 et non 13 : les numéros 13 à 16 étaient déjà pris par des placeholders au moment de sa création, et renuméroter le registre coûterait plus de liens cassés que la lacune n'en vaut.*
+
+| | |
+|---|---|
+| **Identité** | Workflow `.github/workflows/prod-sonde.yml`, job `sonde` (dépôt `vermeer-text`). Exécute `e2e/prod/sonde.mjs` par `node`, **sans aucune dépendance installée** — ni `npm ci`, ni Playwright, ni navigateur, ni TypeScript. **Aucun agent Claude** : shell et JavaScript déterministes |
+| **Secrets utilisés** | `QA_PROD_URL` · `QA_SERVICE_EMAIL_PROD` · `QA_SERVICE_PASSWORD_PROD` · `GITHUB_TOKEN` (éphémère) — **OBSERVED**. Le code lit les noms **génériques** (`BASE_URL`, `QA_SERVICE_EMAIL`, `QA_SERVICE_PASSWORD`) ; c'est le workflow qui choisit l'environnement en y branchant les secrets `_PROD`. Un oubli de branchement fait échouer la sonde sur des identifiants absents — il ne peut pas la faire tourner par erreur contre staging |
+| **Scopes / permissions** | Workflow : `contents: read` · `issues: write` — **OBSERVED**. Le compte applicatif qu'elle pilote est `role: USER` sans droit d'administration (entrée **13b**) |
+| **Stockage** | Secrets Actions de `vermeer-text`. Jamais en argument de commande, uniquement en variables d'environnement du seul step d'exécution |
+| **Expiration** | — (le compte et son mot de passe n'expirent pas ; cf. 13b, **non rotable**) |
+| **Permis** | Un aller-retour minimal par fournisseur (`anthropic`, `openAI`, `google`) sur `POST /api/agents/chat/:endpoint` · lire la conversation persistée · **supprimer la conversation créée et vérifier la suppression** · ouvrir une issue d'alerte au rouge |
+| **Interdits** | Toute écriture d'infrastructure · tout accès gitops · tout jeton d'écriture GitHub sur les secrets · **laisser une conversation en production** — le nettoyage non confirmé est un échec au même titre qu'un fournisseur muet |
+| **⚠️ Contournement `uaParser` — déclaré** | **La sonde franchit `uaParser` en se déclarant navigateur** (constante `BROWSER_UA` de `e2e/prod/lib/auth.mjs`) ; **sans cela `api/server/routes/agents/index.js` la rejette en `HTTP 200` porteur d'une trame SSE `event: error`** (`{"message":"Illegal request"}`), et facture une violation de 20 points sur un compte authentifié — seuil de ban franchi **dès la première requête** avec les défauts du code. Contournement **légitime** (la sonde exerce l'application comme un utilisateur) mais qui devait être écrit : non déclaré, il devient un mystère au premier lecteur venu. D'où la règle d'arrêt : **aucun retry, et aucun nettoyage tenté après un rejet** — il passerait par le même chemin refusé. Détail du risque : lot documentaire de l'issue #132 |
+| **Fiabilité** | **Élevée par construction.** Aucune dépendance installée, aucun transpileur, aucun sélecteur d'interface, aucun format de protocole d'événements : la sonde interroge l'**état persisté**, qui est le fait que l'utilisateur constate. Un client SSE l'aurait couplée au format des événements, un chemin Playwright à des sélecteurs DOM — deux choses qui cassent en silence après six mois de sommeil. **Coût** : ~6 600 tokenCredits par run **OBSERVED** (31/07/2026), soit ~2 % du plafond mensuel de 13b si elle tourne chaque jour ; le run **mesure son propre coût** et l'inscrit au rapport, précisément parce qu'une estimation à la main s'est révélée fausse d'un facteur ~300 |
+| **Ce qu'elle ne couvre PAS** | La **génération de titre** (`addTitle`) déclenche un appel LLM par conversation qui **n'entre pas dans le verdict** : il peut échouer chaque jour en silence sans faire rougir la sonde. Point tranché en tranche 4 du chantier — voir `e2e/prod/README.md` |
+
 ---
 
 ## Identités futures (placeholders)
 
 *Elles n'existent pas encore. Elles sont inscrites d'avance pour que le pouvoir soit décrit **avant** d'être créé — c'est l'ordre imposé par [GOVERNANCE.md §1](GOVERNANCE.md#1--identités-et-pouvoirs).*
 
-### 13. Compte de service de test — **production** — ⏳ chantier 5, phase 2
-
-*Le volet **staging** de cette entrée est **vivant depuis le 31/07/2026** : voir **13a**. Ce placeholder ne couvre plus que le compte de **production** (Point 0 + smoke prod), qui reste à créer — et qui, lui, devra passer par l'écluse.*
-
-| | |
-|---|---|
-| **Identité** | Compte applicatif dédié à la vérification automatique de la **production** (Point 0 + smoke prod). **Identifiable** : son trafic doit être isolable dans les logs et distinguable d'un utilisateur réel. **Distinct de 13a** : deux comptes, deux jeux de secrets, aucun partage entre staging et production |
-| **Secrets utilisés** | À définir. **Nommage attendu** : `QA_SERVICE_EMAIL_PROD` / `QA_SERVICE_PASSWORD_PROD` ou équivalent explicite, **jamais** les secrets de staging. **Ne jamais réutiliser** un compte réel |
-| **Scopes / permissions** | Périmètre **read-only fonctionnel** : se connecter, envoyer une requête minimale, lire une réponse. **Aucun droit d'administration applicative** |
-| **Stockage** | Secrets Actions de `vermeer-text` (**INFERRED** — le workflow de smoke y vivra) |
-| **Expiration** | À consigner **OBSERVED** à la création |
-| **Permis** | Exercer la production **par l'application** (HTTP), et **nettoyer derrière lui** — aucune conversation, aucun fichier, aucun état résiduel |
-| **Interdits** | Toute écriture d'infrastructure · tout accès gitops · tout jeton d'écriture GitHub · laisser un état en production |
-| **Bénéfice attendu** | Rend le Point 0 et le smoke prod exécutables sans intervention humaine. La fragilité `QA_STORAGE_STATE` et le besoin de `VERMEER_SECRETS_TOKEN` dans la boucle de QA sont, eux, **déjà supprimés** par 13a |
-| **À reprendre de 13a** | La propriété de **non-rotabilité** du mot de passe et sa procédure de remédiation valent identiquement ici — avec une contrainte de plus : la fenêtre d'inscription y serait ouverte **en production**, donc soumise à l'écluse humaine ([GOVERNANCE.md §4](GOVERNANCE.md#4--lécluse)) et à un traçage dédié. Ce n'est pas un copier-coller de la manœuvre de staging |
+*L'ancien placeholder **13** (« compte de service de test — production ») est **retiré** : ses deux volets sont vivants depuis le 31/07/2026 — **13a** pour staging, **13b** pour la production. Le nommage qu'il annonçait (`QA_SERVICE_EMAIL_PROD` / `QA_SERVICE_PASSWORD_PROD`) et l'exigence de séparation des deux comptes ont été tenus.*
 
 ### 14. Crons d'observation — ⏳ chantier 6
 

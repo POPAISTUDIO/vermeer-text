@@ -1,0 +1,189 @@
+# Sonde de production — un aller-retour minimal par fournisseur sur llm.vermeer.ai, chaque jour.
+#
+# UN SEUL CODE, DEUX DÉCLENCHEURS :
+#   - `schedule` quotidien  → canary : personne ne regarde, c'est l'alerte qui doit parler ;
+#   - `workflow_dispatch`   → smoke  : on regarde, typiquement juste après une MEP.
+# Le code exécuté est le même. Faire deux workflows garantirait qu'un des deux se périme.
+#
+# AUCUNE DÉPENDANCE, AUCUN TRANSPILEUR. `e2e/prod/` est du JavaScript ESM que `node` exécute
+# tel quel : ni `npm ci`, ni Playwright, ni navigateur, ni TypeScript. C'est délibéré — une
+# sonde qui doit tourner intacte dans six mois ne doit pas dépendre d'un arbre de dépendances
+# qu'elle ne contrôle pas. Contrairement au canary staging, dont Playwright est justifié par
+# les assertions d'interface.
+#
+# Contexte et remédiation : e2e/prod/README.md. Compte de service : registre des identités, 13b.
+name: Sonde de production
+
+on:
+  schedule:
+    # 05h30 UTC = 07h30 Paris (heure d'été), TOUS LES JOURS — la production ne connaît pas le
+    # week-end. Décalé de 30 min après le canary staging (05h00, lundi-vendredi) pour que les
+    # deux ne se disputent jamais l'attention du même lecteur au même instant.
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+    inputs:
+      forcer_rouge:
+        description: "Forcer un échec pour vérifier la chaîne d'alerte (aucun appel LLM émis)"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+# Groupe PROPRE à la sonde, et non le `qa-session` partagé du canary et de la nightly : la sonde
+# utilise un compte de service DISTINCT (svc-qa-prod, registre 13b) sur un environnement distinct,
+# donc rien ne justifie de la sérialiser avec staging. En revanche elle se sérialise avec
+# elle-même — un seul compte, un seul budget mensuel, et deux runs simultanés créeraient des
+# conversations concurrentes que le nettoyage de l'un pourrait manquer.
+concurrency:
+  group: prod-sonde
+  cancel-in-progress: false
+
+jobs:
+  sonde:
+    name: Sonde fournisseurs production
+    runs-on: ubuntu-latest
+    # Trois fournisseurs × 90 s de timeout + marge. 37 s OBSERVED pour un run complet vert : ce
+    # plafond n'existe que pour qu'un blocage réseau ne laisse pas un job pendu.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sonde des trois fournisseurs
+        id: sonde
+        continue-on-error: true
+        env:
+          # BASE_URL vient d'un SECRET et non d'une valeur en dur : aucune URL d'environnement
+          # n'est écrite dans ce dépôt, par symétrie avec QA_STAGING_URL.
+          BASE_URL: ${{ secrets.QA_PROD_URL }}
+          # Le code lit les noms génériques ; c'est ICI que l'environnement est choisi, en y
+          # branchant les secrets _PROD. Un oubli de branchement ferait échouer la sonde sur des
+          # identifiants absents — il ne peut pas la faire tourner par erreur contre staging.
+          QA_SERVICE_EMAIL: ${{ secrets.QA_SERVICE_EMAIL_PROD }}
+          QA_SERVICE_PASSWORD: ${{ secrets.QA_SERVICE_PASSWORD_PROD }}
+          FORCER_ROUGE: ${{ inputs.forcer_rouge }}
+        # `tee` conserve la sortie pour l'artefact et le résumé de run tout en la laissant
+        # s'afficher en direct. `pipefail` est indispensable : sans lui, le code de sortie serait
+        # celui de `tee`, donc toujours 0, et un rouge passerait pour un vert.
+        run: |
+          set -o pipefail
+          node e2e/prod/sonde.mjs 2>&1 | tee sonde.log
+
+      - name: Rapport horodaté
+        if: always()
+        run: |
+          {
+            echo "## Sonde de production — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo
+            echo "Déclencheur : \`${{ github.event_name }}\`"
+            if [ "${{ inputs.forcer_rouge }}" = "true" ]; then
+              echo
+              echo "⚠️ **\`forcer_rouge\` était actif** : échec simulé, aucun appel LLM émis."
+            fi
+            echo
+            echo '```'
+            cat sonde.log 2>/dev/null || echo '(aucune sortie : la sonde n a pas demarre)'
+            echo '```'
+            echo
+            echo "Le rapport ci-dessus porte les délais réels par fournisseur, le coût du run en"
+            echo "tokenCredits, et l'identifiant de toute conversation restée en vol."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publier le rapport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonde-prod-report
+          path: sonde.log
+          retention-days: 30
+          if-no-files-found: warn
+
+      # Motif du canary staging (`canary-providers.yml`), avec UNE différence assumée : le canary
+      # titre ses issues avec la date (`… KO — $(date -u +%F)`), donc N jours rouges consécutifs
+      # créent N issues, chacune répétant le même incident. La sonde utilise un titre STABLE et
+      # cherche une issue ouverte portant ce titre : si elle existe, elle y ajoute un commentaire ;
+      # sinon elle en crée une. Un incident = une issue, avec son fil de relances.
+      - name: Alerter si la sonde est rouge
+        if: steps.sonde.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITRE: '🔴 Sonde de production KO'
+        run: |
+          # Labels créés à la demande : sans eux, `gh issue create --label` échoue.
+          gh label create sonde --color b60205 --description "Sonde de production" 2>/dev/null || true
+          gh label create infra --color 0e8a16 --description "Infrastructure / environnement" 2>/dev/null || true
+
+          # Fournisseurs en cause, extraits du rapport lui-même — pas redéduits.
+          ROUGES=$(grep -oE 'ROUGE [a-zA-Z]+ / [^ ]+' sonde.log 2>/dev/null | sed 's/^ROUGE //' | paste -sd', ' - || true)
+          [ -n "$ROUGES" ] || ROUGES='indéterminés (la sonde n a pas produit de verdict par fournisseur)'
+
+          {
+            echo "La sonde de production est en échec."
+            echo
+            echo "**Fournisseurs en cause : $ROUGES**"
+            echo
+            echo "Run : $RUN_URL — déclencheur \`${{ github.event_name }}\`, $(date -u '+%Y-%m-%dT%H:%M:%SZ')."
+            if [ "${{ inputs.forcer_rouge }}" = "true" ]; then
+              echo
+              echo "⚠️ **\`forcer_rouge\` était actif : cet échec est SIMULÉ.** Aucun appel LLM n'a été"
+              echo "émis. Cette issue ne signale aucune panne — elle vérifie la chaîne d'alerte."
+            fi
+            echo
+            echo "## Point 0 avant tout diagnostic"
+            echo
+            echo "**Vérifier l'image réellement servie par les pods (Loki) avant de conclure quoi que ce soit.**"
+            echo "Une sonde rouge signifie très souvent que l'environnement ne fait pas tourner le build"
+            echo "attendu — pas que le code est cassé. Tant que l'image n'est pas confirmée, aucune"
+            echo "conclusion produit n'est valide."
+            echo
+            echo "## Rapport complet"
+            echo
+            echo "Il porte le verdict par fournisseur avec son délai, le coût du run en tokenCredits,"
+            echo "et l'identifiant de toute conversation restée en vol."
+            echo
+            echo '```'
+            cat sonde.log 2>/dev/null || echo '(aucune sortie : la sonde n a pas demarre)'
+            echo '```'
+            echo
+            echo "## Lecture du rapport"
+            echo
+            echo "1. **\`ARRET NET — rejet non-navigateur\`** → ne PAS relancer la sonde. Voir"
+            echo "   \`e2e/prod/README.md\`, section \`uaParser\` : chaque tentative enregistre une"
+            echo "   violation, et le compte de service n'a pas de mot de passe rotable."
+            echo "2. **\`Session de sonde indisponible\`** → le compte de service ne s'authentifie pas."
+            echo "   Ce n'est pas un bug produit. Remédiation : registre des identités, entrée 13b."
+            echo "3. **\`unfinished=true\`** → le fournisseur a répondu puis lâché en cours de route."
+            echo "4. **\`nettoyage non confirme\`** → une conversation est restée en production ; son"
+            echo "   identifiant est dans le rapport, à supprimer."
+            echo
+            echo "_Issue ouverte automatiquement par le workflow \`Sonde de production\`._"
+          } > sonde-issue.md
+
+          EXISTANTE=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "\"$TITRE\" in:title" --json number --jq '.[0].number // empty')
+
+          if [ -n "$EXISTANTE" ]; then
+            echo "Issue #$EXISTANTE déjà ouverte pour cet incident — ajout d'un commentaire."
+            gh issue comment "$EXISTANTE" --repo "$GITHUB_REPOSITORY" --body-file sonde-issue.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$TITRE" --label sonde --label infra --body-file sonde-issue.md
+          fi
+
+      - name: Gate — une sonde rouge doit être rouge
+        if: always()
+        run: |
+          if [ "${{ steps.sonde.outcome }}" != "success" ]; then
+            echo "::error::Sonde de production en échec — voir le résumé du run et l'artefact sonde-prod-report."
+            exit 1
+          fi
+          echo "Sonde verte."
