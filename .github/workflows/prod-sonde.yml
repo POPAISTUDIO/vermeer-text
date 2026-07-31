@@ -106,6 +106,79 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+      # Motif du canary staging (`canary-providers.yml`), avec UNE différence assumée : le canary
+      # titre ses issues avec la date (`… KO — $(date -u +%F)`), donc N jours rouges consécutifs
+      # créent N issues, chacune répétant le même incident. La sonde utilise un titre STABLE et
+      # cherche une issue ouverte portant ce titre : si elle existe, elle y ajoute un commentaire ;
+      # sinon elle en crée une. Un incident = une issue, avec son fil de relances.
+      - name: Alerter si la sonde est rouge
+        if: steps.sonde.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITRE: '🔴 Sonde de production KO'
+        run: |
+          # Labels créés à la demande : sans eux, `gh issue create --label` échoue.
+          gh label create sonde --color b60205 --description "Sonde de production" 2>/dev/null || true
+          gh label create infra --color 0e8a16 --description "Infrastructure / environnement" 2>/dev/null || true
+
+          # Fournisseurs en cause, extraits du rapport lui-même — pas redéduits.
+          ROUGES=$(grep -oE 'ROUGE [a-zA-Z]+ / [^ ]+' sonde.log 2>/dev/null | sed 's/^ROUGE //' | paste -sd', ' - || true)
+          [ -n "$ROUGES" ] || ROUGES='indéterminés (la sonde n a pas produit de verdict par fournisseur)'
+
+          {
+            echo "La sonde de production est en échec."
+            echo
+            echo "**Fournisseurs en cause : $ROUGES**"
+            echo
+            echo "Run : $RUN_URL — déclencheur \`${{ github.event_name }}\`, $(date -u '+%Y-%m-%dT%H:%M:%SZ')."
+            if [ "${{ inputs.forcer_rouge }}" = "true" ]; then
+              echo
+              echo "⚠️ **\`forcer_rouge\` était actif : cet échec est SIMULÉ.** Aucun appel LLM n'a été"
+              echo "émis. Cette issue ne signale aucune panne — elle vérifie la chaîne d'alerte."
+            fi
+            echo
+            echo "## Point 0 avant tout diagnostic"
+            echo
+            echo "**Vérifier l'image réellement servie par les pods (Loki) avant de conclure quoi que ce soit.**"
+            echo "Une sonde rouge signifie très souvent que l'environnement ne fait pas tourner le build"
+            echo "attendu — pas que le code est cassé. Tant que l'image n'est pas confirmée, aucune"
+            echo "conclusion produit n'est valide."
+            echo
+            echo "## Rapport complet"
+            echo
+            echo "Il porte le verdict par fournisseur avec son délai, le coût du run en tokenCredits,"
+            echo "et l'identifiant de toute conversation restée en vol."
+            echo
+            echo '```'
+            cat sonde.log 2>/dev/null || echo '(aucune sortie : la sonde n a pas demarre)'
+            echo '```'
+            echo
+            echo "## Lecture du rapport"
+            echo
+            echo "1. **\`ARRET NET — rejet non-navigateur\`** → ne PAS relancer la sonde. Voir"
+            echo "   \`e2e/prod/README.md\`, section \`uaParser\` : chaque tentative enregistre une"
+            echo "   violation, et le compte de service n'a pas de mot de passe rotable."
+            echo "2. **\`Session de sonde indisponible\`** → le compte de service ne s'authentifie pas."
+            echo "   Ce n'est pas un bug produit. Remédiation : registre des identités, entrée 13b."
+            echo "3. **\`unfinished=true\`** → le fournisseur a répondu puis lâché en cours de route."
+            echo "4. **\`nettoyage non confirme\`** → une conversation est restée en production ; son"
+            echo "   identifiant est dans le rapport, à supprimer."
+            echo
+            echo "_Issue ouverte automatiquement par le workflow \`Sonde de production\`._"
+          } > sonde-issue.md
+
+          EXISTANTE=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "\"$TITRE\" in:title" --json number --jq '.[0].number // empty')
+
+          if [ -n "$EXISTANTE" ]; then
+            echo "Issue #$EXISTANTE déjà ouverte pour cet incident — ajout d'un commentaire."
+            gh issue comment "$EXISTANTE" --repo "$GITHUB_REPOSITORY" --body-file sonde-issue.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$TITRE" --label sonde --label infra --body-file sonde-issue.md
+          fi
+
       - name: Gate — une sonde rouge doit être rouge
         if: always()
         run: |

@@ -65,6 +65,61 @@ const PROVIDERS = [
 
 const PROMPT = 'Reponds exactement: PONG';
 
+/**
+ * Conversation marquée **temporaire** — arbitrage de la génération de titre.
+ *
+ * ## Le problème que ça résout
+ *
+ * `addTitle` déclenche **un appel LLM de plus par conversation**, qui n'entre pas dans le
+ * verdict : si la génération de titre casse (modèle de titre KO, quota, régression de la garde
+ * `thinkingConfig`), la sonde reste **verte** alors qu'un appel échoue chaque jour en silence.
+ * Une surface d'échec non couverte qui tourne quotidiennement est une fausse assurance.
+ *
+ * ## Pourquoi ce levier, et pas un autre
+ *
+ * `addTitle` a trois sorties (`api/server/services/Endpoints/agents/title.js`) :
+ * `TITLE_CONVO` (variable d'environnement — ce serait toucher la config de production et le
+ * produit de tous les utilisateurs), `client.options.titleConvo === false` (vient de la config
+ * d'endpoint, **pas** du corps de requête — `titleConvo` n'existe pas dans les schémas de
+ * `parseCompactConvo`), et `req.body.isTemporary` — **le seul levier par requête**.
+ *
+ * ## Vérifié OBSERVED le 31/07/2026 avant d'être retenu
+ *
+ * - Le message assistant est **toujours persisté** : `isTemporary` ne fait que poser un
+ *   `expiredAt` (`packages/data-schemas/src/methods/message.ts:94`), relevé à **+30 jours** en
+ *   production. Le poll et le verdict sont donc intacts — c'était la condition non négociable.
+ * - Le titre reste `"New Chat"` : la génération est bien sautée, aux deux endroits
+ *   (`title.js:22` et `client.js:1241`).
+ * - Effet de bord favorable : l'`expiredAt` est un **second filet** derrière le `DELETE`
+ *   explicite, si celui-ci échouait un jour sans qu'on le voie.
+ *
+ * ## Sur le gain de coût : réel, mais NON mesuré proprement
+ *
+ * Le motif de cet arbitrage est la **couverture**, pas l'économie. Runs complets OBSERVED le
+ * 31/07/2026 : **5 698** tokenCredits sans `isTemporary`, **5 238** avec — soit ~8 %, et non les
+ * ~97 % qu'une première lecture avait conclus en comparant un appel `flash-lite` isolé (51,8) à
+ * la *moyenne par fournisseur* d'un run entier (~1 900). Ces deux grandeurs ne sont pas
+ * comparables, et c'est la deuxième fois qu'une extrapolation depuis le fournisseur le moins
+ * cher se révèle fausse.
+ *
+ * Le delta de 460 credits n'est de toute façon **pas attribuable de façon fiable** : la longueur
+ * des réponses varie fortement d'un run à l'autre (un run a produit 500 caractères sur l'histoire
+ * du jeu Pong), ce qui suffit à noyer l'écart. Ce qui est certain est **structurel** : un appel LLM
+ * de moins par conversation. Le coût dominant reste celui des appels Anthropic et OpenAI, dont les
+ * multiplicateurs écrasent celui de `flash-lite`.
+ *
+ * Morale, et raison pour laquelle le run mesure son propre coût : **on ne déduit pas un coût, on
+ * le relève.**
+ *
+ * ## Ce que ça coûte, et qui est assumé
+ *
+ * La sonde n'exerce plus le chemin de persistance **par défaut** ni la génération de titre.
+ * Ce chemin passe de « exercé mais non asservi » à « non exercé » — ce qui est **plus honnête**,
+ * pas moins couvert : il n'était de toute façon pas dans le verdict. `e2e/prod/README.md` le dit
+ * explicitement, et c'est là qu'il faut regarder avant de retirer ce drapeau.
+ */
+const IS_TEMPORARY = true;
+
 const stamp = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 const log = (line) => console.log(`${stamp()}  ${line}`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -201,15 +256,23 @@ async function cleanup(baseURL, token, conversationId) {
  * Consommation du mois en cours, en tokenCredits. Retourne `null` plutôt que de lever : le
  * relevé de coût est une information de rapport, jamais une condition du verdict.
  */
-async function readSpend(baseURL, token) {
+async function readSpend(baseURL, token, label) {
   try {
     const response = await sondeFetch(baseURL, '/api/balance', { token });
     const spend = response.json?.currentMonthSpend;
-    return typeof spend === 'number' ? spend : null;
+    if (typeof spend === 'number') {
+      return spend;
+    }
+    /* Un « non relevé » sans motif est un silence de plus : on dit toujours pourquoi. */
+    log(
+      `  (releve de cout ${label} indisponible : HTTP ${response.status}, currentMonthSpend=${JSON.stringify(spend)})`,
+    );
+    return null;
   } catch (error) {
     if (error instanceof UaParserRejection) {
       throw error;
     }
+    log(`  (releve de cout ${label} indisponible : ${error.message})`);
     return null;
   }
 }
@@ -221,7 +284,13 @@ async function probe(baseURL, token, { endpoint, model }) {
   const post = await sondeFetch(baseURL, `/api/agents/chat/${endpoint}`, {
     method: 'POST',
     token,
-    body: { endpoint, model, text: PROMPT, parentMessageId: NO_PARENT },
+    body: {
+      endpoint,
+      model,
+      text: PROMPT,
+      parentMessageId: NO_PARENT,
+      isTemporary: IS_TEMPORARY,
+    },
   });
 
   const conversationId = post.json?.conversationId;
@@ -287,7 +356,7 @@ async function main() {
    * Le relevé est **non bloquant** : si `/api/balance` ne répond pas, le verdict des fournisseurs
    * ne doit pas en dépendre.
    */
-  const spendBefore = await readSpend(baseURL, token);
+  const spendBefore = await readSpend(baseURL, token, 'initial');
   const results = [];
 
   try {
@@ -324,7 +393,7 @@ async function main() {
     throw error;
   }
 
-  const spendAfter = await readSpend(baseURL, token);
+  const spendAfter = await readSpend(baseURL, token, 'final');
   const red = results.filter((result) => !result.ok);
 
   console.log('');
@@ -346,8 +415,9 @@ async function main() {
   if (spendBefore != null && spendAfter != null) {
     log(
       `  cout du run : ${(spendAfter - spendBefore).toFixed(1)} tokenCredits ` +
-        `(avant ${spendBefore.toFixed(1)}, apres ${spendAfter.toFixed(1)}) — inclut la generation ` +
-        "de titre par conversation (addTitle), qui n'est PAS couverte par le verdict",
+        `(avant ${spendBefore.toFixed(1)}, apres ${spendAfter.toFixed(1)}) — conversations ` +
+        'temporaires, donc SANS generation de titre : le cout du run est celui des appels que le ' +
+        'verdict couvre, et rien de plus (voir IS_TEMPORARY)',
     );
   } else {
     log('  cout du run : non releve (/api/balance indisponible) — sans effet sur le verdict');
