@@ -136,9 +136,34 @@ La route refuse `400 no parameters provided` si aucun critère n'est fourni : un
 
 Une divergence est en revanche **irréductible et ne doit pas être « alignée »** : le `BROWSER_UA` de la sonde. Voir plus haut.
 
+## Le canal d'alerte — prouvé, pas supposé
+
+**Vérifié de bout en bout le 31/07/2026** par un `workflow_dispatch` avec `forcer_rouge=true`, avec confirmation humaine de réception. Ce n'est pas une déduction depuis la configuration de GitHub : quelqu'un a regardé sa boîte.
+
+**Deux mails arrivent, tous les deux :**
+
+| Canal                                                | Objet reçu                               | Statut                      |
+| ---------------------------------------------------- | ---------------------------------------- | --------------------------- |
+| **Mail de création d'issue** (`github-actions[bot]`) | l'issue `🔴 Sonde de production KO`      | ✅ **canal recommandé**     |
+| **Mail Actions**                                     | `Run failed: Sonde de production — main` | ✅ prouvé, canal secondaire |
+
+Reçus **tous les deux à 18h55 heure de Paris** (16h55 UTC), pour un run rouge à `16:54:26Z`. L'issue produite était [#155](../../../../issues/155) — créée par `github-actions[bot]` avec les labels `sonde` et `infra`, puis commentée comme test et fermée.
+
+**Le run de contrôle vert, lui, n'a rien envoyé** : l'étape d'alerte a été sautée (`if: steps.sonde.outcome != 'success'`), donc ni issue ni mail. C'est la moitié de la preuve qu'on oublie souvent de faire — une alerte qui part toujours ne vaut pas mieux qu'une alerte qui ne part jamais.
+
+### Pourquoi le mail d'issue plutôt que le mail Actions
+
+**OBSERVED, et c'est la raison qui compte** : la boîte qui reçoit ces alertes reçoit aussi beaucoup d'autres mails GitHub — `generate_embeddings`, `GitNexus`, notifications de push. Un mail Actions intitulé `Run failed: …` ressemble à tous les autres échecs de workflow et se noie dans ce flux.
+
+Le mail d'issue, lui, porte un **titre explicite** (`🔴 Sonde de production KO`) et est **filtrable sur le label `sonde`**, qui n'appartient qu'à cette alerte. C'est pour cela que le titre est stable et que le label existe — ce n'était pas une coquetterie de rangement.
+
+**Suggestion, non prescrite** — à adapter à la façon dont chacun trie sa boîte : une règle qui isole les mails GitHub portant `Sonde de production` dans leur objet, ou les notifications d'issues étiquetées `sonde`, met l'alerte hors du flux général sans avoir à désactiver quoi que ce soit. Rien dans le dispositif n'en dépend : les deux canaux fonctionnent sans règle.
+
+**Ce bruit va se tarir de lui-même.** L'essentiel du volume vient de l'activité de développement (pushes, workflows de dev, embeddings). En période de standby, ce flux s'éteint et la sonde devient l'un des rares émetteurs — donc le problème de noyade se résout sans intervention. La règle de boîte est utile maintenant, elle le sera moins plus tard ; ne pas l'ériger en prérequis.
+
 ## En cas de rouge
 
-L'alerte ouvre une issue intitulée **`🔴 Sonde de production KO`** — titre **stable**, délibérément. Si une issue de ce titre est déjà ouverte, l'alerte y ajoute un commentaire plutôt que d'en créer une nouvelle : un incident, une issue, avec son fil de relances. _(Le canary staging, lui, date ses titres : N jours rouges y produisent N issues. La sonde ne reprend pas ce comportement.)_
+L'alerte ouvre une issue intitulée **`🔴 Sonde de production KO`** — titre **stable**, délibérément. Si une issue de ce titre est déjà ouverte, l'alerte y ajoute un commentaire plutôt que d'en créer une nouvelle : un incident, une issue, avec son fil de relances. _(Le canary staging, lui, date ses titres : N jours rouges y produisent N issues. La sonde ne reprend pas ce comportement — divergence assumée, consignée en dette documentaire.)_
 
 Ordre de lecture, et il n'est pas négociable :
 
