@@ -108,7 +108,7 @@
 
 | | |
 |---|---|
-| **Identité** | Workflow `qa-triage.yml`, job `triage` (dépôt `vermeer-text`). **Second désignateur du système**. Son **test de garde**, `qa-triage-replay.yml` (`workflow_dispatch` seul), rejoue le même prompt sur fixtures : mêmes secrets, mais `permissions: contents: read` **seul** et toute écriture `gh issue` simulée par un shim — aucun pouvoir supplémentaire, aucune écriture possible |
+| **Identité** | Workflow `qa-triage.yml`, job `triage` (dépôt `vermeer-text`). **Second désignateur du système**. Son **test de garde**, `qa-triage-replay.yml` (`workflow_dispatch` seul), rejoue le même prompt sur fixtures : mêmes secrets, mais son job `rejeu` porte `contents: read` + `id-token: write` **et rien d'autre** (aucune écriture, `id-token` étant la seule permission de demander un jeton OIDC — sans elle le modèle ne démarre pas, OBSERVED 31/07/2026), et toute écriture `gh issue` est simulée par un shim — aucun pouvoir supplémentaire, aucune écriture possible |
 | **Secrets utilisés** | `CLAUDE_CODE_OAUTH_TOKEN` · `GITHUB_TOKEN` — **OBSERVED** |
 | **Scopes / permissions** | `contents: read` · `issues: write` · `actions: read` · `id-token: write` — **OBSERVED**. Bridé par `--allowedTools "Read,Glob,Grep,Bash(gh issue *)"` |
 | **Stockage** | Secrets Actions de `vermeer-text` — **OBSERVED** |
