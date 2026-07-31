@@ -157,6 +157,30 @@ Un login **par test** (`lib/auth.ts`, fixture `storageState` de `lib/test.ts`) s
 à sa racine : chaque contexte porte sa propre session, personne n'hérite de personne, il n'y a plus
 rien à relayer ni à republier. Le coût est d'un appel HTTP par test.
 
+### Les CGU, acceptées par la suite elle-même
+
+`interface.termsOfService.modalAcceptance` est à `true` sur staging, et `client/src/routes/Root.tsx:42-49`
+affiche le dialogue **tant que `termsAccepted` est faux sur le compte**. Un compte neuf le voit donc à
+chaque chargement de page : il recouvre le composer et la sidebar, et fait échouer tous les cas en
+amont de leur propre assertion — constaté sur 22 artefacts sur 22, run
+[30631912042](https://github.com/POPAISTUDIO/vermeer-text/actions/runs/30631912042).
+
+L'ancien `storageState` masquait ce prérequis : il venait d'une session capturée dans un navigateur,
+sur un compte ayant déjà cliqué « J'accepte ». L'acceptation voyageait dans le fichier, invisible.
+
+`lib/auth.ts` s'en charge : après un login réussi, il lit `user.termsAccepted` (et **le journalise** —
+c'est un état, pas un secret) et, s'il est faux, appelle `POST /api/user/terms/accept`. L'appel est
+authentifié par le jeton du corps de login en `Authorization: Bearer` — les cookies ne suffisent pas,
+`requireJwtAuth` extrait le jeton de l'en-tête (`api/strategies/jwtStrategy.js:10`).
+
+C'est **idempotent** : `termsAccepted` est un champ persistant du compte, pas un état de session. Le
+premier test le pose, les suivants n'appellent plus rien.
+
+> **Aucune étape manuelle d'acceptation n'existe — et il ne faut pas en inventer.** Le faire une fois
+> à la main aurait suffi aujourd'hui, mais la procédure de remédiation (§3, non-rotabilité) prévoit de
+> **recréer le compte** : une acceptation posée hors bande serait perdue à ce moment précis, et
+> reproduirait cette panne le jour le plus mal choisi.
+
 ### Lancement local
 
 ```bash

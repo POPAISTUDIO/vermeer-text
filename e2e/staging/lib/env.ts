@@ -17,6 +17,14 @@ export const fixturesDir = path.join(suiteRoot, 'fixtures');
 export const SESSION_EXPIRED_MESSAGE =
   'Session QA indisponible — le compte de service ne s’authentifie pas (voir e2e/staging/README.md §3)';
 
+/**
+ * Message du prérequis CGU. Il existe séparément pour que l'échec nomme sa cause là où elle
+ * se produit — au login — plutôt que de se manifester 150 s plus loin en timeout muet sur un
+ * bouton recouvert par le dialogue d'acceptation.
+ */
+export const TERMS_PREREQUISITE_MESSAGE =
+  'Prérequis CGU non satisfait — le compte de service n’a pas accepté les conditions, et la suite n’a pas réussi à les accepter pour lui. Le dialogue « Terms of Service » recouvrira toute la page et fera échouer chaque cas (voir e2e/staging/README.md §3).';
+
 export function requireBaseUrl(): string {
   const raw = process.env.BASE_URL?.trim();
   if (!raw) {
