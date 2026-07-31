@@ -195,6 +195,8 @@ Une issue sans label dort. Poser un label, c'est **désigner du travail** — c'
 
 > **Deux désignateurs, et deux seulement : l'humain (via Hermes) et le triage QA (régressions prouvées uniquement).**
 
+> **⚠️ À lire avant le reste de cette section — le second désignateur n'a réellement existé qu'à partir du 31/07/2026.** Du câblage du chantier 4 (29/07) au 31/07, il posait ses labels avec `GITHUB_TOKEN`, et **GitHub n'émet aucun événement déclencheur pour ce jeton** : la désignation aboutissait — le label était bien posé — sans jamais réveiller `claude-autofix`. Tout ce qui suit décrivait donc un pouvoir **écrit et inerte**. Voir l'amendement daté en fin de section.
+
 Aucun autre acteur ne pose de label déclencheur. Toute extension de cette liste est un amendement explicite de ce document, discuté avant d'être câblé — jamais une conséquence de bord d'un chantier.
 
 **Les six garde-fous du triage désignateur** *(repris intégralement de [`architecture-cible-v2.md` §2.1](architecture-cible-v2.md#21-boucle-continue--dev--staging))* :
@@ -214,10 +216,33 @@ Aucun autre acteur ne pose de label déclencheur. Toute extension de cette liste
 | 2 — déduplication par signature | **Câblé** *(OBSERVED — `qa-triage.yml`, étape 2 « BUG PRODUIT », points (a) et (b), 29/07/2026)*. La **signature d'échec** est `identifiant de cas \| chemin du fichier de spec \| assertion normalisée` — première ligne d'erreur d'assertion débarrassée des horodatages, durées, UUID, URL de run, numéros de ligne et valeurs mesurées. Elle est inscrite dans le corps de l'issue en commentaire HTML machine-lisible : `<!-- signature: … -->`. Déduplication **en deux passes** : filtre grossier par identifiant de cas dans les titres (`gh issue list --label claude-fix --state all --limit 50`, mécanisme conservé), puis confrontation de la signature (`gh issue view <N> --json body,state,labels,comments`). Signature identique → commentaire sur l'existante, rien de créé. Signature différente sur le même cas → nouvelle issue, c'est un **échec différent**. Candidate sans ligne de signature (issue ouverte à la main) → comparaison sur le symptôme, dite comme telle |
 | 3 — exclusion `@known-issue-N` | **Câblé, aux deux bouts** *(OBSERVED — `qa-nightly.yml` étape « Recette Vague 1 » + `qa-triage.yml` étape 0, 29/07/2026)*. Côté suite : le filtre de la nightly est `--grep @wave1 --grep-invert @known-issue`, donc un cas tagué **ne tourne pas et ne compte pas dans le verdict P0** — sans quitter son tag `@wave1`, qu'il retrouve dès que le tag `@known-issue-N` est retiré (diff d'un mot). Côté triage : l'**étape 0** écarte tout échec dont le cas porte un tag `@known-issue-N` — **ni issue, ni label**, pas même un commentaire sur l'issue N, seulement une ligne au Dossier QA avec renvoi à N. Le SKIP motivé `CTX-02` reste par ailleurs nommément exclu, inchangé. Convention et emploi : `e2e/staging/README.md` §5 |
 | 4 — plafond de 2 tentatives | **Câblé** *(OBSERVED — `qa-triage.yml`, point (d), 29/07/2026)*. Comptage par **marqueurs machine-lisibles** `<!-- tentative: X -->` écrits par le triage dans un commentaire daté de l'issue, **avant** chaque désignation, et relus par `gh issue view <N> --json comments` — **jamais** par recherche de PRs liées. Une signature qui rechute sur une issue labellisée à la tentative 1 déclenche le **cycle du label** (ci-dessous). Une rechute alors que `tentative: 2` existe déjà est le **plafond** : retrait définitif du label, commentaire de synthèse (les deux tentatives, les PRs référencées dans l'issue — ou l'aveu qu'aucune n'y figure), ligne au Dossier QA, et **assignation de l'issue à `Loisetoscer`** — seule notification humaine du mécanisme, aucun autre canal, zéro secret |
-| 5 — veto par exception | **Vivant par construction** — retirer le label empêche tout nouveau déclenchement (le job `claude-autofix` ne se déclenche que sur l'action `labeled`). **Premier exercice réel le 29/07/2026** : retrait du label sur l'issue 114 (§7) |
+| 5 — veto par exception | **Vivant par construction** — retirer le label empêche tout nouveau déclenchement (le job `claude-autofix` ne se déclenche que sur l'action `labeled`). **Premier exercice réel le 29/07/2026** : retrait du label sur l'issue 114 (§7). *Nuance depuis le 31/07 : jusqu'à cette date, ce veto protégeait d'un déclenchement qui n'avait de toute façon pas lieu (jeton muet) ; il est réellement opérant depuis le jeton dédié* |
 | 6 — plafond 3 dossiers / run | **Câblé.** « PLAFOND : 3 issues maximum pour ce run » ; au-delà, les 3 plus graves puis une liste au Dossier QA |
 
 **Les six garde-fous sont désormais câblés** *(chantier 4, 29/07/2026)*. Ce qui reste à surveiller n'est plus un contrepoids manquant mais la **tenue** de trois interdits qui vivent dans un prompt : d'où leur test de garde, `qa-triage-replay.yml` (§3), et le point 2 de la revue mensuelle (§7).
+
+**Câblé ne veut pas dire exerçable — OBSERVED 31/07/2026.** Les six garde-fous étaient écrits et lisibles dans le workflow, mais aucun n'a jamais pu s'exercer sur une désignation réelle : le geste qui les déclenche tous (la pose du label) ne réveillait rien. Les garde-fous **4** (plafond de 2 tentatives) et **le cycle du label** sont les plus concernés — un cycle `--remove-label` puis `--add-label` sous `GITHUB_TOKEN` est muet par la même cause, donc la « deuxième et dernière désignation » n'a jamais désigné. Ce n'était pas une régression : **ça n'a jamais fonctionné.**
+
+### Amendement acté — le jeton de désignation (31/07/2026)
+
+**L'incident.** Depuis le chantier 4 (29/07/2026), `qa-triage.yml` posait `claude-fix` avec `secrets.GITHUB_TOKEN`. GitHub **n'émet aucun événement déclencheur** pour les actions de ce jeton — protection anti-boucle du produit, hors de notre portée. Le second désignateur était donc **câblé et muet** : le label était bien posé, `claude-autofix` ne démarrait jamais.
+
+**Les preuves — OBSERVED 31/07/2026** (test contrôlé, [issue 143](https://github.com/POPAISTUDIO/vermeer-text/issues/143)) :
+
+- réplique exacte du geste du triage sur une issue jetable (#147, auteur `app/github-actions`) : label `claude-fix` posé à `08:12:30Z`, présence relue ;
+- **zéro** run de `claude.yml` sur la fenêtre `08:12:30Z → 08:15:33Z` (3 min 3 s), balayage tous workflows confondus ; dernier run inchangé (`05:48:29Z`) ;
+- corroboration historique : sur les 40 derniers runs de `claude.yml`, les acteurs déclencheurs sont `Loisetoscer` (21) et `claude[bot]` (19) — **jamais** `github-actions[bot]`. Aucune désignation automatique n'avait jamais démarré un run.
+
+**Le mécanisme retenu — option (a) de l'issue 143 : un jeton dédié, de portée minimale.** Décision de Loïse, 31/07/2026.
+
+- Secret **`TRIAGE_LABEL_TOKEN`** : jeton fine-grained, **`Issues: Read and write` et rien d'autre**, sur le **seul** dépôt `vermeer-text`. Ligne de registre : [acteur n° 5](registre-identites.md#5-triage-qa--vermeer-text).
+- **Un jeton par usage, et le partage se fait à la commande.** Les gestes de désignation (`gh issue edit --add-label` / `--remove-label claude-fix`, création labellisée incluse) partent avec ce jeton ; **tout le reste** — commentaires, marqueurs `<!-- tentative: X -->`, lectures, Dossier QA, assignations — reste sur `GITHUB_TOKEN`. Le partage est **mécanique** (§3 règle 5) : un routeur `gh` en tête de PATH, `.github/scripts/triage-designation/gh-designation.sh`. Il ne pouvait pas se faire par `env:` — ces commandes sont composées par le **modèle**, dans un step qui ne porte qu'un seul `GH_TOKEN` ; basculer ce `GH_TOKEN` aurait donné le jeton dédié à toutes les écritures du triage.
+- **Aucun repli silencieux** : jeton dédié absent → le geste de désignation **échoue bruyamment**, sans retomber sur `GITHUB_TOKEN`. Un repli discret rétablirait exactement cette panne, et le triage croirait avoir désigné.
+- **Le prompt du triage est inchangé** : mêmes commandes, seul le porteur change. Le test de garde `qa-triage-replay.yml` continue donc de rejouer le désignateur réel, et son propre shim `gh` reste prioritaire en rejeu (aucune écriture réelle).
+
+**Ce que cet amendement change, en une phrase : le plafond de 2 tentatives et le cycle du label deviennent exerçables à compter de ce jour.** La liste des désignateurs, elle, ne change pas : ils restent **deux** — mais le second cesse d'être une intention.
+
+**Le coût, écrit franchement.** Ce jeton est porté par le compte `Loisetoscer` : les poses du triage apparaissent **sous ce nom** dans l'historique, indistinguables d'une pose humaine à l'œil (les marqueurs `<!-- tentative -->` et l'horodatage des runs font foi). Et ses scopes réels ne sont **pas** vérifiables par API — ils sont OBSERVED à la création, puis à revérifier **à chaque rotation**, d'où la nouvelle ligne au tableau des tests de garde (§3).
 
 ### Le cycle du label — amendement acté
 
@@ -327,6 +352,7 @@ Un interdit non testé s'érode : le prompt évolue, le modèle change, le fichi
 | Triage — pas de label sur doute | Rejeu du triage sur un run archivé à session expirée → aucune issue `claude-fix` créée, aucun label posé | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `session-expiree`. **`id-token: write` corrigé** (OIDC obtenu, OBSERVED run 30615072061) ; **toujours rouge**, nouvelle cause : validation de workflow contre `main`. Voir la mise en garde ci-dessous *(OBSERVED, 31/07/2026)* |
 | Triage — exclusion `@known-issue-N` (garde-fou 3) | Rejeu sur un run où un cas tagué `@known-issue-N` est rouge → ni issue, ni label, ni commentaire sur l'issue N ; une ligne au Dossier QA | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `known-issue-rouge`. Même état et même cause que la ligne ci-dessus *(OBSERVED, 31/07/2026)* |
 | Triage — plafond de 2 tentatives (garde-fou 4) | Rejeu sur une rechute de signature contre une issue portant déjà `<!-- tentative: 2 -->` → retrait du label, **pas de re-pose**, synthèse et assignation à l'humaine | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `tentative-2-rechute`. Même état et même cause que les deux lignes ci-dessus *(OBSERVED, 31/07/2026)* |
+| **Désignateur — une pose de label par le triage déclenche `claude-autofix`** | Test contrôlé : issue jetable, label `claude-fix` posé par un step utilisant `TRIAGE_LABEL_TOKEN` → un run `claude-autofix` **doit** démarrer dans la minute (à annuler aussitôt : c'est la preuve, pas un travail). Nettoyage complet ensuite | *à jouer après le merge du jeton (31/07/2026)* — **à rejouer à chaque rotation du jeton** : un jeton renouvelé mais mal scopé rend le désignateur muet **en silence**, exactement comme `GITHUB_TOKEN` (issue 143) |
 | Agent codeur — un run ne peut pas finir sans livrable visible | Rejeu du gate « Verdict livrable » **extrait de `claude.yml`** sur 4 situations figées : PR ready → vert + review ; PR draft → rouge qui dit où est le travail ; marqueur d'analyse → vert sans écriture ; rien → rouge + relance. Verdict = code de sortie **et** journal des `gh` | **Implémenté et vert (4/4)** — `.github/scripts/verdict-replay/rejouer.sh`, fixtures sous `e2e/staging/fixtures/verdict/`. Tourne en local, sans jeton ni modèle. **Reste à câbler en CI** *(OBSERVED, 30/07/2026)* |
 | Agent config — ligne de tag d'image / `restartedAt` | Check de PR sur `vermeer-gitops` : échec si le diff touche une ligne `tag:` ou l'annotation `restartedAt` sous `*/llm/` | *à câbler* |
 | Agent config — périmètre `dev/llm/` + `staging/llm/` | Check de PR : `git diff --name-only` entièrement inclus dans la liste blanche, sinon échec | *à câbler* |
@@ -704,6 +730,9 @@ gh workflow enable claude.yml            -R POPAISTUDIO/vermeer-gitops
 
 # ── 4. Le second désignateur en DERNIER — il met les autres en marche
 gh workflow enable qa-triage.yml         -R POPAISTUDIO/vermeer-text
+#    Second levier depuis le 31/07/2026 : révoquer `TRIAGE_LABEL_TOKEN` (côté compte GitHub)
+#    rendort la désignation automatique SEULE, sans désarmer le triage — il continue alors
+#    d'instruire et de commenter, et son geste de désignation échoue bruyamment (§2).
 
 # ── 5. Reposer les labels retirés à l'étape 3 du coupe-circuit, un par un,
 #       après relecture de chaque issue (elles ont pu être traitées entre-temps).
