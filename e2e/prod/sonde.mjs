@@ -38,10 +38,11 @@ const NO_PARENT = '00000000-0000-0000-0000-000000000000';
 /**
  * Intervalle et plafond du poll.
  *
- * Délais complets OBSERVED le 31/07/2026 sur `llm.vermeer.ai` : **7 s** (`gemini-2.5-flash-lite`),
- * **10 s** (`gpt-5-mini`), **17 s** (`claude-haiku-4-5-20251001`). Le plafond garde donc une marge
- * de **×5 sur le plus lent des trois** — et non ×12, qui serait la marge sur le plus rapide.
- * Ne pas descendre le timeout sur la foi du meilleur fournisseur.
+ * Délais complets OBSERVED le 31/07/2026 sur `llm.vermeer.ai`, sur deux runs — ce sont des
+ * **intervalles et non des points** : **4-7 s** (`gemini-2.5-flash-lite`), **5-10 s**
+ * (`gpt-5-mini`), **12-17 s** (`claude-haiku-4-5-20251001`). Le plafond garde donc une marge de
+ * **×5 sur le pire cas du plus lent** — et non ×12, qui serait la marge sur le meilleur cas du
+ * plus rapide. Ne pas descendre le timeout sur la foi du meilleur fournisseur ni du meilleur run.
  */
 const POLL_MS = 2000;
 const TIMEOUT_MS = 90000;
@@ -196,6 +197,23 @@ async function cleanup(baseURL, token, conversationId) {
   return done;
 }
 
+/**
+ * Consommation du mois en cours, en tokenCredits. Retourne `null` plutôt que de lever : le
+ * relevé de coût est une information de rapport, jamais une condition du verdict.
+ */
+async function readSpend(baseURL, token) {
+  try {
+    const response = await sondeFetch(baseURL, '/api/balance', { token });
+    const spend = response.json?.currentMonthSpend;
+    return typeof spend === 'number' ? spend : null;
+  } catch (error) {
+    if (error instanceof UaParserRejection) {
+      throw error;
+    }
+    return null;
+  }
+}
+
 /** Un fournisseur, de l'appel au nettoyage. Ne relance jamais : un échec est un verdict. */
 async function probe(baseURL, token, { endpoint, model }) {
   log(`${endpoint} / ${model} — POST /api/agents/chat/${endpoint}`);
@@ -257,6 +275,19 @@ async function main() {
   log(`sonde de production — cible ${baseURL}`);
 
   const token = await freshServiceSession(baseURL);
+
+  /**
+   * Consommation avant/après — **mesurée, pas documentée**.
+   *
+   * Le coût d'un run n'est pas déductible du nombre de fournisseurs : `addTitle` déclenche une
+   * génération de titre par conversation, donc un appel LLM de plus par probe, invisible dans le
+   * verdict. Une estimation à la main s'est révélée fausse d'un facteur ~300 le 31/07/2026. On
+   * relève donc le delta réel à chaque run, pour que la dérive se voie sans avoir à la calculer.
+   *
+   * Le relevé est **non bloquant** : si `/api/balance` ne répond pas, le verdict des fournisseurs
+   * ne doit pas en dépendre.
+   */
+  const spendBefore = await readSpend(baseURL, token);
   const results = [];
 
   try {
@@ -293,18 +324,35 @@ async function main() {
     throw error;
   }
 
+  const spendAfter = await readSpend(baseURL, token);
   const red = results.filter((result) => !result.ok);
+
   console.log('');
   log('— verdict —');
   for (const result of results) {
+    const delay = result.elapsed != null ? ` (${result.elapsed} s)` : '';
     log(
-      `  ${result.ok ? 'VERT ' : 'ROUGE'} ${result.endpoint} / ${result.model}${result.ok ? '' : ` — ${result.reasons.join(' ; ')}`}`,
+      `  ${result.ok ? 'VERT ' : 'ROUGE'} ${result.endpoint} / ${result.model}${delay}${result.ok ? '' : ` — ${result.reasons.join(' ; ')}`}`,
     );
   }
+
   const notCleaned = results.filter((result) => result.cleaned === false);
   if (notCleaned.length > 0) {
     log(`  ⚠️ nettoyage non confirme : ${notCleaned.map((r) => r.conversationId).join(', ')}`);
+  } else {
+    log('  nettoyage confirme pour toutes les conversations creees');
   }
+
+  if (spendBefore != null && spendAfter != null) {
+    log(
+      `  cout du run : ${(spendAfter - spendBefore).toFixed(1)} tokenCredits ` +
+        `(avant ${spendBefore.toFixed(1)}, apres ${spendAfter.toFixed(1)}) — inclut la generation ` +
+        "de titre par conversation (addTitle), qui n'est PAS couverte par le verdict",
+    );
+  } else {
+    log('  cout du run : non releve (/api/balance indisponible) — sans effet sur le verdict');
+  }
+
   log(`${results.length - red.length}/${results.length} fournisseurs VERT`);
 
   process.exit(red.length === 0 && notCleaned.length === 0 ? 0 : 1);
