@@ -324,9 +324,9 @@ Un interdit non testé s'érode : le prompt évolue, le modèle change, le fichi
 
 | Interdit | Test de garde | État |
 |---|---|---|
-| Triage — pas de label sur doute | Rejeu du triage sur un run archivé à session expirée → aucune issue `claude-fix` créée, aucun label posé | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `session-expiree`. Voir la mise en garde ci-dessous *(OBSERVED, 30/07/2026)* |
-| Triage — exclusion `@known-issue-N` (garde-fou 3) | Rejeu sur un run où un cas tagué `@known-issue-N` est rouge → ni issue, ni label, ni commentaire sur l'issue N ; une ligne au Dossier QA | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `known-issue-rouge` *(OBSERVED, 30/07/2026)* |
-| Triage — plafond de 2 tentatives (garde-fou 4) | Rejeu sur une rechute de signature contre une issue portant déjà `<!-- tentative: 2 -->` → retrait du label, **pas de re-pose**, synthèse et assignation à l'humaine | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `tentative-2-rechute` *(OBSERVED, 30/07/2026)* |
+| Triage — pas de label sur doute | Rejeu du triage sur un run archivé à session expirée → aucune issue `claude-fix` créée, aucun label posé | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `session-expiree`. **`id-token: write` corrigé** (OIDC obtenu, OBSERVED run 30615072061) ; **toujours rouge**, nouvelle cause : validation de workflow contre `main`. Voir la mise en garde ci-dessous *(OBSERVED, 31/07/2026)* |
+| Triage — exclusion `@known-issue-N` (garde-fou 3) | Rejeu sur un run où un cas tagué `@known-issue-N` est rouge → ni issue, ni label, ni commentaire sur l'issue N ; une ligne au Dossier QA | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `known-issue-rouge`. Même état et même cause que la ligne ci-dessus *(OBSERVED, 31/07/2026)* |
+| Triage — plafond de 2 tentatives (garde-fou 4) | Rejeu sur une rechute de signature contre une issue portant déjà `<!-- tentative: 2 -->` → retrait du label, **pas de re-pose**, synthèse et assignation à l'humaine | **Écrit, jamais vert** — `qa-triage-replay.yml`, fixture `tentative-2-rechute`. Même état et même cause que les deux lignes ci-dessus *(OBSERVED, 31/07/2026)* |
 | Agent codeur — un run ne peut pas finir sans livrable visible | Rejeu du gate « Verdict livrable » **extrait de `claude.yml`** sur 4 situations figées : PR ready → vert + review ; PR draft → rouge qui dit où est le travail ; marqueur d'analyse → vert sans écriture ; rien → rouge + relance. Verdict = code de sortie **et** journal des `gh` | **Implémenté et vert (4/4)** — `.github/scripts/verdict-replay/rejouer.sh`, fixtures sous `e2e/staging/fixtures/verdict/`. Tourne en local, sans jeton ni modèle. **Reste à câbler en CI** *(OBSERVED, 30/07/2026)* |
 | Agent config — ligne de tag d'image / `restartedAt` | Check de PR sur `vermeer-gitops` : échec si le diff touche une ligne `tag:` ou l'annotation `restartedAt` sous `*/llm/` | *à câbler* |
 | Agent config — périmètre `dev/llm/` + `staging/llm/` | Check de PR : `git diff --name-only` entièrement inclus dans la liste blanche, sinon échec | *à câbler* |
@@ -354,6 +354,40 @@ garde rien** : les trois lignes ci-dessus doivent se lire « écrit », pas « c
 **Correctif : ajouter `id-token: write` aux `permissions` du job de rejeu** — un jeton OIDC ne
 donne aucun droit d'écriture sur le dépôt, la propriété dry-run est préservée. Hors périmètre de
 la PR qui a fait ce constat (`claude.yml` seul autorisé côté workflows).
+
+**⚠️ OBSERVED 31/07/2026 — le correctif d'OIDC est bon, et un SECOND verrou apparaît derrière.**
+Run [30615072061](https://github.com/POPAISTUDIO/vermeer-text/actions/runs/30615072061), branche
+`chore/replay-id-token` (bloc `permissions` sur le job `rejeu` : `contents: read` +
+`id-token: write`). Le premier verrou est levé — le log dit `OIDC token successfully obtained`
+puis `Exchanging OIDC token for app token...`, là où le run du 30/07 s'arrêtait sur
+« Could not fetch an OIDC token ». Mais le modèle ne tourne toujours pas, pour une raison
+nouvelle et **structurelle** :
+
+> `Workflow validation failed. The workflow file must exist and have identical content to the
+> version on the repository's default branch.` — puis `Error is not retryable, giving up
+> immediately`, `Exiting due to workflow validation skip`.
+
+La Claude GitHub App refuse de s'exécuter depuis un fichier de workflow qui **diffère de sa
+version sur `main`**. Conséquence directe, et c'est une **limite de gouvernance à connaître** :
+**le test de garde du désignateur ne peut pas être éprouvé avant merge.** Toute modification de
+`qa-triage-replay.yml` — y compris le correctif de permission qui le rend exécutable — se merge
+**sur relecture**, jamais sur un rejeu vert préalable ; le premier rejeu vert n'est possible
+qu'**après** merge, depuis `main`, et doit être lancé immédiatement dans la foulée.
+
+Trois précisions qui évitent trois erreurs de lecture :
+
+1. **L'étape du modèle est VERTE dans ce run** (`outcome=success`, 1773 ms) : l'action se *skip*
+   elle-même sans échouer. Seule l'étape « Verdict » est rouge. La règle du mandat capteur
+   (`.claude/skills/vermeer-operations/SKILL.md`, « la couleur des étapes ment ») vaut donc aussi
+   pour `claude-code-action` elle-même : ne jamais déduire qu'un modèle a tourné d'une étape verte.
+2. **Les trois fixtures sont rouges pour la même cause unique**, en amont de tout raisonnement :
+   journal du shim **vide**, tous les `interdits` passés trivialement, les `requis` manquants
+   (`issue +comment +112` sur les trois ; plus le retrait de label, la synthèse et l'assignation
+   sur `tentative-2-rechute`). Aucun de ces rouges ne dit quoi que ce soit du triage.
+3. **Ce n'est pas l'« incident de gouvernance » du rejeu rouge deux fois de suite.** Cette clause
+   vise un rejeu où le **modèle a raisonné** et a raté le garde-fou. Ici il n'a pas été appelé :
+   deux rouges d'affilée dus à deux verrous d'authentification successifs sont un incident du
+   **harnais**, à corriger, pas un incident du désignateur.
 
 **Le rejeu du verdict de livrable, lui, ne dépend d'aucun modèle** — le gate est du shell. Il
 tourne en local, sans jeton, et son verdict est déterministe :

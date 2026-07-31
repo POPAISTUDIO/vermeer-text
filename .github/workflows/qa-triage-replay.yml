@@ -8,8 +8,9 @@
 # Deux propriétés à ne pas perdre :
 #   1. DRY-RUN vis-à-vis de GitHub. Un shim `gh` journalise et simule toute commande
 #      `gh issue` d'écriture ; les lectures reçoivent des réponses figées, servies depuis la
-#      fixture. Le job ne porte que `contents: read` : même shim contourné, aucune écriture
-#      n'aboutirait. Le tracker n'est jamais touché.
+#      fixture. Le job ne porte que `contents: read` + `id-token: write` — aucune permission
+#      d'écriture sur le dépôt : même shim contourné, aucune écriture n'aboutirait. Le tracker
+#      n'est jamais touché.
 #   2. Le prompt testé est EXTRAIT de qa-triage.yml, jamais recopié. Une copie divergerait,
 #      et le test ne testerait plus le désignateur réel mais son fossile.
 #
