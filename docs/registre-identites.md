@@ -33,7 +33,7 @@
 
 | Dépôt | Secrets présents | Dernière mise à jour |
 |---|---|---|
-| `POPAISTUDIO/vermeer-text` | `CLAUDE_CODE_OAUTH_TOKEN` · `GITOPS_PUSH_TOKEN` · `QA_STAGING_URL` · `QA_STORAGE_STATE` · `VERMEER_SECRETS_TOKEN` · `TRIAGE_LABEL_TOKEN` · **`QA_SERVICE_EMAIL`** · **`QA_SERVICE_PASSWORD`** (31/07/2026) | `2026-07-29T14:56:37Z` · `2026-07-26T15:31:41Z` · `2026-07-26T15:04:55Z` · `2026-07-31T09:27:54Z` · `2026-07-26T19:05:24Z` · `2026-07-31T08:41:36Z` · **`2026-07-31T12:03:24Z`** · **`2026-07-31T12:03:25Z`** |
+| `POPAISTUDIO/vermeer-text` | `CLAUDE_CODE_OAUTH_TOKEN` · `GITOPS_PUSH_TOKEN` · `QA_STAGING_URL` · `TRIAGE_LABEL_TOKEN` · `QA_SERVICE_EMAIL` · `QA_SERVICE_PASSWORD` · **`QA_SERVICE_EMAIL_PROD`** · **`QA_SERVICE_PASSWORD_PROD`** (31/07/2026) | `2026-07-29T14:56:37Z` · `2026-07-26T15:31:41Z` · `2026-07-26T15:04:55Z` · `2026-07-31T08:41:36Z` · `2026-07-31T12:03:24Z` · `2026-07-31T12:03:25Z` · **`2026-07-31T15:42:09Z`** · **`2026-07-31T15:42:10Z`** |
 | `POPAISTUDIO/vermeer-gitops` | `CLAUDE_CODE_OAUTH_TOKEN` | `2026-07-29T14:56:38Z` |
 | `POPAISTUDIO/vermeer-gitops-prod` | **aucun** | — |
 
@@ -41,7 +41,20 @@
 >
 > **`GITOPS_PUSH_TOKEN` et `VERMEER_SECRETS_TOKEN` ne faisaient donc pas partie du périmètre du chantier 1.** Leurs dates du **26/07/2026** sont **INFERRED** cohérentes avec la campagne générale de renouvellement conduite avant la MEP v0.10.23 — et non avec un oubli de rotation. Expiration : **INFERRED** ~juillet 2027, comme le reste du parc. *(Ce point était marqué UNKNOWN à l'établissement du registre le 29/07/2026 ; tranché le jour même par la personne ayant conduit le chantier 1.)*
 >
-> **`QA_STORAGE_STATE`** restait hors de ce raisonnement : il était réécrit **automatiquement à chaque run de QA** (rotation de session), et sa date ne disait jamais rien d'une rotation de jeton. Sa dernière écriture automatique date du **31/07/2026 à 09h27** — **la dernière tout court** : depuis la bascule vers le compte de service (13a), plus aucun workflow ne le lit ni ne l'écrit. Lui et `VERMEER_SECRETS_TOKEN` sont **orphelins** et portés à la liste d'extinction du chantier 5 (suppression du secret, révocation du PAT).
+> **`QA_STORAGE_STATE`** restait hors de ce raisonnement : il était réécrit **automatiquement à chaque run de QA** (rotation de session), et sa date ne disait jamais rien d'une rotation de jeton. Sa dernière écriture automatique date du **31/07/2026 à 09h27** — **la dernière tout court** : depuis la bascule vers le compte de service (13a), plus aucun workflow ne le lit ni ne l'écrit. Lui et `VERMEER_SECRETS_TOKEN` étaient **orphelins** et portés à la liste d'extinction du chantier 5.
+>
+> **Extinction exécutée, dans ses deux temps — OBSERVED 31/07/2026.** `gh secret list` sur `vermeer-text` ne renvoie plus **ni** `QA_STORAGE_STATE` **ni** `VERMEER_SECRETS_TOKEN` (relevé à 15h42, le tableau ci-dessus est postérieur à la suppression) — **et** le jeton lui-même a été **révoqué**, ce que la suppression du secret ne fait pas à elle seule. Détail dans l'inventaire ci-dessous. Il ne subsiste donc, côté `vermeer-text`, **aucun jeton en écriture sur les secrets du dépôt** — ni en secret, ni en jeton vivant.
+
+**Inventaire des jetons fine-grained du compte `Loisetoscer` — OBSERVED 31/07/2026**
+
+Ces jetons sont portés par un compte personnel, donc **invisibles à `gh secret list`** : ils ne se lisent que sur la fiche `github.com/settings/tokens?type=beta`. C'est la raison pour laquelle ils étaient jusqu'ici les angles morts du registre.
+
+| Jeton | Secret correspondant | État | Ce qu'il faut en savoir |
+|---|---|---|---|
+| `vermeer-secrets-rotation` | `VERMEER_SECRETS_TOKEN` | **🔴 SUPPRIMÉ le 31/07/2026** | Créé le 26/07/2026. Accès `POPAISTUDIO/vermeer-text` ; permissions **`Read access to metadata`** + **`Read and Write access to secrets`**, **aucune permission d'organisation** ; expiration qui aurait couru jusqu'au 26/07/2027. C'était **le pouvoir le plus élevé du registre côté `vermeer-text`** — écrire les secrets du dépôt — au seul usage de republier la session QA. Le compte de service (13a) a supprimé ce besoin, puis le jeton a été supprimé après vérification de sa fiche. **Source : attesté par Loïse en séance le 31/07/2026, geste UI non vérifiable par l'API depuis le poste (scopes `gh` insuffisants)** |
+| `triage-designation-vermeer-text` | `TRIAGE_LABEL_TOKEN` | **🟢 vivant, en service** | `Issues: Read and write` et rien d'autre, sur le seul dépôt `vermeer-text` (voir acteur n° 5). Conservé : le triage l'utilise |
+| `vermeerchat-release-train` | `GITOPS_PUSH_TOKEN` | **🟡 vivant, endormi** | Conservé délibérément : le train de release est endormi, mais ce jeton est **nécessaire à son réveil**. Le supprimer casserait la reprise (voir acteur n° 6, dont les scopes exacts restent **INFERRED**) |
+| `vermeerchat-qa-session` | — (aucun) | **⚠️ vivant, orphelin non instruit** | **`Never used`** — OBSERVED. Ne correspond à aucun secret présent et à aucun acteur du registre. **Ni conservé pour un usage identifié, ni révoqué** : ce qu'il est exactement — portée, permissions, raison de sa création — n'est pas établi. Porté au **lot documentaire** : *établir ce qu'il est avant de le révoquer*, pour ne pas casser un usage qu'on n'aurait pas vu. En attendant, c'est un pouvoir vivant non décrit, donc un écart ouvert au sens de [GOVERNANCE.md §1](GOVERNANCE.md#1--identités-et-pouvoirs) |
 
 > **`vermeer-gitops-prod` ne porte aucun secret — OBSERVED.** Ce n'est pas un manque de configuration : c'est la règle « aucun agent n'écrit vers la production » telle qu'elle se lit dans l'infrastructure. Le jeton branches-only de l'agent MEP (⏳ chantier 7) y sera **le premier secret**, et il n'y entrera qu'après le ruleset — lequel existe depuis le 29/07/2026 ([GOVERNANCE.md §1](GOVERNANCE.md#amendement-acté--le-jeton-de-lagent-mep)).
 
@@ -199,9 +212,10 @@
 | **Scopes / permissions** | **UNKNOWN** |
 | **Stockage** | **UNKNOWN** |
 | **Expiration** | **UNKNOWN** |
-| **Permis** | Appliquer l'état mergé sur `main` de `vermeer-gitops-prod`. Intervalle de réconciliation : **UNKNOWN** (non relevé ; à préciser lors du chantier 5, où le smoke automatique devra l'attendre) |
+| **Permis** | Appliquer l'état mergé sur `main` de `vermeer-gitops-prod`. **Intervalle de réconciliation : 5 minutes — OBSERVED 31/07/2026** (`spec.interval: 5m` sur la HelmRelease `prod/llm/helm-release.yaml`). *(Était UNKNOWN ; relevé pendant le chantier 5, phase 2, comme prévu.)* |
 | **Interdits** | Aucune initiative, comme ci-dessus |
 | **Fiabilité** | **Machinerie déterministe.** C'est le **seul** chemin par lequel un changement atteint la production — et il ne part que d'un merge protégé par le ruleset ([GOVERNANCE.md §4, régime 1](GOVERNANCE.md#4--lécluse)). Il réconcilie `prod/llm/` **et** `prod/app/` : pour le premier, le merge est relu selon cette gouvernance ; pour le second, il relève des relectures des autres équipes. Flux ne fait pas la différence — la gouvernance, si |
+| **⚠️ Mesurer la convergence, pas la première réponse — OBSERVED 31/07/2026** | **Un changement de configuration n'atteint pas la production d'un coup.** Pendant le rolling update, les ~3 pods servent **deux configurations différentes** et le load balancer distribue sur le mélange : `/api/config` répond alternativement l'ancienne et la nouvelle valeur. Mesuré sur la manœuvre de fenêtre d'inscription du chantier 5 : à l'**ouverture** (merge `15:25:15Z`), première réponse ouverte à **+4 min 03 s**, convergence des 3 pods à **+5 min 40 s** — soit **1 min 37 s** de production à deux visages ; à la **refermeture** (merge `15:43:51Z`), première réponse close à **+4 min 46 s**, convergence à **+8 min 13 s** — **3 min 27 s** de phase mixte, et un ratio stable à 2/3 puis 1/3 qui corrobore indépendamment le compte de 3 pods. **Conséquences opérationnelles** : ① une preuve de bascule exige **N réponses consécutives identiques**, jamais une seule — un `curl` unique tombant sur le bon pod est un faux positif, et sur le mauvais un faux négatif ; ② une action gardée par la clé qu'on bascule (ici `POST /api/auth/register`) peut répondre l'ancien comportement alors que la config « est » basculée, donc **il faut réessayer, et ne pas conclure du premier échec** ; ③ **l'exposition réelle est plus longue que l'intervalle entre les deux merges** — 22 min 46 s vécues contre 18 min 36 s de merge à merge, parce que la refermeture a convergé plus lentement que l'ouverture. **On ne déduit pas une durée d'exposition d'horodatages de merge : on la mesure.** À reprendre tel quel par le smoke prod, qui doit attendre la convergence et non la première réponse |
 
 ### 12. `gitops-bot` — hotswap staging (acteur hors périmètre)
 
@@ -235,6 +249,28 @@
 | **Interdits** | Toute écriture d'infrastructure · tout accès gitops · **tout jeton GitHub** — ce compte n'en porte aucun · toute action d'administration applicative · tout usage hors QA automatisée |
 | **Bénéfice obtenu** | Supprime `QA_STORAGE_STATE` (session à usage unique capturée à la main) **et** l'usage de `VERMEER_SECRETS_TOKEN` dans la boucle de QA : plus aucun jeton en écriture sur les secrets du dépôt n'est nécessaire pour faire tourner la recette |
 | **Fiabilité** | **Élevée.** Aucune dépendance à un état capturé, à un relais entre tests, ni à un jeton expirable. Réserve unique et connue : la non-rotabilité ci-dessus. **Budget** : `balance.enabled: true` en staging, plafond mensuel par défaut `10_000_000` tokenCredits = **10 USD/mois** (`packages/data-schemas/src/schema/balance.ts:42`), réinitialisé mensuellement (`VERMEER_BUDGET_RESET_ENABLED: "true"`) — **OBSERVED 31/07/2026**. La consommation réelle d'un run reste **UNKNOWN** tant qu'un premier run n'a pas tourné |
+
+---
+
+### 13b. Compte de service de test — production — vivant depuis le 31/07/2026
+
+*Volet **production** de l'entrée 13, créé par la manœuvre de fenêtre d'inscription du chantier 5, phase 2, étape 1. Le volet staging est **13a**. **Deux comptes, deux jeux de secrets, aucun partage** — l'exigence de séparation posée par le placeholder est tenue.*
+
+| | |
+|---|---|
+| **Identité** | Compte applicatif LibreChat `svc-qa-prod@vermeer.invalid` — `provider: local`, `role: USER`, `_id` `6a6cc1e9bb93273b076ae123`, nom d'affichage `Sonde QA production`, `createdAt 2026-07-31T15:40:25.077Z` — **OBSERVED 31/07/2026** (réponse de `POST /api/auth/login`). **Identifiable** : le nom et l'adresse le distinguent sans ambiguïté d'un utilisateur réel, et le TLD `.invalid` ([RFC 2606](https://www.rfc-editor.org/rfc/rfc2606)) garantit qu'aucun courrier ne peut l'atteindre. Vu côté admin **Seuils & gestion** comme la **seule** nouvelle ligne par rapport à l'état d'avant-ouverture — **OBSERVED** (captures avant/après comparées) |
+| **Secrets utilisés** | `QA_SERVICE_EMAIL_PROD` · `QA_SERVICE_PASSWORD_PROD` — secrets Actions de `vermeer-text`, créés le **31/07/2026 15:42 UTC** — **OBSERVED** (`gh secret list`). Nommage conforme à celui qu'annonçait le placeholder. Longueurs contrôlées avant écriture (`wc -c` = **27** et **32**, sans saut de ligne parasite) |
+| **Scopes / permissions** | Périmètre **fonctionnel d'utilisateur standard**. `role: USER` — **aucun droit d'administration applicative**, donc ni Analytics, ni Seuils & gestion (admin-only) — **OBSERVED** |
+| **Stockage** | Secrets Actions de `vermeer-text` — **OBSERVED**. Consommation par un workflow de sonde : **à câbler** (étape 2 du chantier 5, phase 2). Jamais en argument de commande |
+| **Expiration** | **Aucune.** Ni le compte ni le mot de passe n'expirent |
+| **⚠️ Non-rotable par l'application** | **Identique à 13a, et vérifié ici sur la production — OBSERVED 31/07/2026.** Aucune route de changement de mot de passe, et `passwordResetEnabled: false` / `emailEnabled: false` dans la réponse `/api/config` de `llm.vermeer.ai`. Qui détient ce mot de passe le détient **définitivement** |
+| **Remédiation en cas de compromission** | Mêmes trois temps que 13a, avec **deux PRs modèles propres à la production** sur `vermeer-gitops-prod` : **72** (ouverture — `ALLOW_REGISTRATION: "true"` + bump `restartedAt` à T1) et **73** (refermeture — `ALLOW_REGISTRATION: "false"` **posé et non retiré**, + bump distinct et postérieur à T2). Chaque étape se prouve par `curl /api/config`, jamais par un merge. **Rien d'autre n'est à faire sur le compte recréé** : la suite accepte les CGU elle-même au login — voir la ligne suivante |
+| **CGU — dette n° 5 LEVÉE** | **Prouvé sur la production, OBSERVED 31/07/2026 15:41:10Z.** Premier login d'un compte neuf → `termsAccepted=false` ; la suite appelle `POST /api/user/terms/accept` (jeton en en-tête `Authorization: Bearer`, les cookies de login ne suffisent pas) → **HTTP 200** ; second login → `termsAccepted=true` et **aucun second appel**. Les deux lignes de journal sont littéralement celles de `e2e/staging/lib/auth.ts` (l. 108 et 142). `termsAccepted` est un champ **persistant** du compte, pas un état de session — l'idempotence est donc structurelle. **Aucune étape manuelle d'acceptation n'existe, et il ne faut pas en inventer une** |
+| **Permis** | Exercer la production **par l'application** (HTTP), en login programmatique, et **nettoyer derrière lui** — aucune conversation, aucun fichier, aucun état résiduel |
+| **Interdits** | Toute écriture d'infrastructure · tout accès gitops · **tout jeton GitHub** — ce compte n'en porte aucun · toute action d'administration applicative · tout usage hors QA automatisée · laisser un état en production |
+| **Bénéfice obtenu** | Rend le Point 0 et le smoke prod exécutables sans intervention humaine, avec la même architecture qu'en staging (login programmatique, aucun état capturé) |
+| **Fiabilité** | **Élevée**, aux mêmes conditions que 13a. Réserve unique et connue : la non-rotabilité ci-dessus. **Budget** : **UNKNOWN** — l'état de `balance.enabled` en production n'a pas été relevé dans cette séance ; à consigner OBSERVED avant que la sonde ne tourne, faute de quoi sa consommation n'est ni plafonnée ni mesurée |
+| **Coût de création** | **1 seule tentative** sur les 5 autorisées par `registerLimiter` (5 par IP et par fenêtre de 60 min — `api/server/middleware/limiters/registerLimiter.js:6`, valeurs par défaut). Payload pré-validé hors ligne contre le schéma zod du dépôt (`api/strategies/validators.js`) précisément pour ne pas gaspiller d'essai |
 
 ---
 
