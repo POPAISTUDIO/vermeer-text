@@ -14,6 +14,21 @@
 
 Tout ce qui ne porte pas ce marqueur est **vivant aujourd'hui** et opposable dès maintenant. À la revue mensuelle (§7), cette distinction est le premier tri : une règle vivante qui n'est pas respectée est un incident ; une règle en attente ne l'est pas.
 
+### Statut des marqueurs ⏳ — arrêté au 31/07/2026, sous standby
+
+**Un marqueur `⏳` ne dit plus « bientôt ».** Le projet est en standby et trois chantiers sont gelés par décision. Sans cette table, un lecteur prendrait ces marqueurs pour un plan en cours ; ils sont désormais à lire selon trois statuts. **Aucune règle de ce document n'est modifiée par ce qui suit** — seule leur date d'entrée en vigueur est dite pour ce qu'elle est.
+
+| Marqueur | Statut au 31/07/2026 | À lire comme |
+|---|---|---|
+| **⏳ chantier 5** | ✅ **LIVRÉ** | La règle est **vivante et opposable**. Comptes de service staging (**13a**) et production (**13b**) vivants, `QA_STORAGE_STATE` et le PAT en écriture sur les secrets éteints, **Point 0 et smoke** portés par la sonde de production (`prod-sonde.yml`), canal d'alerte **prouvé**. Les exigences « compte identifiable » et « nettoie derrière lui » de §6 sont **tenues et vérifiées** — le nettoyage est asservi, son échec fait rougir la sonde |
+| **⏳ chantier 6** | 🟡 **absorbé pour moitié, amputé du reste** | Le **canary prod** est livré par la sonde unifiée du chantier 5. Le **scan de nuit** est **abandonné**, pas reporté. Le **check de drift** est au backlog avec son motif. Détail : [`architecture-cible-v2.md` §5](architecture-cible-v2.md) |
+| **⏳ chantier 7** | 🔴 **GELÉ** | La règle reste **prescrite mais sans objet immédiat** : l'agent MEP n'existe pas, son jeton branches-only **n'a jamais été créé**, et le **Dossier MEP** n'existe pas. Ce n'est pas un trou de sécurité mais son inverse — `vermeer-gitops-prod` ne porte **aucun secret**, donc l'invariant « aucun agent n'écrit vers la production » est tenu par l'infrastructure elle-même. La MEP est **humaine** : [`RUNBOOK-MEP-MANUEL.md`](RUNBOOK-MEP-MANUEL.md) |
+| **⏳ chantier 8** | 🔴 **GELÉ** | L'agent comm' n'existe pas. Les communications de release restent manuelles. Aucun pouvoir n'est ouvert de ce côté |
+
+**Conséquence pour la revue mensuelle (§7)** : les lignes `⏳7` et `⏳8` de la couverture des tests de garde (§6) ne sont pas des retards à rattraper — elles décrivent des interdits **dont l'acteur n'existe pas**. Elles redeviendront des trous à combler le jour où ces chantiers seront dégelés, et pas avant. Les lignes `⏳5`, en revanche, sont désormais des règles vivantes : leur non-respect est un incident.
+
+**Ce qui est livré, gelé ou endormi côté exploitation** — et non côté règles — se lit dans [`RUNBOOK-REVEIL.md`](RUNBOOK-REVEIL.md), qui porte le tableau éveillé / endormi / gelé.
+
 **Étiquettes de preuve.** Les constats factuels portent leur étiquette : **OBSERVED** (avec sa source et sa date), **INFERRED**, **UNKNOWN**. Une affirmation sans étiquette est une *règle*, pas un constat — elle n'a pas à être prouvée, elle a à être respectée.
 
 **Ce qu'il régit, et ce qu'il ne régit pas.** Ce document gouverne le **système d'orchestration agentique de Vermeer Chat** : ses agents, ses jetons, ses écluses. Deux des trois dépôts sont **partagés avec d'autres équipes** — `vermeer-gitops` (`*/app/`, `abstraction-layer`) et `vermeer-gitops-prod` (`prod/app/`). Sur ceux-là, les règles ci-dessous ne s'appliquent qu'au **périmètre Vermeer Chat** :
@@ -582,9 +597,11 @@ Un déploiement automatisé vérifié à la main n'est pas automatisé : c'est u
 - **Smoke 9 points** après réconciliation Flux.
 - **Aujourd'hui : joués à la main** (Hermes en capteur + l'humaine). C'est l'écart le plus coûteux du système : la voie MEP est instrumentée jusqu'au merge, puis redevient artisanale.
 
-⏳ **Point 0 et smoke automatisés au chantier 5** — compte de service de test dédié, workflow GitHub, rapport avec verdict. Le compte de service supprime au passage la fragilité `QA_STORAGE_STATE` ci-dessus.
+✅ **Point 0 et smoke — LIVRÉS au chantier 5, le 31/07/2026.** Compte de service dédié (registre, **13b**), workflow GitHub (`prod-sonde.yml`), rapport avec verdict, nettoyage vérifié et canal d'alerte prouvé. **La sonde EST le smoke** : elle se déclenche en `workflow_dispatch` après une MEP, et il n'y en a pas d'autre à chercher. Le compte de service a supprimé au passage la fragilité `QA_STORAGE_STATE` ci-dessus, ainsi que le PAT en écriture sur les secrets. Procédure : [`RUNBOOK-MEP-MANUEL.md`](RUNBOOK-MEP-MANUEL.md), et [`../e2e/prod/README.md`](../e2e/prod/README.md) pour le détail.
 
-⏳ **Dossier MEP au chantier 7** — jumeau du Dossier QA : un run de MEP, une entrée journalisée.
+⚠️ **Le Point 0 lui-même reste un geste manuel** — la vérification de l'image servie par les pods passe par un accès Loki depuis le poste. C'est une dette ouverte, avec son motif ([`DETTES-OUVERTES.md`](DETTES-OUVERTES.md)).
+
+🔴 **Dossier MEP — GELÉ avec le chantier 7.** Le jumeau du Dossier QA n'existe pas. La trace d'une MEP est aujourd'hui la **PR du digest**, et son **issue d'incident** en cas de bypass — format posé par l'issue n° 69 de `vermeer-gitops-prod`.
 
 ### La règle du rouge — à graver
 
@@ -616,7 +633,13 @@ Corollaire pratique : un cas qui vérifie une promesse que le produit ne tient p
 
 Toute nouvelle capacité d'observation suit le même cadre, sans dérogation : **compte dédié · jamais de jeton d'écriture · discipline d'étiquetage · journal horodaté même quand tout va bien** (un « RAS » daté est une information ; un silence n'en est pas une).
 
-⏳ **entre en vigueur au chantier 6** — migration des missions récurrentes d'Hermes en crons GitHub Actions, pour qu'elles tournent Mac éteint : scan de nuit quotidien · canary providers prod (un appel minimal par provider, compte dédié) · check de drift hebdomadaire staging ↔ prod (diff des `librechat.yaml` + `configEnv`, issue instruite sur écart non documenté).
+**Statut au 31/07/2026 — le chantier 6 a été absorbé pour moitié, amputé du reste.** Les trois missions prévues ne partagent plus le même sort :
+
+- ✅ **canary providers prod** — **livré**, par la sonde unifiée du chantier 5 (`prod-sonde.yml`) : cron quotidien, compte dédié identifiable, périmètre read-only, nettoyage vérifié. Elle tourne Mac éteint, ce qui était l'objectif ;
+- ❌ **scan de nuit quotidien** — **abandonné**, pas reporté. Il supposait un flux de développement continu à surveiller. À ré-instruire de zéro si le besoin revient ;
+- 🟡 **check de drift hebdomadaire staging ↔ prod** — **au backlog avec son motif**. L'écart entre commité et déployé est réel et déjà tracé dans [`CONFIG-DRIFT.md`](CONFIG-DRIFT.md) ; un check automatique serait utile mais n'est pas urgent tant que la configuration ne bouge pas.
+
+Le cadre ci-dessus — **compte dédié · jamais de jeton d'écriture · discipline d'étiquetage · journal horodaté même quand tout va bien** — s'applique **dès maintenant** et sans dérogation à la sonde livrée. Il n'attend plus rien.
 
 ### Amendement acté — lire la prod par l'application
 
@@ -626,7 +649,7 @@ La règle « **aucun agent n'écrit vers la production** » reste **intacte au s
 
 Deux exigences en découlent, non négociables : le compte de service est **identifiable** (on doit pouvoir isoler son trafic dans les logs et le distinguer d'un utilisateur réel), et il **nettoie derrière lui** (aucune conversation, aucun fichier, aucun état résiduel laissé en production).
 
-⏳ *Le compte de service arrive au chantier 5 ; le canary prod au chantier 6.*
+✅ *Les deux sont arrivés le 31/07/2026, par le seul chantier 5 : compte de service de production (**13b**) et sonde qui fait office de canary prod. Les deux exigences de cet amendement sont **tenues et vérifiées** — le compte est identifiable (`svc-qa-prod@vermeer.invalid`, nom d'affichage « Sonde QA production », TLD `.invalid`), et le nettoyage est **asservi** : une conversation laissée en production fait rougir la sonde, même si les trois fournisseurs ont répondu.*
 
 ### Règle « l'observation ne désigne pas »
 
@@ -737,7 +760,7 @@ gh workflow list -R POPAISTUDIO/vermeer-gitops --all
 
 **Ce que le coupe-circuit ne touche pas, volontairement** : le ruleset de production (une écluse ne se désarme pas en cas d'incident — c'est le moment où elle sert le plus), `checks-digest.yml` (il publie le check requis ; le désactiver **bloquerait** toute PR prod), `vermeer-prod-image.yml` (build d'image, pas un agent), et Flux (il continue de réconcilier l'état déjà mergé — c'est voulu : on gèle les **nouvelles** propositions, pas l'infrastructure en place).
 
-⏳ **Au chantier 6**, ajouter les crons d'observation à l'étape 1. ⏳ **Au chantier 7**, ajouter le workflow MEP — il est en `workflow_dispatch` seul, donc inerte sans ordre, mais on le désarme quand même par principe.
+**Mise à jour du 31/07/2026.** ✅ **La sonde de production (`prod-sonde.yml`) est à ajouter à l'étape 1 dès maintenant** : elle porte un `schedule` quotidien, donc elle tourne sans ordre et doit être désarmée comme les autres crons. C'est le seul cron d'observation qui existe — le scan de nuit du chantier 6 est abandonné, le check de drift est au backlog. 🔴 **Le workflow MEP reste sans objet** : il n'existe pas (chantier 7 gelé), donc rien à désarmer de ce côté. La MEP est humaine, et se désarme en ne la lançant pas.
 
 **Réveil — symétrique, et dans l'ordre inverse :**
 
