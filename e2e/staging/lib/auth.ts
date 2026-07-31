@@ -1,9 +1,20 @@
 import { request } from '@playwright/test';
-import { requireServiceCredentials, SESSION_EXPIRED_MESSAGE } from './env';
+import {
+  requireServiceCredentials,
+  SESSION_EXPIRED_MESSAGE,
+  TERMS_PREREQUISITE_MESSAGE,
+} from './env';
 
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, APIResponse } from '@playwright/test';
 
 type StorageState = Awaited<ReturnType<APIRequestContext['storageState']>>;
+
+type LoginResponse = {
+  token?: string;
+  user?: {
+    termsAccepted?: boolean;
+  };
+};
 
 /**
  * Session du compte de service, obtenue par login programmatique.
@@ -27,9 +38,13 @@ type StorageState = Awaited<ReturnType<APIRequestContext['storageState']>>;
  *
  * ## Ce qui n'est jamais journalisé
  *
- * Le mot de passe n'apparaît dans aucun message, aucune trace, aucune pièce jointe. En cas
- * d'échec, seuls le code HTTP et le message applicatif remontent — jamais le corps de la
- * requête.
+ * Le mot de passe et le jeton n'apparaissent dans aucun message, aucune trace, aucune pièce
+ * jointe. En cas d'échec, seuls le code HTTP et le message applicatif remontent — jamais le
+ * corps de la requête.
+ *
+ * En revanche `termsAccepted` **est** journalisé, délibérément : c'est un drapeau d'état, pas
+ * un secret, et c'est exactement le genre de valeur qu'on masque à tort. Ne pas l'avoir vu a
+ * coûté un run rouge complet le 31/07/2026.
  */
 export async function freshServiceSession(baseURL: string): Promise<StorageState> {
   const { email, password } = requireServiceCredentials();
@@ -46,10 +61,12 @@ export async function freshServiceSession(baseURL: string): Promise<StorageState
         [
           SESSION_EXPIRED_MESSAGE,
           `POST /api/auth/login → HTTP ${response.status()}`,
-          await safeMessage(response.text()),
+          await safeMessage(response),
         ].join('\n'),
       );
     }
+
+    await ensureTermsAccepted(context, (await response.json()) as LoginResponse);
 
     return await context.storageState();
   } finally {
@@ -58,13 +75,81 @@ export async function freshServiceSession(baseURL: string): Promise<StorageState
 }
 
 /**
- * Le corps d'une réponse d'échec de login ne contient pas d'identifiant, mais il est borné et
- * réduit à son champ `message` par prudence — on ne recopie jamais une réponse en aveugle
- * dans un rapport de test archivé.
+ * Accepte les conditions d'utilisation pour le compte de service, si elles ne le sont pas
+ * déjà.
+ *
+ * ## Pourquoi la suite le fait elle-même
+ *
+ * `interface.termsOfService.modalAcceptance` est à `true` sur staging, et `Root.tsx:42-49`
+ * affiche le dialogue tant que `termsAccepted` est faux sur le compte. Un compte neuf le voit
+ * donc à **chaque** chargement de page : il recouvre le composer et la sidebar, et fait
+ * échouer tous les cas en amont de leur propre assertion.
+ *
+ * L'ancien `storageState` masquait ce prérequis : il provenait d'une session capturée dans un
+ * navigateur, sur un compte ayant déjà cliqué « J'accepte ». L'acceptation voyageait dans le
+ * fichier, invisible.
+ *
+ * Le faire ici plutôt qu'une fois à la main est délibéré : la procédure de remédiation d'une
+ * compromission (registre, entrée 13a) prévoit de **recréer le compte**. Une acceptation posée
+ * hors bande serait perdue à ce moment précis, et reproduirait cette panne le jour le plus mal
+ * choisi. **Il n'existe aucune étape manuelle d'acceptation, et il ne faut pas en inventer.**
+ *
+ * ## Idempotence
+ *
+ * `termsAccepted` est un champ persistant du compte (`packages/data-schemas/src/schema/user.ts`),
+ * pas un état de session : une fois posé par le premier test, les logins suivants le voient à
+ * `true` et n'appellent plus rien.
  */
-async function safeMessage(body: Promise<string>): Promise<string> {
+async function ensureTermsAccepted(
+  context: APIRequestContext,
+  session: LoginResponse,
+): Promise<void> {
+  const accepted = session.user?.termsAccepted;
+  console.log(`[auth] compte de service — termsAccepted=${accepted ?? 'absent de la réponse'}`);
+
+  if (accepted === true) {
+    return;
+  }
+
+  /* `POST /api/user/terms/accept` est gardé par `requireJwtAuth`, dont la stratégie extrait le
+     jeton de l'en-tête Authorization (`ExtractJwt.fromAuthHeaderAsBearerToken()`,
+     api/strategies/jwtStrategy.js:10). Les cookies posés par le login ne suffisent pas. */
+  const token = session.token;
+  if (!token) {
+    throw new Error(
+      [
+        TERMS_PREREQUISITE_MESSAGE,
+        'La réponse de login ne porte pas de jeton : POST /api/user/terms/accept ne peut pas être authentifié.',
+      ].join('\n'),
+    );
+  }
+
+  const response = await context.post('/api/user/terms/accept', {
+    headers: { Authorization: `Bearer ${token}` },
+    failOnStatusCode: false,
+  });
+
+  if (!response.ok()) {
+    throw new Error(
+      [
+        TERMS_PREREQUISITE_MESSAGE,
+        `POST /api/user/terms/accept → HTTP ${response.status()}`,
+        await safeMessage(response),
+      ].join('\n'),
+    );
+  }
+
+  console.log('[auth] compte de service — CGU acceptées par la suite.');
+}
+
+/**
+ * Le corps d'une réponse d'échec ne contient pas d'identifiant, mais il est borné et réduit à
+ * son champ `message` par prudence — on ne recopie jamais une réponse en aveugle dans un
+ * rapport de test archivé.
+ */
+async function safeMessage(response: APIResponse): Promise<string> {
   try {
-    const parsed = JSON.parse(await body) as { message?: unknown };
+    const parsed = JSON.parse(await response.text()) as { message?: unknown };
     return typeof parsed.message === 'string' ? parsed.message.slice(0, 200) : '';
   } catch {
     return '';
