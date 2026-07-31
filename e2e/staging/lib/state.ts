@@ -9,12 +9,16 @@
  * `packages/data-provider/src/config.ts`). Une conversation neuve HÉRITE de ce réglage :
  * c'est voulu côté produit.
  *
- * Côté suite, cet héritage traverse les tests. Le `storageState` réécrit après chaque test
- * par `persistRotatedSession` (cf. `lib/test.ts`) contient les origines ET leur
- * `localStorage` : le modèle choisi par un test devient donc le modèle par défaut du test
- * suivant. GEN-03, qui asserte le modèle par défaut d'une conversation neuve, échouait
+ * Côté suite, cet héritage traversait les tests : le `storageState` de l'époque, réécrit
+ * après chaque test par la fixture `persistRotatedSession`, contenait les origines ET leur
+ * `localStorage`, si bien que le modèle choisi par un test devenait le modèle par défaut du
+ * test suivant. GEN-03, qui asserte le modèle par défaut d'une conversation neuve, échouait
  * ainsi sur un résidu de GEN-02 (« Opus 4.8 » un jour, « Sonnet 4.6 » le lendemain) — un
  * défaut d'isolation de la suite, jamais un défaut produit.
+ *
+ * Ce relais a disparu (login programmatique par test, cf. `lib/auth.ts`), mais la purge
+ * reste nécessaire : le `localStorage` peut aussi être alimenté en cours de test, et rien
+ * ne garantit qu'un contexte neuf parte d'une ardoise vierge sur toutes ces clés.
  *
  * ## Ce qui est purgé
  *
@@ -26,10 +30,9 @@
  * ## Ce qui n'est JAMAIS touché
  *
  * - **Les cookies** : l'authentification est intégralement portée par eux (`refreshToken`,
- *   `connect.sid`, `token_provider`, `cognito`, cookies Entra ID). Aucun jeton
- *   d'authentification ne vit dans le `localStorage` de cette application — vérifié sur la
- *   capture de session et sur le code client. La purge est donc sans effet sur la session,
- *   et le relais `persistRotatedSession` fonctionne à l'identique.
+ *   `token_provider`). Aucun jeton d'authentification ne vit dans le `localStorage` de cette
+ *   application — vérifié sur le code client et sur la réponse de `POST /api/auth/login`. La
+ *   purge est donc sans effet sur la session posée par le login programmatique.
  * - Les préférences d'affichage hors conversation : `i18nextLng`, `color-theme`, `appTitle`,
  *   `favorites`, `chatsExpanded`, `react-resizable-panels:*`.
  *

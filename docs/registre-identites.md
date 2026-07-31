@@ -33,7 +33,7 @@
 
 | Dépôt | Secrets présents | Dernière mise à jour |
 |---|---|---|
-| `POPAISTUDIO/vermeer-text` | `CLAUDE_CODE_OAUTH_TOKEN` · `GITOPS_PUSH_TOKEN` · `QA_STAGING_URL` · `QA_STORAGE_STATE` · `VERMEER_SECRETS_TOKEN` · **`TRIAGE_LABEL_TOKEN`** (31/07/2026) | `2026-07-29T14:56:37Z` · `2026-07-26T15:31:41Z` · `2026-07-26T15:04:55Z` · `2026-07-29T05:59:42Z` · `2026-07-26T19:05:24Z` · **`2026-07-31T08:41:36Z`** |
+| `POPAISTUDIO/vermeer-text` | `CLAUDE_CODE_OAUTH_TOKEN` · `GITOPS_PUSH_TOKEN` · `QA_STAGING_URL` · `QA_STORAGE_STATE` · `VERMEER_SECRETS_TOKEN` · `TRIAGE_LABEL_TOKEN` · **`QA_SERVICE_EMAIL`** · **`QA_SERVICE_PASSWORD`** (31/07/2026) | `2026-07-29T14:56:37Z` · `2026-07-26T15:31:41Z` · `2026-07-26T15:04:55Z` · `2026-07-31T09:27:54Z` · `2026-07-26T19:05:24Z` · `2026-07-31T08:41:36Z` · **`2026-07-31T12:03:24Z`** · **`2026-07-31T12:03:25Z`** |
 | `POPAISTUDIO/vermeer-gitops` | `CLAUDE_CODE_OAUTH_TOKEN` | `2026-07-29T14:56:38Z` |
 | `POPAISTUDIO/vermeer-gitops-prod` | **aucun** | — |
 
@@ -41,7 +41,7 @@
 >
 > **`GITOPS_PUSH_TOKEN` et `VERMEER_SECRETS_TOKEN` ne faisaient donc pas partie du périmètre du chantier 1.** Leurs dates du **26/07/2026** sont **INFERRED** cohérentes avec la campagne générale de renouvellement conduite avant la MEP v0.10.23 — et non avec un oubli de rotation. Expiration : **INFERRED** ~juillet 2027, comme le reste du parc. *(Ce point était marqué UNKNOWN à l'établissement du registre le 29/07/2026 ; tranché le jour même par la personne ayant conduit le chantier 1.)*
 >
-> **`QA_STORAGE_STATE`** (29/07 à 05h59) reste hors de ce raisonnement : il est réécrit **automatiquement à chaque run de QA** (rotation de session), sa date ne dit jamais rien d'une rotation de jeton.
+> **`QA_STORAGE_STATE`** restait hors de ce raisonnement : il était réécrit **automatiquement à chaque run de QA** (rotation de session), et sa date ne disait jamais rien d'une rotation de jeton. Sa dernière écriture automatique date du **31/07/2026 à 09h27** — **la dernière tout court** : depuis la bascule vers le compte de service (13a), plus aucun workflow ne le lit ni ne l'écrit. Lui et `VERMEER_SECRETS_TOKEN` sont **orphelins** et portés à la liste d'extinction du chantier 5 (suppression du secret, révocation du PAT).
 
 > **`vermeer-gitops-prod` ne porte aucun secret — OBSERVED.** Ce n'est pas un manque de configuration : c'est la règle « aucun agent n'écrit vers la production » telle qu'elle se lit dans l'infrastructure. Le jeton branches-only de l'agent MEP (⏳ chantier 7) y sera **le premier secret**, et il n'y entrera qu'après le ruleset — lequel existe depuis le 29/07/2026 ([GOVERNANCE.md §1](GOVERNANCE.md#amendement-acté--le-jeton-de-lagent-mep)).
 
@@ -83,26 +83,26 @@
 | | |
 |---|---|
 | **Identité** | Workflow `qa-nightly.yml`, job `wave1` (dépôt `vermeer-text`). Suite Playwright + une étape d'analyse `claude-code-action` |
-| **Secrets utilisés** | `QA_STORAGE_STATE` · `QA_STAGING_URL` · `VERMEER_SECRETS_TOKEN` · `CLAUDE_CODE_OAUTH_TOKEN` · `GITHUB_TOKEN` — **OBSERVED** |
+| **Secrets utilisés** | `QA_SERVICE_EMAIL` · `QA_SERVICE_PASSWORD` · `QA_STAGING_URL` · `CLAUDE_CODE_OAUTH_TOKEN` · `GITHUB_TOKEN` — **OBSERVED 31/07/2026**. *(Auparavant `QA_STORAGE_STATE` + `VERMEER_SECRETS_TOKEN` : retirés par le chantier 5, voir 13a.)* |
 | **Scopes / permissions** | Workflow : `contents: read` · `issues: write` · `id-token: write` — **OBSERVED**. Analyse Claude bridée par `--allowedTools "Read,Glob,Grep,Bash(gh issue *)"` |
-| **Stockage** | Secrets Actions de `vermeer-text` — **OBSERVED**. `QA_STORAGE_STATE` : `2026-07-29T05:59:42Z`, **réécrit par le job lui-même à chaque run** (la session staging rote son refresh token à chaque chargement, donc à usage unique) |
-| **Expiration** | `QA_STORAGE_STATE` : **usage unique**, périmé après un chargement — republié en fin de job (OBSERVED). `VERMEER_SECRETS_TOKEN` : **INFERRED** ~juillet 2027 (mis à jour `2026-07-26T19:05:24Z`). `QA_STAGING_URL` : n'expire pas (URL, pas un jeton) |
-| **Permis** | Jouer les 12 cas P0 `@wave1` contre staging · lire `report.json`, les `error-context.md` et `e2e/staging/README.md` · créer / commenter **le seul** Dossier QA (issue 112, label `qa-nightly`) · créer le label `qa-nightly` s'il manque · **republier `QA_STORAGE_STATE`** via `VERMEER_SECRETS_TOKEN` |
-| **Interdits** | Modifier un fichier du dépôt · déduire un PASS d'une absence d'information · compter un `skipped` comme un succès · présenter une session expirée comme un défaut produit · créer ou fermer **toute autre issue** que le Dossier QA (le triage est un autre workflow) |
-| **Fiabilité** | **Le point sensible est `VERMEER_SECRETS_TOKEN`** : il permet d'**écrire les secrets** du dépôt (`gh secret set`) — le pouvoir le plus élevé du registre côté `vermeer-text`. Il n'est utilisé que pour republier la session QA. **INFERRED** : jeton fine-grained portant `secrets: write` sur `vermeer-text` ; scopes exacts **UNKNOWN** (non exposés par l'API). ⏳ Le compte de service du **chantier 5** supprime le besoin de `QA_STORAGE_STATE` — et donc l'essentiel de la raison d'être de ce jeton |
+| **Stockage** | Secrets Actions de `vermeer-text` — **OBSERVED**. Les identifiants du compte de service ne sont lus que par le step Playwright, en variables d'environnement, jamais en argument de commande |
+| **Expiration** | `QA_SERVICE_EMAIL` / `QA_SERVICE_PASSWORD` : **n'expirent pas** — mais **non rotables par l'application** (voir 13a). `QA_STAGING_URL` : n'expire pas (URL, pas un jeton) |
+| **Permis** | Jouer les cas P0 `@wave1` contre staging · lire `report.json`, les `error-context.md` et `e2e/staging/README.md` · créer / commenter **le seul** Dossier QA (issue 112, label `qa-nightly`) · créer le label `qa-nightly` s'il manque |
+| **Interdits** | Modifier un fichier du dépôt · **écrire un secret du dépôt** — ce pouvoir lui a été retiré avec `VERMEER_SECRETS_TOKEN` · déduire un PASS d'une absence d'information · compter un `skipped` comme un succès · présenter une session expirée comme un défaut produit · créer ou fermer **toute autre issue** que le Dossier QA (le triage est un autre workflow) |
+| **Fiabilité** | **Le point sensible a disparu le 31/07/2026.** Ce job portait `VERMEER_SECRETS_TOKEN`, qui permettait d'**écrire les secrets** du dépôt (`gh secret set`) — le pouvoir le plus élevé du registre côté `vermeer-text` — au seul usage de republier la session QA. Le compte de service (13a) a supprimé ce besoin : **plus aucun jeton en écriture sur les secrets dans la boucle de QA**. Le jeton lui-même reste à révoquer (liste d'extinction du chantier 5) |
 
 ### 4. Canary providers — `vermeer-text`
 
 | | |
 |---|---|
 | **Identité** | Workflow `canary-providers.yml`, job `canary` (dépôt `vermeer-text`). **Aucun agent Claude** — assertions déterministes seules |
-| **Secrets utilisés** | `QA_STORAGE_STATE` · `QA_STAGING_URL` · `VERMEER_SECRETS_TOKEN` · `GITHUB_TOKEN` — **OBSERVED** |
+| **Secrets utilisés** | `QA_SERVICE_EMAIL` · `QA_SERVICE_PASSWORD` · `QA_STAGING_URL` · `GITHUB_TOKEN` — **OBSERVED 31/07/2026**. *(Auparavant `QA_STORAGE_STATE` + `VERMEER_SECRETS_TOKEN` : retirés par le chantier 5, voir 13a.)* |
 | **Scopes / permissions** | `contents: read` · `issues: write` — **OBSERVED** (le plus étroit des workflows QA : pas d'`id-token`) |
-| **Stockage** | Secrets Actions de `vermeer-text` (partagés avec la QA nightly) — **OBSERVED**. Groupe de concurrence `qa-session` partagé avec `qa-nightly.yml` : les deux ne tournent jamais en parallèle |
+| **Stockage** | Secrets Actions de `vermeer-text` (partagés avec la QA nightly) — **OBSERVED**. Groupe de concurrence `qa-session` partagé avec `qa-nightly.yml` : les deux ne tournent jamais en parallèle — un seul compte de service, un seul budget |
 | **Expiration** | Identique à la QA nightly |
-| **Permis** | Jouer les 4 cas `@canary` (GEN-02, GEN-03, GEN-06, SEL-01) · créer les labels `canary` et `infra` s'ils manquent · ouvrir une issue d'alerte quand le canary est rouge (avec la consigne « Point 0 avant tout diagnostic ») · republier `QA_STORAGE_STATE` |
-| **Interdits** | Modifier un fichier du dépôt · poser un **label déclencheur** — il pose `canary` + `infra`, deux labels de classement, **jamais `claude-fix`** ([règle « l'observation ne désigne pas »](GOVERNANCE.md#6--observation)) · conclure quoi que ce soit avant le Point 0 |
-| **Fiabilité** | **Élevée.** Aucun jugement de modèle dans la boucle, verdict = code de sortie, gate final explicite (`exit 1` si rouge). Porte le même `VERMEER_SECRETS_TOKEN` que la QA nightly, avec les mêmes réserves |
+| **Permis** | Jouer les 4 cas `@canary` (GEN-02, GEN-03, GEN-06, SEL-01) · créer les labels `canary` et `infra` s'ils manquent · ouvrir une issue d'alerte quand le canary est rouge (avec la consigne « Point 0 avant tout diagnostic ») |
+| **Interdits** | Modifier un fichier du dépôt · **écrire un secret du dépôt** — ce pouvoir lui a été retiré avec `VERMEER_SECRETS_TOKEN` · poser un **label déclencheur** — il pose `canary` + `infra`, deux labels de classement, **jamais `claude-fix`** ([règle « l'observation ne désigne pas »](GOVERNANCE.md#6--observation)) · conclure quoi que ce soit avant le Point 0 |
+| **Fiabilité** | **Élevée.** Aucun jugement de modèle dans la boucle, verdict = code de sortie, gate final explicite (`exit 1` si rouge). Ne porte plus aucun jeton en écriture depuis le 31/07/2026 |
 
 ### 5. Triage QA — `vermeer-text`
 
@@ -218,22 +218,45 @@
 
 ---
 
+### 13a. Compte de service de test — staging — vivant depuis le 31/07/2026
+
+*Volet **staging** de l'entrée 13, qui reste un placeholder pour le volet production (phase 2).*
+
+| | |
+|---|---|
+| **Identité** | Compte applicatif LibreChat `svc-qa-staging@vermeer.invalid` — `provider: local`, `role: USER`, `_id` `6a6c8dadf5fb627cea642c77`, nom d'affichage `QA Service Staging` — **OBSERVED 31/07/2026** (réponse de `POST /api/auth/login`). **Identifiable** : le nom et l'adresse le distinguent sans ambiguïté d'un utilisateur réel, et le TLD `.invalid` ([RFC 2606](https://www.rfc-editor.org/rfc/rfc2606)) garantit qu'aucun courrier ne peut l'atteindre |
+| **Secrets utilisés** | `QA_SERVICE_EMAIL` · `QA_SERVICE_PASSWORD` — secrets Actions de `vermeer-text`, créés le **31/07/2026 12:03 UTC** — **OBSERVED** (`gh secret list`) |
+| **Scopes / permissions** | Périmètre **fonctionnel d'utilisateur standard** : se connecter, converser, téléverser un fichier de test. `role: USER` — **aucun droit d'administration applicative**, donc ni Analytics, ni Seuils & gestion (admin-only) |
+| **Stockage** | Secrets Actions de `vermeer-text` — **OBSERVED**. Consommés par `qa-nightly.yml` et `canary-providers.yml`, passés en variables d'environnement du seul step Playwright. Jamais en argument de commande |
+| **Expiration** | **Aucune.** Ni le compte ni le mot de passe n'expirent — ils vivent tant que le compte existe |
+| **⚠️ Non-rotable par l'application** | **Propriété permanente, OBSERVED 31/07/2026.** Il n'existe aucune route de changement de mot de passe (`api/server/routes/user.js`), et la réinitialisation est désactivée (`passwordResetEnabled: false`, `emailEnabled: false`). Qui détient ce mot de passe le détient **définitivement**. C'est le prix assumé de cette voie, en échange du retrait du PAT en écriture |
+| **Remédiation en cas de compromission** | Trois temps, dans cet ordre : ① **supprimer le compte** via l'admin ; ② **rejouer la fenêtre d'inscription** — procédure documentée et exécutée le 31/07/2026, avec deux PRs modèles sur `vermeer-gitops` : **93** (ouverture, `ALLOW_REGISTRATION` + bump `restartedAt`) et **101** (refermeture, retrait + bump distinct et postérieur) ; ③ **remplacer** `QA_SERVICE_EMAIL` et `QA_SERVICE_PASSWORD`. Chaque étape se prouve par `curl /api/config`, jamais par un merge : une clé de `configEnv` n'atteint pas un pod en cours d'exécution |
+| **Permis** | Exercer staging **par l'application** (HTTP), en login programmatique à chaque test. Consommer son budget mensuel de complétions |
+| **Interdits** | Toute écriture d'infrastructure · tout accès gitops · **tout jeton GitHub** — ce compte n'en porte aucun · toute action d'administration applicative · tout usage hors QA automatisée |
+| **Bénéfice obtenu** | Supprime `QA_STORAGE_STATE` (session à usage unique capturée à la main) **et** l'usage de `VERMEER_SECRETS_TOKEN` dans la boucle de QA : plus aucun jeton en écriture sur les secrets du dépôt n'est nécessaire pour faire tourner la recette |
+| **Fiabilité** | **Élevée.** Aucune dépendance à un état capturé, à un relais entre tests, ni à un jeton expirable. Réserve unique et connue : la non-rotabilité ci-dessus. **Budget** : `balance.enabled: true` en staging, plafond mensuel par défaut `10_000_000` tokenCredits = **10 USD/mois** (`packages/data-schemas/src/schema/balance.ts:42`), réinitialisé mensuellement (`VERMEER_BUDGET_RESET_ENABLED: "true"`) — **OBSERVED 31/07/2026**. La consommation réelle d'un run reste **UNKNOWN** tant qu'un premier run n'a pas tourné |
+
+---
+
 ## Identités futures (placeholders)
 
 *Elles n'existent pas encore. Elles sont inscrites d'avance pour que le pouvoir soit décrit **avant** d'être créé — c'est l'ordre imposé par [GOVERNANCE.md §1](GOVERNANCE.md#1--identités-et-pouvoirs).*
 
-### 13. Compte de service de test — ⏳ chantier 5
+### 13. Compte de service de test — **production** — ⏳ chantier 5, phase 2
+
+*Le volet **staging** de cette entrée est **vivant depuis le 31/07/2026** : voir **13a**. Ce placeholder ne couvre plus que le compte de **production** (Point 0 + smoke prod), qui reste à créer — et qui, lui, devra passer par l'écluse.*
 
 | | |
 |---|---|
-| **Identité** | Compte applicatif dédié à la vérification automatique (QA staging, Point 0 + smoke prod). **Identifiable** : son trafic doit être isolable dans les logs et distinguable d'un utilisateur réel |
-| **Secrets utilisés** | À définir. **Nommage attendu** : identifiants du compte en secrets Actions, noms explicites. **Ne jamais réutiliser** un compte réel |
+| **Identité** | Compte applicatif dédié à la vérification automatique de la **production** (Point 0 + smoke prod). **Identifiable** : son trafic doit être isolable dans les logs et distinguable d'un utilisateur réel. **Distinct de 13a** : deux comptes, deux jeux de secrets, aucun partage entre staging et production |
+| **Secrets utilisés** | À définir. **Nommage attendu** : `QA_SERVICE_EMAIL_PROD` / `QA_SERVICE_PASSWORD_PROD` ou équivalent explicite, **jamais** les secrets de staging. **Ne jamais réutiliser** un compte réel |
 | **Scopes / permissions** | Périmètre **read-only fonctionnel** : se connecter, envoyer une requête minimale, lire une réponse. **Aucun droit d'administration applicative** |
 | **Stockage** | Secrets Actions de `vermeer-text` (**INFERRED** — le workflow de smoke y vivra) |
 | **Expiration** | À consigner **OBSERVED** à la création |
 | **Permis** | Exercer la production **par l'application** (HTTP), et **nettoyer derrière lui** — aucune conversation, aucun fichier, aucun état résiduel |
 | **Interdits** | Toute écriture d'infrastructure · tout accès gitops · tout jeton d'écriture GitHub · laisser un état en production |
-| **Bénéfice attendu** | Supprime la fragilité `QA_STORAGE_STATE` (session à usage unique capturée à la main) et, avec elle, l'essentiel du besoin de `VERMEER_SECRETS_TOKEN` |
+| **Bénéfice attendu** | Rend le Point 0 et le smoke prod exécutables sans intervention humaine. La fragilité `QA_STORAGE_STATE` et le besoin de `VERMEER_SECRETS_TOKEN` dans la boucle de QA sont, eux, **déjà supprimés** par 13a |
+| **À reprendre de 13a** | La propriété de **non-rotabilité** du mot de passe et sa procédure de remédiation valent identiquement ici — avec une contrainte de plus : la fenêtre d'inscription y serait ouverte **en production**, donc soumise à l'écluse humaine ([GOVERNANCE.md §4](GOVERNANCE.md#4--lécluse)) et à un traçage dédié. Ce n'est pas un copier-coller de la manœuvre de staging |
 
 ### 14. Crons d'observation — ⏳ chantier 6
 

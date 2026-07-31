@@ -13,7 +13,7 @@ fichier upstream n'est modifié.
 
 1. [Lancement local](#1-lancement-local)
 2. [Variables requises](#2-variables-requises)
-3. [Authentification et régénération de `auth.json`](#3-authentification-et-régénération-de-authjson)
+3. [Authentification — compte de service et login programmatique](#3-authentification--compte-de-service-et-login-programmatique)
 4. [Isolation d'état et ciblage des conversations](#4-isolation-détat-et-ciblage-des-conversations)
 5. [Convention de tags](#5-convention-de-tags)
 6. [Cas couverts](#6-cas-couverts)
@@ -32,7 +32,7 @@ npm install
 npx playwright install chromium      # une fois
 
 export BASE_URL="https://<hôte-de-l-environnement>"   # jamais committé
-# placer la session QA dans e2e/staging/auth.json (cf. §3)
+# identifiants du compte de service : QA_SERVICE_EMAIL / QA_SERVICE_PASSWORD (cf. §3)
 
 npx playwright test --grep @wave1 --grep-invert @known-issue   # porte de release (11 cas)
 npx playwright test --grep @canary   # sous-ensemble rapide (4 cas)
@@ -48,29 +48,18 @@ Raccourcis équivalents : `npm run test:wave1`, `npm run test:canary`,
 > filtre exact de `qa-nightly.yml`. Sans lui, un run local compte des cas que la CI ne compte
 > pas — donc un verdict qui n'est pas celui de la porte (§5).
 
-La suite tourne sur **chromium uniquement**, en **série** (`workers: 1`) : un seul compte QA, et
-chaque cas déclenche de vrais appels LLM facturés.
+La suite tourne sur **chromium uniquement**, en **série** (`workers: 1`) : un seul compte de
+service, et chaque cas déclenche de vrais appels LLM facturés.
 
-> ### ⚠️ Un run local désynchronise le secret `QA_STORAGE_STATE`
+> ### ⚠️ Un seul compte — ne pas croiser un run local et un run CI
 >
-> L'application fait de la **rotation de refresh token** (cf. §3) : dès le premier test, le
-> token porté par le secret CI est **invalidé** et le nouveau n'existe plus que dans le
-> `auth.json` local. Tant que ce fichier n'est pas republié, le prochain run de
-> `qa-nightly` / `canary-providers` échoue sur la garde de session (« Session QA expirée »),
-> sans qu'aucun défaut produit soit en cause.
+> Un run local ne désynchronise plus aucun secret : la suite s'authentifie par login
+> programmatique et il n'existe plus de session partagée entre le poste et la CI (cf. §3).
 >
-> **Après tout run local, republier le secret** :
->
-> ```bash
-> cd e2e/staging
-> base64 -i auth.json -o auth.json.b64      # macOS  (Linux : base64 -w0 auth.json > auth.json.b64)
-> gh secret set QA_STORAGE_STATE < auth.json.b64
-> rm -f auth.json.b64
-> ```
->
-> Même contrainte dans l'autre sens : lancer un run local **pendant** un run CI casse l'un
-> des deux. Les workflows partagent le groupe de concurrence `qa-session` entre eux, mais un
-> poste de dev n'en fait pas partie.
+> Reste la contrainte d'usage : **un seul compte de service**, de vrais appels LLM facturés, et
+> un budget mensuel. Lancer un run local **pendant** un run CI fait tourner deux consommateurs
+> sur le même compte. Les deux workflows se sérialisent entre eux par le groupe de concurrence
+> `qa-session` — un poste de dev n'en fait pas partie.
 
 ---
 
@@ -79,34 +68,53 @@ chaque cas déclenche de vrais appels LLM facturés.
 | Variable | Obligatoire | Rôle |
 |---|---|---|
 | `BASE_URL` | **oui** | URL racine de l'environnement cible. Aucune URL n'est codée en dur dans le dépôt. |
-| `e2e/staging/auth.json` | **oui** (fichier) | Session QA capturée à la main (SSO). Jamais committé. |
+| `QA_SERVICE_EMAIL` | **oui** | Adresse du compte de service (`svc-qa-staging@vermeer.invalid`). |
+| `QA_SERVICE_PASSWORD` | **oui** | Mot de passe du compte de service. Jamais en argument de commande. |
 | `E2E_UPLOAD_LIMIT_MB` | non (défaut `10`) | Limite de taille d'upload attendue de l'environnement, utilisée par les messages d'échec des cas FILE. |
 | `PLAYWRIGHT_JSON_OUTPUT_NAME` | non (défaut `report.json`) | Chemin du rapport JSON. |
 | `CI` | non | Active `retries: 1` et `forbidOnly`. |
 
-Si `BASE_URL` est absent ou si `auth.json` est manquant, la suite **échoue immédiatement au
-chargement de la configuration**, avec la marche à suivre — aucun test n'est lancé.
+Si `BASE_URL` est absent, ou si l'un des deux identifiants du compte de service manque, la suite
+**échoue immédiatement au chargement de la configuration**, avec la marche à suivre — aucun test
+n'est lancé. Le message ne cite que les **noms** des variables manquantes.
 
 ### Secrets attendus côté GitHub Actions
 
 | Secret | Contenu | Utilisé par |
 |---|---|---|
 | `QA_STAGING_URL` | URL racine de l'environnement cible (alimente `BASE_URL`) | les trois workflows |
-| `QA_STORAGE_STATE` | `auth.json` encodé en base64 — **relais, pas valeur figée** (cf. §3) | nightly, canary |
-| `VERMEER_SECRETS_TOKEN` | PAT fine-grained, portée **Secrets : Read and write** sur `vermeer-text`, durée 90 j | étape de persistance de session |
+| `QA_SERVICE_EMAIL` | adresse du compte de service | nightly, canary |
+| `QA_SERVICE_PASSWORD` | mot de passe du compte de service — **non rotable par l'application** (cf. §3) | nightly, canary |
 | `CLAUDE_CODE_OAUTH_TOKEN` | jeton OAuth Claude Code (déjà en place pour `claude.yml`) | nightly (analyse), triage |
 
-`VERMEER_SECRETS_TOKEN` expire au bout de 90 jours : à son expiration, l'étape de
-persistance émet un **warning** (`session rotatée NON republiée`) et le run **suivant**
-échoue sur la garde. Le renouvellement du PAT fait donc partie de l'entretien courant.
+Aucun de ces deux identifiants n'expire : ils vivent aussi longtemps que le compte. En
+contrepartie, **ils ne peuvent pas être rotés par l'application** — la remédiation en cas de
+compromission passe par la suppression du compte et le rejeu de la fenêtre d'inscription (§3).
+
+> **Ce que cette bascule a retiré.** `QA_STORAGE_STATE` (session à usage unique) et
+> `VERMEER_SECRETS_TOKEN` (PAT en écriture sur les secrets, 90 jours) ne sont plus consommés par
+> ces deux workflows : plus de session à restaurer, plus de session à republier, donc plus de
+> jeton en écriture dans la boucle de QA.
 
 ---
 
-## 3. Authentification et régénération de `auth.json`
+## 3. Authentification — compte de service et login programmatique
 
-L'environnement est derrière un **SSO Entra ID** : aucun login par formulaire n'est possible depuis
-un test. L'authentification passe exclusivement par un `storageState` capturé manuellement, injecté
-via `use.storageState` dans `playwright.config.ts`.
+La suite s'authentifie avec un **compte de service local LibreChat**, par `POST /api/auth/login`,
+**à chaque test**. Il n'y a plus de `storageState` capturé à la main, plus de fichier `auth.json`,
+plus de secret de session à republier.
+
+| | |
+|---|---|
+| Compte | `svc-qa-staging@vermeer.invalid` — `provider: local`, `role: USER` |
+| Créé le | 31/07/2026, par `POST /api/auth/register` pendant une fenêtre d'inscription bornée |
+| Identifiants | secrets Actions `QA_SERVICE_EMAIL` et `QA_SERVICE_PASSWORD` (dépôt `vermeer-text`) |
+| Registre | entrée **13a** de [`docs/registre-identites.md`](../../docs/registre-identites.md) |
+
+Le TLD `.invalid` est réservé par la [RFC 2606](https://www.rfc-editor.org/rfc/rfc2606) : l'adresse
+ne peut recevoir aucun courrier, ce qui est exactement l'effet recherché. Elle passe le validateur
+d'email du fork (`api/strategies/validators.js:52`, `z.string().email()`) comme celui du formulaire
+d'inscription (`client/src/components/Auth/Registration.tsx:161`).
 
 ### Garde de session (à lire avant de déclarer un bug)
 
@@ -115,96 +123,84 @@ Le projet Playwright `guard` (`tests/guard.setup.ts`) tourne **avant tout le res
 le message est sans ambiguïté :
 
 ```
-Session QA expirée — régénérer QA_STORAGE_STATE (voir e2e/staging/README.md)
-Le mur d'authentification est servi sur https://<hôte>/login.
-POST /api/auth/refresh → HTTP 401 Refresh token expired or not found for this user
+Session QA indisponible — le compte de service ne s'authentifie pas (voir e2e/staging/README.md §3)
+POST /api/auth/login → HTTP 401
 ```
 
-Une expiration de session ne doit **jamais** être lue comme un bug produit. Le test de garde porte
-tous les tags de la suite (`@guard @wave1 @canary @extra`) pour qu'aucun `--grep` ne puisse le
-filtrer et court-circuiter la garde.
+Un défaut de session ne doit **jamais** être lu comme un bug produit. Le test de garde porte tous
+les tags de la suite (`@guard @wave1 @canary @extra`) pour qu'aucun `--grep` ne puisse le filtrer et
+court-circuiter la garde.
 
-### ⚠️ Rotation du refresh token — le `storageState` est à usage unique
+C'est aussi lui qui porte le cas « compte de service KO » : le triage le classe dans sa catégorie
+existante **SESSION EXPIRÉE**, dont le déclencheur nommé est précisément l'échec de
+`guard.setup.ts`. Aucune catégorie n'a été ajoutée à la taxonomie.
 
-L'application fait de la **rotation de refresh token** : au premier chargement, le client appelle
-`POST /api/auth/refresh`, et le serveur régénère le refresh token de la session
+> **Dette déclarée.** Le prompt de `qa-triage.yml` fait encore poster, dans ce cas, un commentaire
+> disant de « régénérer `QA_STORAGE_STATE` ». Le nom du secret est périmé ; le renvoi vers cette
+> section, lui, reste valide — d'où cette page. Corriger le prompt exige un rejeu
+> `qa-triage-replay` et une décision séparée : c'est tracé comme dette, pas comme oubli.
+
+### Un login par test, et pourquoi
+
+L'application fait de la **rotation de refresh token** : au premier chargement de page, le client
+appelle `POST /api/auth/refresh` et le serveur régénère le refresh token de la session
 (`AuthService.setAuthTokens` → `generateRefreshToken(session)`), ce qui **invalide celui qui vient
 d'être présenté**.
 
-Conséquences :
+Une session obtenue **une seule fois par run** serait donc périmée dès la fin du premier test :
+chaque test ouvre un contexte neuf, réamorcé depuis le même instantané, et se heurterait au mur de
+login. C'est le trou que bouchait l'ancienne fixture `persistRotatedSession`, qui relayait l'état
+rotaté de test en test — au prix d'un couplage fragile, où un run interrompu au mauvais moment
+perdait la session pour tous les suivants.
 
-- **Dans un run** : la fixture `persistRotatedSession` (`lib/test.ts`) réécrit `auth.json` avec les
-  cookies rotatés à la fin de **chaque** test. Combinée à `workers: 1`, elle fait circuler la session
-  de test en test. Sans elle, seul le premier test s'authentifie et tous les suivants tombent sur le
-  mur de login.
-- **Entre deux runs locaux** : l'état rotaté reste dans `auth.json`, donc les runs s'enchaînent.
-  En revanche le secret `QA_STORAGE_STATE` porte désormais un token mort : **le republier**
-  (cf. l'encadré de §1).
-- **En CI** : l'état rotaté vit dans le workspace du job et disparaît avec lui. Une capture
-  ne servirait donc qu'une seule fois. Les workflows referment cette boucle : voir la
-  mécanique de persistance ci-dessous.
+Un login **par test** (`lib/auth.ts`, fixture `storageState` de `lib/test.ts`) supprime le problème
+à sa racine : chaque contexte porte sa propre session, personne n'hérite de personne, il n'y a plus
+rien à relayer ni à republier. Le coût est d'un appel HTTP par test.
 
-### Persistance de session en CI
-
-`qa-nightly.yml` et `canary-providers.yml` traitent `QA_STORAGE_STATE` comme un **relais**,
-pas comme une valeur figée :
-
-1. **Au début du job** — le secret est décodé vers `e2e/staging/auth.json`.
-2. **Pendant le run** — la fixture `persistRotatedSession` réécrit ce fichier après chaque
-   test, avec les cookies rotatés.
-3. **À la fin du job** (`if: always()`) — le fichier est ré-encodé en base64 et republié
-   dans le secret via `gh secret set`, authentifié par `VERMEER_SECRETS_TOKEN`.
-
-La session survit ainsi d'un run au suivant, et se prolonge à chaque exécution.
-
-Trois garde-fous à l'étape de persistance : le secret **n'est jamais écrasé** si
-`VERMEER_SECRETS_TOKEN` est absent, si `auth.json` est vide, ou si son contenu n'est pas un
-JSON valide. Dans ces cas l'étape émet un warning et sort en succès — on préfère un run
-suivant qui échoue proprement sur la garde à un secret détruit.
-
-**Limite connue.** Si un run est **annulé ou tué après la rotation mais avant la
-persistance** (timeout de job, annulation manuelle, panne du runner), le token rotaté est
-perdu : le secret contient encore l'ancien, désormais invalide. Le run suivant échoue sur la
-garde avec « Session QA expirée » — il faut alors **régénérer `auth.json` à la main** (§3
-ci-dessous) et republier le secret. C'est le seul mode de défaillance qui impose une
-intervention humaine ; les deux workflows partagent le groupe de concurrence `qa-session`
-précisément pour ne jamais interrompre un run au milieu d'une rotation.
-
-### Régénérer la session
+### Lancement local
 
 ```bash
 cd e2e/staging
 
-# 1. Capture interactive : un navigateur s'ouvre, on s'authentifie via le SSO,
-#    on attend d'être sur la page de chat, puis on ferme la fenêtre.
-npx playwright codegen --save-storage=auth.json "$BASE_URL"
+export BASE_URL="https://<hôte-de-l-environnement>"
+export QA_SERVICE_EMAIL="svc-qa-staging@vermeer.invalid"
+read -rs QA_SERVICE_PASSWORD && export QA_SERVICE_PASSWORD   # saisie masquée, pas d'historique
 
-# 2. Vérifier que la capture est exploitable (doit passer)
-npx playwright test --project=guard
-
-# 3. Encoder pour le secret CI
-base64 -i auth.json -o auth.json.b64      # macOS
-# base64 -w0 auth.json > auth.json.b64    # Linux
-
-# 4. Publier le secret
-gh secret set QA_STORAGE_STATE < auth.json.b64
-
-# 5. Ne jamais committer ces fichiers (déjà couverts par .gitignore)
-rm -f auth.json.b64
+npx playwright test --project=guard    # vérifie que le compte s'authentifie
 ```
 
-Côté job CI, le secret est redéployé en fichier avant le run — le secret passe par une
-variable d'environnement, jamais en clair dans la ligne de commande :
+`read -rs` évite que le mot de passe atterrisse dans l'historique du shell ou dans la liste des
+processus. **Ne jamais le passer en argument de commande.**
 
-```yaml
-- name: Restaurer la session QA
-  env:
-    QA_STORAGE_STATE_B64: ${{ secrets.QA_STORAGE_STATE }}
-  run: echo "$QA_STORAGE_STATE_B64" | base64 -d > e2e/staging/auth.json
+Un run local ne désynchronise plus rien : il n'y a aucun secret de session partagé entre le poste
+et la CI. Reste la contrainte d'usage — **un seul compte**, et de vrais appels LLM facturés : ne pas
+lancer un run local pendant un run CI. Les deux workflows se sérialisent entre eux par le groupe de
+concurrence `qa-session`, mais un poste de dev n'en fait pas partie.
+
+### ⚠️ Aucune rotation de mot de passe n'est possible par l'application
+
+Il n'existe **aucune** route de changement de mot de passe (`api/server/routes/user.js`), et la
+réinitialisation est désactivée (`passwordResetEnabled: false`, `emailEnabled: false`). Qui détient
+ce mot de passe le détient **définitivement**.
+
+En cas de compromission du secret, la remédiation est en trois temps :
+
+1. **supprimer le compte** via l'admin ;
+2. **rejouer la fenêtre d'inscription** — procédure documentée et déjà exécutée le 31/07/2026, avec
+   deux PRs modèles sur `POPAISTUDIO/vermeer-gitops` : [93](https://github.com/POPAISTUDIO/vermeer-gitops/pull/93)
+   (ouverture : `ALLOW_REGISTRATION` + bump `restartedAt`) et
+   [101](https://github.com/POPAISTUDIO/vermeer-gitops/pull/101) (refermeture : retrait + bump
+   distinct et postérieur) ;
+3. **remplacer** les deux secrets Actions.
+
+Chaque étape de la fenêtre se prouve par un `curl`, jamais par un merge : une clé de `configEnv`
+n'atteint pas un pod en cours d'exécution, d'où le bump de `restartedAt` dans les deux PRs.
+
+```bash
+curl -s "$BASE_URL/api/config" | python3 -m json.tool | grep registrationEnabled
 ```
 
-`auth.json` et `auth.json.b64` sont dans `.gitignore`. **Aucune session ne doit apparaître dans le
-code ni dans l'historique git.**
+**Aucun identifiant ne doit apparaître dans le code, dans les logs, ni dans l'historique git.**
 
 ---
 
@@ -218,9 +214,9 @@ instabilité sur les runs des 26-27/07 (cf. issue #112). Les deux parades sont m
 
 **Le problème.** LibreChat persiste nativement le dernier réglage de conversation dans le
 `localStorage` (`lastConversationSetup_0`, `lastSelectedModel`, …) : une conversation neuve en
-hérite, c'est le comportement produit voulu. Mais le `storageState` réécrit après chaque test par
-`persistRotatedSession` embarque **les origines et leur `localStorage`** : le modèle choisi par un
-test devenait donc le modèle par défaut du test suivant. GEN-03, qui asserte précisément le modèle
+hérite, c'est le comportement produit voulu. Or le `storageState` de l'époque, réécrit après chaque
+test par la fixture `persistRotatedSession`, embarquait **les origines et leur `localStorage`** : le
+modèle choisi par un test devenait le modèle par défaut du test suivant. GEN-03, qui asserte le modèle
 par défaut d'une conversation neuve, lisait le résidu de GEN-02 — « Opus 4.8 » un jour, « Sonnet
 4.6 » le lendemain. Le libellé qui change d'un run à l'autre est la signature d'un héritage, jamais
 celle d'un défaut produit.
@@ -244,9 +240,8 @@ de `packages/data-provider/src/config.ts`.
 **Ce qui n'est jamais touché** :
 
 - **Les cookies.** L'authentification est intégralement portée par eux (`refreshToken`,
-  `connect.sid`, `token_provider`, `cognito`, cookies Entra ID) ; **aucun jeton
-  d'authentification ne vit dans le `localStorage`** de cette application. La purge est donc sans
-  effet sur la session, et le relais `persistRotatedSession` fonctionne à l'identique.
+  `token_provider`) ; **aucun jeton d'authentification ne vit dans le `localStorage`** de cette
+  application. La purge est donc sans effet sur la session posée par le login programmatique.
 - Les préférences d'affichage hors conversation : `i18nextLng`, `color-theme`, `appTitle`,
   `favorites`, `chatsExpanded`, `react-resizable-panels:*`.
 
@@ -399,7 +394,7 @@ Trois workflows, dans `.github/workflows/` :
 
 | Workflow | Nom affiché | Déclencheur | Filtre | Rôle |
 |---|---|---|---|---|
-| `qa-nightly.yml` | `QA Nightly — Staging` | cron `30 4 * * 1-5` (06h30 Paris été) + manuel | `--grep @wave1 --grep-invert @known-issue` | Porte de release. Rouge = pas de release. Analyse du rapport et tenue du **Dossier QA nightly** (label `qa-nightly`). |
+| `qa-nightly.yml` | `QA Nightly — Staging` | **`workflow_dispatch` seul** — cron retiré au standby (31/07/2026) | `--grep @wave1 --grep-invert @known-issue` | Porte de release. Rouge = pas de release. Analyse du rapport et tenue du **Dossier QA nightly** (label `qa-nightly`). |
 | `canary-providers.yml` | `Canary Providers` | cron `0 5 * * 1-5` + manuel | `--grep @canary` | Garde-fou court (4 cas, ~4 min). Ouvre une issue `canary`/`infra` si rouge. Aucun cas `@canary` n'est aujourd'hui tagué `@known-issue-N` ; le jour où il y en aurait un, ce filtre est à aligner sur celui de la nightly. |
 | `qa-triage.yml` | `QA Triage` | `workflow_run` sur la nightly **en échec** | — | Classe les échecs et n'ouvre des issues `claude-fix` que pour les vrais bugs produit. **Second désignateur** : ses six garde-fous sont prescrits par [`GOVERNANCE.md` §2](../../docs/GOVERNANCE.md). |
 | `qa-triage-replay.yml` | `QA Triage — rejeu sur fixtures` | `workflow_dispatch` | — | **Test de garde** du triage : rejeu du prompt vivant sur fixtures archivées, en dry-run vis-à-vis de GitHub. Mode d'emploi : [`fixtures/triage/README.md`](fixtures/triage/README.md). |
@@ -407,11 +402,31 @@ Trois workflows, dans `.github/workflows/` :
 Les cas `@extra` (FILE-02, FILE-04, SKL-01c) ne sont dans **aucun** workflow planifié : ils
 se lancent à la main (`npx playwright test` sans filtre), étant hors porte de release.
 
+> ### ⏸️ Standby — la nightly ne part plus toute seule
+>
+> Depuis la mise en **standby** du projet (31/07/2026), `qa-nightly.yml` n'a plus de `schedule` :
+> il ne se réveille que sur **dispatch manuel**. Il n'y a plus de flux de dev à surveiller, et une
+> recette qui tourne chaque nuit sur un produit figé ne produit que du bruit et de la
+> consommation.
+>
+> ```bash
+> gh workflow run "QA Nightly — Staging" --repo POPAISTUDIO/vermeer-text
+> ```
+>
+> **`canary-providers.yml` garde son cron** : il reste le seul œil automatique sur staging tant
+> que la sonde de production n'existe pas. Son sort se réglera avec elle.
+>
+> Le réveil post-train n'est pas coupé pour autant : `release-train.yml` déclenche la nightly par
+> `gh workflow run`, donc par `workflow_dispatch`. Ce chemin se tait parce que le train lui-même
+> n'a plus rien à propager, pas parce qu'on l'a fermé.
+
 ### Ce que chaque workflow fait de la session
 
 `qa-nightly` et `canary-providers` partagent le groupe de concurrence **`qa-session`** (sans
-annulation) : la session staging ne supporte pas deux consommateurs simultanés. Tous deux
-restaurent la session au début et **republient l'état rotaté à la fin** (cf. §3).
+annulation) : un seul compte de service, et de vrais appels LLM facturés sur un budget mensuel.
+
+Aucun des deux ne restaure ni ne republie de session : ils passent `QA_SERVICE_EMAIL` et
+`QA_SERVICE_PASSWORD` à la suite, qui s'authentifie elle-même à chaque test (cf. §3).
 
 ### Chaîne de traitement des échecs
 
@@ -513,19 +528,15 @@ masquerait le sujet réel des cas FILE (limite de taille, prise en compte du con
 
 ## 10. Limites connues
 
-- **Rotation du refresh token — traitée, mais pas supprimée.** La réinjection du secret en fin
-  de job est **implémentée** dans `qa-nightly.yml` et `canary-providers.yml` (cf. §3
-  « Persistance de session en CI »). Contrepartie assumée : la CI détient un PAT autorisé à
-  écrire les secrets du dépôt (`VERMEER_SECRETS_TOKEN`), et un run tué entre la rotation et la
-  persistance impose une régénération manuelle. Deux alternatives restent ouvertes, par ordre
-  de robustesse :
-  1. **Compte de service QA en authentification locale** (email + mot de passe hors SSO), si
-     l'environnement peut en exposer un : supprime totalement le problème, rend la suite
-     autonome et permet de retirer le PAT. **C'est la cible recommandée.**
-  2. **Reprise SSO silencieuse** : les cookies Entra persistants présents dans la capture
-     (`ESTSAUTHPERSISTENT`, ~3 mois de validité) permettent de reminter une session en visitant
-     `/oauth/openid` sans saisir d'identifiant. Vérifié manuellement contre staging. Non implémenté
-     ici : cela masquerait l'expiration de session que la garde doit précisément rendre visible.
+- **Rotation du refresh token — supprimée, plus contournée.** La cible recommandée par ce
+  document — un **compte de service en authentification locale** — a été mise en place le
+  31/07/2026 (chantier 5, §3). Chaque test se connecte pour lui-même : plus de session à usage
+  unique, plus de relais entre tests, plus de republication de secret, et **plus de PAT en
+  écriture** (`VERMEER_SECRETS_TOKEN`) dans la boucle de QA. Le mode de défaillance « run tué
+  entre la rotation et la persistance », qui imposait une régénération manuelle, n'existe plus.
+
+  Ce que cette voie coûte en retour, et qu'il faut garder en tête : **le mot de passe du compte
+  n'est pas rotable par l'application**. Remédiation en cas de compromission : §3.
 - **WEB-01 ne laisse plus rien au verdict — arbitrage tranché le 29/07/2026, sur épreuve.**
   OBSERVED (Dossier QA #112, runs des 27, 28 et 29/07) : sur **chaque** échec archivé de
   l'ancien WEB-01, le message portait *« Liens détectés : 0. Mentions de sources : 0 »* — les
@@ -560,5 +571,6 @@ masquerait le sujet réel des cas FILE (limite de taille, prise en compte du con
 - **Coût** : un run `@wave1` complet déclenche une dizaine de complétions réelles, dont deux
   recherches web — et depuis l'amorçage de sa propre conversation par NEG-03, **une de plus**
   (prompt court, modèle par défaut). À garder en tête pour la fréquence de la planification.
-- **Un run local désynchronise le secret `QA_STORAGE_STATE`** : le republier après coup, sinon le
-  prochain run CI échoue sur la garde de session. Marche à suivre dans l'encadré de §1.
+- **Un seul compte de service pour la CI et les postes** : un run local pendant un run CI met deux
+  consommateurs sur le même compte et le même budget mensuel. Le groupe de concurrence
+  `qa-session` ne sérialise que les deux workflows entre eux (§1).

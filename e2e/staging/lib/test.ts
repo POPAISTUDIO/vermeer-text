@@ -1,61 +1,41 @@
 import { test as base } from '@playwright/test';
-import { authStateFile } from './env';
+import { freshServiceSession } from './auth';
 import { purgeArgs, purgePreferences } from './state';
 
 /**
  * `test` de la suite — à importer partout à la place de `@playwright/test`.
  *
- * Pourquoi : l'application fait de la ROTATION de refresh token. Au premier chargement,
- * le client appelle `/api/auth/refresh` ; le serveur régénère le refresh token de la
- * session (`AuthService.setAuthTokens` → `generateRefreshToken(session)`), ce qui
- * **invalide** celui qui vient d'être présenté. Le `storageState` capturé est donc à
- * usage unique : sans réécriture, le test suivant rejoue un token mort et se heurte au
- * mur de login (« Refresh token expired or not found for this user », HTTP 401).
+ * Deux fixtures :
  *
- * La fixture ci-dessous réécrit `auth.json` à la fin de chaque test avec les cookies
- * rotatés. Combinée à `workers: 1` (exécution sérielle), elle fait circuler la session
- * de test en test — et prolonge sa validité au fil des exécutions.
+ * - `storageState` (surcharge de l'option native) — chaque test s'authentifie par un login
+ *   programmatique du compte de service, juste avant la création de son contexte. La suite ne
+ *   dépend plus d'aucun `storageState` capturé à la main, ni d'aucun état laissé par le test
+ *   précédent. Le pourquoi d'un login par test plutôt que par run — la rotation du refresh
+ *   token — est documenté dans `lib/auth.ts`.
+ * - `isolatedPreferences` — purge des préférences de conversation du `localStorage`, cf.
+ *   `lib/state.ts`.
  *
- * Conséquence côté CI, documentée dans le README : l'état rotaté vit dans le workspace du
- * job et disparaît avec lui. Le secret QA_STORAGE_STATE n'est donc réutilisable qu'une
- * fois par capture, sauf à le réinjecter en fin de job.
+ * L'ancienne fixture `persistRotatedSession`, qui relayait l'état rotaté de test en test en
+ * réécrivant `auth.json`, a disparu : elle n'a plus d'objet dès lors que personne n'hérite
+ * de la session de personne.
  */
 export const test = base.extend<{
   isolatedPreferences: void;
-  persistRotatedSession: void;
 }>({
+  storageState: async ({ baseURL }, use) => {
+    await use(await freshServiceSession(baseURL as string));
+  },
+
   /**
    * Isolation d'état — enregistrée sur le CONTEXTE (donc valable pour la page du test comme
    * pour tout onglet ouvert en cours de route, cf. SAV-01), avant le premier chargement de
    * page. Ne touche qu'aux clés de préférence de conversation : les cookies — seuls porteurs
-   * de l'authentification — restent intacts, et `persistRotatedSession` ci-dessous continue
-   * de relayer la session à l'identique. Détail du périmètre : `lib/state.ts`.
+   * de l'authentification — restent intacts. Détail du périmètre : `lib/state.ts`.
    */
   isolatedPreferences: [
     async ({ context }, use) => {
       await context.addInitScript(purgePreferences, purgeArgs);
       await use();
-    },
-    { auto: true },
-  ],
-  persistRotatedSession: [
-    async ({ context }, use, testInfo) => {
-      await use();
-      try {
-        const state = await context.storageState();
-        /* Ne jamais écraser le fichier par un état sans refresh token (mur de login,
-           navigation échouée) : il serait inutilisable pour le test suivant. */
-        const hasRefreshToken = state.cookies.some((cookie) => cookie.name === 'refreshToken');
-        if (!hasRefreshToken) {
-          return;
-        }
-        await context.storageState({ path: authStateFile });
-      } catch (error) {
-        await testInfo.attach('session-persistence-warning', {
-          body: `Impossible de réécrire auth.json après le test : ${String(error)}`,
-          contentType: 'text/plain',
-        });
-      }
     },
     { auto: true },
   ],
