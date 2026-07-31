@@ -13,13 +13,37 @@ qu'elles disent la même chose. Aucun de ces écarts n'apparaît dans
 ## 1. `balance` (credit management)
 
 - **yaml commité** (`librechat.yaml:165`) : bloc **commenté** → désactivé.
-- **gitops** (`librechat.gitops.yaml:107-113`) : `balance.enabled: true` → **actif**.
+- **gitops — les DEUX environnements, OBSERVED 31/07/2026** : `balance.enabled: true`
+  en **staging** (`vermeer-gitops`, `staging/llm/librechat.yaml:109`) **et** en
+  **production** (`vermeer-gitops-prod`, `prod/llm/librechat.yaml:109`). L'écart
+  n'est pas propre à un environnement : il est **général**.
 - **local** (`librechat.local.yaml:110`) : `enabled: true`.
 - **CLAUDE.md** (§7, §9) : décrit `balance` comme « présent mais laissé commenté en
   config » et la BudgetCard comme nécessitant une édition admin préalable.
-- **Constat** : le credit management est **actif en production**, contrairement à ce
-  que disent le yaml commité et le CLAUDE.md.
-- **À réaligner** : aligner `librechat.yaml` et le CLAUDE.md sur l'état déployé.
+- **Constat** : le credit management est **actif partout où il tourne** — staging et
+  production — contrairement à ce que disent le yaml commité et le CLAUDE.md. Les
+  **deux** affirmations du CLAUDE.md sont fausses, pas seulement la première :
+  - §7 « `balance` et `transactions` présents nativement mais laissés commentés en
+    config » → faux en staging **et** en prod ;
+  - §9 « BudgetCard visible uniquement pour les users ayant un document Balance […]
+    un admin doit éditer un seuil pour le user » → **contredit par l'observation** :
+    `GET /api/balance` sur un compte créé le 31/07/2026 en production renvoie un
+    document complet (`monthlyBudget: 10000000`, `monthlyBudgetBaseline: 10000000`,
+    `currentMonthSpend: 0`) **sans aucune intervention admin**. Le workaround décrit
+    en §9 n'a plus d'objet dès lors que `balance.enabled: true`, et le backlog V2
+    « auto-création Balance » (§8) est de fait **déjà satisfait** dans ces
+    conditions.
+- **Plafond effectif — OBSERVED** : `DEFAULT_MONTHLY_BUDGET = 10_000_000`
+  tokenCredits = **10 USD/mois** (`packages/data-schemas/src/methods/budget.ts`),
+  identique en staging et en production. Le **reset mensuel** est actif dans les deux
+  cas : `VERMEER_BUDGET_RESET_ENABLED` est un **kill-switch à défaut activé** — seul
+  `'false'` désarme le scheduler (`api/server/services/Vermeer/budgetResetScheduler.js:70`).
+  Il est posé explicitement à `"true"` en staging et **absent** en production : c'est
+  une différence d'**explicitation**, pas de comportement. *(Cf. issue #127, qui pose
+  la question de l'alignement de cette variable en prod — la réponse est qu'il n'y a
+  pas de risque fonctionnel, seulement un défaut implicite à rendre explicite.)*
+- **À réaligner** : aligner `librechat.yaml` et le CLAUDE.md (§7, §8, §9) sur l'état
+  déployé.
 
 ## 2. `transactions`
 
@@ -86,7 +110,7 @@ qu'elles disent la même chose. Aucun de ces écarts n'apparaît dans
 
 | Bloc | yaml commité | gitops (déployé) | CLAUDE.md | Action |
 |---|---|---|---|---|
-| `balance` | commenté | `enabled: true` | « commenté » | À réaligner |
+| `balance` | commenté | `enabled: true` en **staging ET prod** — OBSERVED 31/07/2026 | « commenté » (§7) **et** « BudgetCard nécessite une édition admin » (§9) — **les deux faux** | À réaligner (§7, §8, §9) |
 | `transactions` | commenté | forcé `true` | forçage documenté | À expliciter |
 | `memory` | commenté | actif | « activé » | À réaligner |
 | RAG (`RAG_API_URL`) | undefined | injecté auto (actif) | « non opérationnel » | CLAUDE.md périmé |
