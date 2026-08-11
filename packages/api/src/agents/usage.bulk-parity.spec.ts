@@ -338,25 +338,31 @@ describe('recordCollectedUsage — bulk path parity', () => {
       expect(mockSpendTokens).not.toHaveBeenCalled();
     });
 
+    // Vermeer (issue #158) — jumeau bulk du cas legacy : mêmes chiffres, EXCLUSIFS
+    // (`cache_creation: 30808` pour `input_tokens: 788` est impossible pour un total inclusif),
+    // donc portés par les champs top-level. Assertions INCHANGÉES.
     it('should handle cache tokens with multiple tool calls — same totals as legacy', async () => {
       const collectedUsage: UsageMetadata[] = [
         {
           input_tokens: 788,
           output_tokens: 163,
           model: 'claude-opus',
-          input_token_details: { cache_read: 0, cache_creation: 30808 },
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 30808,
         },
         {
           input_tokens: 3802,
           output_tokens: 149,
           model: 'claude-opus',
-          input_token_details: { cache_read: 30808, cache_creation: 768 },
+          cache_read_input_tokens: 30808,
+          cache_creation_input_tokens: 768,
         },
         {
           input_tokens: 26808,
           output_tokens: 225,
           model: 'claude-opus',
-          input_token_details: { cache_read: 31576, cache_creation: 0 },
+          cache_read_input_tokens: 31576,
+          cache_creation_input_tokens: 0,
         },
       ];
 

@@ -31,9 +31,13 @@ type SpendStructuredTokensFn = (
  *   - OpenAI / Azure OpenAI: `input_tokens` = `prompt_tokens` (includes `prompt_tokens_details.cached_tokens`)
  *   - xAI, DeepSeek, OpenRouter, Moonshot: extend `ChatOpenAI`, same semantics
  *
- * Anthropic and Bedrock keep cache values separate from `input_tokens`, so they
- * must be added back to compute the total prompt size — that's the historical
- * additive default. Providers not listed here fall through to additive.
+ * Vermeer (issue #158) — this list is NO LONGER the only inclusivity signal.
+ * The raw Anthropic/Bedrock APIs do keep cache values separate from `input_tokens`,
+ * but the LangChain-normalized object we actually receive does not: for Anthropic,
+ * `@langchain/anthropic` (`buildUsageMetadata`) already sums cache into `input_tokens`
+ * and exposes `input_token_details` as a mere breakdown. Inclusivity is therefore
+ * decided by the SHAPE of the usage object first — see `inputTokensIncludesCache`.
+ * Providers not listed here, and carrying no `input_token_details`, fall through to additive.
  */
 const SUBSET_PROVIDERS: ReadonlySet<string> = new Set([
   Providers.OPENAI,
@@ -46,8 +50,28 @@ const SUBSET_PROVIDERS: ReadonlySet<string> = new Set([
   Providers.MOONSHOT,
 ]);
 
-function inputTokensIncludesCache(provider?: string): boolean {
-  return provider != null && SUBSET_PROVIDERS.has(provider);
+/**
+ * Vermeer (issue #158) — decides whether `usage.input_tokens` ALREADY includes the cache
+ * tokens, i.e. whether they must be subtracted rather than added.
+ *
+ * Two signals, in this order:
+ *  1. Presence of the `input_token_details` OBJECT — the signature of the LangChain-normalized
+ *     shape, whose contract is explicit (`@langchain/core`): `input_tokens` is the "sum of all
+ *     input token types" and `input_token_details` its "breakdown". This covers Anthropic and
+ *     Bedrock, which are absent from `SUBSET_PROVIDERS`, and every path where `provider` is not
+ *     populated (`responses.js`, `openai.js`).
+ *  2. `provider` membership in `SUBSET_PROVIDERS` — kept as a fallback so no case that used to
+ *     subtract starts adding.
+ *
+ * The check is on the PRESENCE of the object, not on the truthiness of its values: value
+ * extraction uses `||`, which treats `0` as absent, and LangChain emits the object even when
+ * nothing was cached.
+ */
+function inputTokensIncludesCache(usage: UsageMetadata): boolean {
+  if (usage.input_token_details != null) {
+    return true;
+  }
+  return usage.provider != null && SUBSET_PROVIDERS.has(usage.provider);
 }
 
 interface SplitUsage {
@@ -67,7 +91,7 @@ function splitUsage(usage: UsageMetadata): SplitUsage {
   const cacheRead =
     Number(usage.input_token_details?.cache_read) || Number(usage.cache_read_input_tokens) || 0;
   const rawInput = Number(usage.input_tokens) || 0;
-  if (inputTokensIncludesCache(usage.provider)) {
+  if (inputTokensIncludesCache(usage)) {
     return {
       inputOnly: Math.max(0, rawInput - cacheCreation - cacheRead),
       cacheCreation,
