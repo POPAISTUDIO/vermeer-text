@@ -307,8 +307,12 @@ describe('recordCollectedUsage', () => {
       );
     });
 
-    it('falls through to additive (historical default) when provider is missing', async () => {
-      // Defensive: an unclassified or pre-this-PR usage entry should keep old behavior
+    // Vermeer (issue #158) — DIVERGENCE ASSUMEE d'un test upstream. Ce cas assertait la branche
+    // additive sur une entree portant `input_token_details` sans `provider`, ce qui codifiait la
+    // premisse fausse : la forme `input_token_details` est INCLUSIVE par contrat `@langchain/core`
+    // quel que soit le provider. Reasservi sur la semantique inclusive.
+    // NE PAS le "re-corriger" vers l'additive au prochain merge upstream.
+    it('classe par la forme (input_token_details inclusif) quand provider est absent', async () => {
       const collectedUsage: UsageMetadata[] = [
         {
           input_tokens: 100,
@@ -326,11 +330,11 @@ describe('recordCollectedUsage', () => {
       expect(mockSpendStructuredTokens).toHaveBeenCalledWith(
         expect.objectContaining({ model: 'gpt-4' }),
         {
-          promptTokens: { input: 100, write: 20, read: 10 },
+          promptTokens: { input: 70, write: 20, read: 10 },
           completionTokens: 50,
         },
       );
-      expect(result?.input_tokens).toBe(130);
+      expect(result?.input_tokens).toBe(100);
     });
   });
 
@@ -361,6 +365,145 @@ describe('recordCollectedUsage', () => {
         },
       );
       expect(result?.input_tokens).toBe(140); // 100 + 25 + 15
+    });
+  });
+
+  // Vermeer (issue #158): `@langchain/anthropic` normalise `input_tokens` en valeur INCLUSIVE
+  // du cache et fournit `input_token_details` comme ventilation. Anthropic/Bedrock étant hors
+  // de SUBSET_PROVIDERS, la branche additive rajoutait le cache une seconde fois.
+  describe('cache token handling - Anthropic via input_token_details (forme LangChain)', () => {
+    it('ne compte pas deux fois le cache pour Anthropic (input_tokens inclusif)', async () => {
+      const collectedUsage: UsageMetadata[] = [
+        {
+          input_tokens: 100000,
+          output_tokens: 5000,
+          model: 'claude-opus-4-8',
+          provider: 'anthropic',
+          input_token_details: { cache_creation: 5000, cache_read: 75000 },
+        },
+      ];
+
+      const result = await recordCollectedUsage(deps, {
+        ...baseParams,
+        collectedUsage,
+      });
+
+      expect(mockSpendStructuredTokens).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'claude-opus-4-8' }),
+        {
+          promptTokens: { input: 20000, write: 5000, read: 75000 },
+          completionTokens: 5000,
+        },
+      );
+      expect(result?.input_tokens).toBe(100000);
+    });
+
+    it('applique le meme decoupage a Bedrock', async () => {
+      const collectedUsage: UsageMetadata[] = [
+        {
+          input_tokens: 8000,
+          output_tokens: 200,
+          model: 'anthropic.claude-sonnet-4-6',
+          provider: 'bedrock',
+          input_token_details: { cache_creation: 1000, cache_read: 4000 },
+        },
+      ];
+
+      const result = await recordCollectedUsage(deps, {
+        ...baseParams,
+        collectedUsage,
+      });
+
+      expect(mockSpendStructuredTokens).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'anthropic.claude-sonnet-4-6' }),
+        {
+          promptTokens: { input: 3000, write: 1000, read: 4000 },
+          completionTokens: 200,
+        },
+      );
+      expect(result?.input_tokens).toBe(8000);
+    });
+
+    it('classe par la forme meme sans provider (couvre responses.js / openai.js)', async () => {
+      const collectedUsage: UsageMetadata[] = [
+        {
+          input_tokens: 1000,
+          output_tokens: 40,
+          model: 'claude-opus-4-8',
+          input_token_details: { cache_creation: 100, cache_read: 600 },
+        },
+      ];
+
+      const result = await recordCollectedUsage(deps, {
+        ...baseParams,
+        collectedUsage,
+      });
+
+      expect(mockSpendStructuredTokens).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'claude-opus-4-8' }),
+        {
+          promptTokens: { input: 300, write: 100, read: 600 },
+          completionTokens: 40,
+        },
+      );
+      expect(result?.input_tokens).toBe(1000);
+    });
+
+    // Cas degenere: `details` present mais a zero ET champs bruts non nuls. Les valeurs viennent
+    // des bruts (extraction inchangee, `||` traite 0 comme absent) mais la classification suit la
+    // PRESENCE de l'objet `details` -> inclusive. Comportement intentionnel, epingle ici.
+    it('classe inclusif sur details a zero avec champs bruts non nuls', async () => {
+      const collectedUsage: UsageMetadata[] = [
+        {
+          input_tokens: 1000,
+          output_tokens: 40,
+          model: 'claude-opus-4-8',
+          provider: 'anthropic',
+          input_token_details: { cache_creation: 0, cache_read: 0 },
+          cache_creation_input_tokens: 100,
+          cache_read_input_tokens: 600,
+        },
+      ];
+
+      const result = await recordCollectedUsage(deps, {
+        ...baseParams,
+        collectedUsage,
+      });
+
+      expect(mockSpendStructuredTokens).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'claude-opus-4-8' }),
+        {
+          promptTokens: { input: 300, write: 100, read: 600 },
+          completionTokens: 40,
+        },
+      );
+      expect(result?.input_tokens).toBe(1000);
+    });
+
+    it('clampe inputOnly a 0 quand cache_read >= input_tokens sur Anthropic', async () => {
+      const collectedUsage: UsageMetadata[] = [
+        {
+          input_tokens: 500,
+          output_tokens: 10,
+          model: 'claude-opus-4-8',
+          provider: 'anthropic',
+          input_token_details: { cache_read: 500 },
+        },
+      ];
+
+      const result = await recordCollectedUsage(deps, {
+        ...baseParams,
+        collectedUsage,
+      });
+
+      expect(mockSpendStructuredTokens).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'claude-opus-4-8' }),
+        {
+          promptTokens: { input: 0, write: 0, read: 500 },
+          completionTokens: 10,
+        },
+      );
+      expect(result?.input_tokens).toBe(500);
     });
   });
 
@@ -442,25 +585,33 @@ describe('recordCollectedUsage', () => {
       expect(mockSpendTokens).toHaveBeenCalledTimes(5);
     });
 
+    // Vermeer (issue #158) — ces chiffres sont EXCLUSIFS : `cache_creation: 30808` pour
+    // `input_tokens: 788` est impossible pour un total inclusif (on ne cree pas 30808 tokens de
+    // cache a partir d'un prompt de 788). Ils sont donc portes par les champs top-level, ou vit
+    // la semantique exclusive, et non par `input_token_details` (forme LangChain, inclusive).
+    // Les assertions d'origine sont INCHANGEES : ce cas couvre desormais la branche additive.
     it('should handle cache tokens with multiple tool calls', async () => {
       const collectedUsage: UsageMetadata[] = [
         {
           input_tokens: 788,
           output_tokens: 163,
           model: 'claude-opus',
-          input_token_details: { cache_read: 0, cache_creation: 30808 },
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 30808,
         },
         {
           input_tokens: 3802,
           output_tokens: 149,
           model: 'claude-opus',
-          input_token_details: { cache_read: 30808, cache_creation: 768 },
+          cache_read_input_tokens: 30808,
+          cache_creation_input_tokens: 768,
         },
         {
           input_tokens: 26808,
           output_tokens: 225,
           model: 'claude-opus',
-          input_token_details: { cache_read: 31576, cache_creation: 0 },
+          cache_read_input_tokens: 31576,
+          cache_creation_input_tokens: 0,
         },
       ];
 

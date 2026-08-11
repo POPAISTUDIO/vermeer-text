@@ -49,21 +49,26 @@ export interface SerializableJobData {
 /**
  * Usage metadata for token spending across different LLM providers.
  *
- * This interface supports two mutually exclusive cache token formats:
+ * This interface supports two cache token formats. They differ not only in WHERE the cache
+ * counts live, but in whether `input_tokens` ALREADY INCLUDES them — which is what actually
+ * matters when pricing them.
  *
- * **OpenAI format** (GPT-4, o1, etc.):
- * - Uses `input_token_details.cache_creation` and `input_token_details.cache_read`
- * - Cache tokens are nested under the `input_token_details` object
+ * **Normalized (LangChain) format** — `input_token_details.cache_creation` / `.cache_read`,
+ * nested. `input_tokens` is INCLUSIVE: per the `@langchain/core` contract it is the "sum of all
+ * input token types" and `input_token_details` its "breakdown". Cache counts must therefore be
+ * SUBTRACTED from `input_tokens` to obtain the non-cached portion.
  *
- * **Anthropic format** (Claude models):
- * - Uses `cache_creation_input_tokens` and `cache_read_input_tokens`
- * - Cache tokens are top-level properties
+ * **Raw provider format** — `cache_creation_input_tokens` / `cache_read_input_tokens`, top-level.
+ * `input_tokens` is EXCLUSIVE, so cache counts must be ADDED to obtain the total prompt size.
  *
- * When processing usage data, check both formats:
- * ```typescript
- * const cacheCreation = usage.input_token_details?.cache_creation
- *   || usage.cache_creation_input_tokens || 0;
- * ```
+ * Vermeer (issue #158) — two corrections to what this block used to claim:
+ *  1. The two formats are NOT "mutually exclusive" per provider, and the nested one is NOT
+ *     "OpenAI-only". Anthropic and Bedrock reach us through LangChain, which emits the NESTED,
+ *     INCLUSIVE form (`@langchain/anthropic` → `buildUsageMetadata` sums cache into
+ *     `input_tokens`, on the streaming and non-streaming paths alike).
+ *  2. Reading a value from either container is therefore not enough — inclusivity has to be
+ *     decided from the SHAPE. Assuming "Anthropic ⇒ additive" double-billed every cached token.
+ *     See `inputTokensIncludesCache` in `packages/api/src/agents/usage.ts`.
  */
 export interface UsageMetadata {
   /** Logical usage bucket for accounting/reporting. Defaults to model response usage. */
@@ -79,8 +84,8 @@ export interface UsageMetadata {
   /** Provider identifier that generated this usage */
   provider?: string;
   /**
-   * OpenAI-style cache token details.
-   * Present for OpenAI models (GPT-4, o1, etc.)
+   * Normalized (LangChain) cache token details — a BREAKDOWN of `input_tokens`, which already
+   * includes these counts. Emitted for OpenAI models AND for Anthropic/Bedrock via LangChain.
    */
   input_token_details?: {
     /** Tokens written to cache */
@@ -89,13 +94,13 @@ export interface UsageMetadata {
     cache_read?: number;
   };
   /**
-   * Anthropic-style cache creation tokens.
-   * Present for Claude models. Mutually exclusive with input_token_details.
+   * Raw provider cache creation tokens, NOT included in `input_tokens` (add to get the total).
+   * Not emitted by `@langchain/anthropic` — Claude arrives via `input_token_details`.
    */
   cache_creation_input_tokens?: number;
   /**
-   * Anthropic-style cache read tokens.
-   * Present for Claude models. Mutually exclusive with input_token_details.
+   * Raw provider cache read tokens, NOT included in `input_tokens` (add to get the total).
+   * Not emitted by `@langchain/anthropic` — Claude arrives via `input_token_details`.
    */
   cache_read_input_tokens?: number;
 }
