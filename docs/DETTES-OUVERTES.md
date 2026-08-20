@@ -104,6 +104,20 @@ Ce document ne duplique rien : le détail technique vit dans le code et dans les
 
 **Condition de levée.** Une reprise du sujet observabilité avec l'infra — même interlocuteur que la relance Loki staging (`GATEWAY_TIMEOUT` + rétention), déjà au backlog. Consigner **OBSERVED** ce que vaut réellement le jeton à cette occasion, comme le demande la consigne de tenue n° 3 du registre.
 
+## 10. Mot de passe de `svc-qa-prod` — copie humaine perdue
+
+**Ce que c'est.** La copie humaine du mot de passe du compte de service de production `svc-qa-prod@vermeer.invalid` ([registre](registre-identites.md), entrée **13b**) est **introuvable côté poste**. Le secret Actions `QA_SERVICE_PASSWORD_PROD` **fonctionne** — la sonde de production tourne verte — mais un secret GitHub est **write-only** : il s'utilise, il ne se relit pas. Le pouvoir est donc **vivant en CI et inutilisable à la main**. Découvert le **20/08/2026** en tentant une remédiation manuelle (issue [162](https://github.com/POPAISTUDIO/vermeer-text/issues/162)).
+
+**Gravité.** C'est un **écart ouvert au sens de [`GOVERNANCE.md`](GOVERNANCE.md) §1** : la fiche 13b décrit correctement le pouvoir, mais sa ligne **Stockage** ne nomme que les secrets Actions — **aucune conservation humaine n'y a jamais été désignée** (OBSERVED, lecture de la fiche). Ce n'est donc pas un manquement à la fiche : c'est une **lacune de la fiche**, à corriger à la levée. Voisine de la dette n° 3, et de sens inverse : là un pouvoir vivant non décrit, ici un pouvoir décrit dont la garde ne l'est pas.
+
+**Motif.** Le mot de passe n'est **pas rotable par l'application** — aucune route de changement, `passwordResetEnabled: false` et `emailEnabled: false` sur `llm.vermeer.ai` (OBSERVED 31/07/2026, entrée 13b) : il n'existe **pas de reset** qui rendrait la main sans recréer le compte. La seule voie est le **rejeu complet de la fenêtre d'inscription en production**, geste à trois temps sur `vermeer-gitops-prod`. Le contracter est un arbitrage de proportion : engager ce geste pour l'orphelin de sonde qui l'a révélé serait disproportionné, et rien d'autre ne le rend urgent sous standby.
+
+**Ce que ça coûte.** Tout geste manuel authentifié sur la production avec ce compte est **impossible** — nommément, supprimer à la main un état que la sonde aurait laissé derrière elle. Le filet `expiredAt` (+30 jours, posé par `isTemporary`) devient la **seule** remédiation d'un nettoyage non confirmé, et elle est lente. Cette dette **aggrave la dette n° 5** : elle y notait qu'un ban se remédie par le rejeu de la fenêtre d'inscription — c'est désormais vrai de **toute** perte d'usage manuel du compte, ban ou non.
+
+**Condition de levée.** Un créneau calme, et dans cet ordre : rejouer la fenêtre d'inscription (PRs modèles **72** ouverture / **73** refermeture sur `vermeer-gitops-prod`, entrée 13b) · recréer le compte avec un mot de passe **conservé à un endroit identifié** · **consigner cet endroit dans la ligne Stockage de l'entrée 13b** — c'est la correction de registre qui empêche la dette de se reformer · mettre à jour le secret `QA_SERVICE_PASSWORD_PROD` · vérifier par un `workflow_dispatch` de la sonde.
+
+**Détail.** Issue [162](https://github.com/POPAISTUDIO/vermeer-text/issues/162).
+
 ---
 
 ## Renvois
